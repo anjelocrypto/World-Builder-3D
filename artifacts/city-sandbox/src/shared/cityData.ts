@@ -1065,6 +1065,7 @@ export const MOUNTAIN_ROCKS: RockInstance[] = makeMountainRocks();
 export const FOREST_ROADSIDE_COUNT = _roadsideTrees.length;
 export const FOREST_SCATTER_TREE_COUNT = FOREST_TREES.length - FOREST_ROADSIDE_COUNT;
 
+
 // =============================================================
 // SOUTH FOREST VILLAGE — lamps + parking pads
 // =============================================================
@@ -1110,6 +1111,163 @@ export const VILLAGE_PARKING_PADS: ParkingSpot[] = [
   { x:  25, z: 358, rotY: 0 },
   { x: -25, z: 358, rotY: 0 },
 ];
+
+// =============================================================
+// PERI-CITY FOREST BELT — wraps the central city in trees
+// =============================================================
+//
+// Goal: from the city plaza you should see treetops in every direction
+// just past the city blocks. The belt is the square annulus
+//   125 <= max(|x|, |z|) <= 230
+// Trees are rejected near roads, buildings, obstacles, lamps, parking
+// spots, checkpoints, parked vehicles, and the city core. Driveway
+// entries punch natural gaps because the road-clearance check
+// (halfWidth + 6m) keeps trees off the asphalt for free.
+
+const CITY_EDGE_INNER = 125;          // start of belt (just outside city blocks)
+const CITY_EDGE_OUTER = 230;          // outer extent (well inside biome zones)
+const CITY_EDGE_CORE_MARGIN = 15;     // padding around CITY_HALF
+const CITY_EDGE_ROAD_CLEAR = 6.0;     // tree trunk -> road edge clearance
+const CITY_EDGE_BUILDING_CLEAR = 2.5;
+const CITY_EDGE_OBSTACLE_CLEAR = 1.5;
+const CITY_EDGE_LAMP_CLEAR = 3.0;
+const CITY_EDGE_VEHICLE_CLEAR = 4.0;
+const CITY_EDGE_CHECKPOINT_CLEAR = 6.0;
+const CITY_EDGE_PARKING_CLEAR = 3.5;
+
+function inCityEdgeBelt(x: number, z: number): boolean {
+  const m = Math.max(Math.abs(x), Math.abs(z));
+  return m >= CITY_EDGE_INNER && m <= CITY_EDGE_OUTER;
+}
+
+function inCityCorePlusMargin(x: number, z: number): boolean {
+  return (
+    Math.abs(x) <= CITY_HALF + CITY_EDGE_CORE_MARGIN &&
+    Math.abs(z) <= CITY_HALF + CITY_EDGE_CORE_MARGIN
+  );
+}
+
+function cityEdgeRejected(x: number, z: number): boolean {
+  if (!inCityEdgeBelt(x, z)) return true;
+  if (inCityCorePlusMargin(x, z)) return true;
+  if (Math.abs(x) > WORLD_HALF - 2 || Math.abs(z) > WORLD_HALF - 2) return true;
+  if (tooCloseToAnyRoad(x, z, CITY_EDGE_ROAD_CLEAR)) return true;
+  if (checkBuildingCollision(x, z, CITY_EDGE_BUILDING_CLEAR)) return true;
+  for (const o of STATIC_OBSTACLES) {
+    const dx = Math.max(0, Math.abs(x - o.x) - o.w / 2);
+    const dz = Math.max(0, Math.abs(z - o.z) - o.d / 2);
+    if (dx * dx + dz * dz < CITY_EDGE_OBSTACLE_CLEAR * CITY_EDGE_OBSTACLE_CLEAR) return true;
+  }
+  for (const l of STREET_LIGHTS) {
+    const dx = x - l.x; const dz = z - l.z;
+    if (dx * dx + dz * dz < CITY_EDGE_LAMP_CLEAR * CITY_EDGE_LAMP_CLEAR) return true;
+  }
+  for (const l of VILLAGE_LAMPS) {
+    const dx = x - l.x; const dz = z - l.z;
+    if (dx * dx + dz * dz < CITY_EDGE_LAMP_CLEAR * CITY_EDGE_LAMP_CLEAR) return true;
+  }
+  for (const v of INITIAL_VEHICLES) {
+    const dx = x - v.x; const dz = z - v.z;
+    if (dx * dx + dz * dz < CITY_EDGE_VEHICLE_CLEAR * CITY_EDGE_VEHICLE_CLEAR) return true;
+  }
+  for (const p of PARKING_SPOTS) {
+    const dx = x - p.x; const dz = z - p.z;
+    if (dx * dx + dz * dz < CITY_EDGE_PARKING_CLEAR * CITY_EDGE_PARKING_CLEAR) return true;
+  }
+  for (const p of VILLAGE_PARKING_PADS) {
+    const dx = x - p.x; const dz = z - p.z;
+    if (dx * dx + dz * dz < CITY_EDGE_PARKING_CLEAR * CITY_EDGE_PARKING_CLEAR) return true;
+  }
+  for (const cp of CHECKPOINTS) {
+    const dx = x - cp.x; const dz = z - cp.z;
+    if (dx * dx + dz * dz < CITY_EDGE_CHECKPOINT_CLEAR * CITY_EDGE_CHECKPOINT_CLEAR) return true;
+  }
+  return false;
+}
+
+// Optional structured rows along the OUTSIDE of city-exit corridors.
+// These reinforce the "city is surrounded by woods" feel along the
+// roads players actually drive in/out of downtown on.
+function makeCityEdgeRoadsideRows(): TreeInstance[] {
+  const rows: TreeInstance[] = [];
+  const r = seededRandom(70707);
+  const targets: ReadonlyArray<{
+    id: string; spacing: number; offset: number; minDist: number; maxDist: number;
+  }> = [
+    { id: "inner-city-ring", spacing: 14, offset: 12, minDist: 0,   maxDist: 9999 },
+    { id: "spine-north",     spacing: 12, offset: 11, minDist: 0,   maxDist: 9999 },
+    { id: "spine-south",     spacing: 12, offset: 11, minDist: 0,   maxDist: 9999 },
+    { id: "east-service",    spacing: 14, offset: 11, minDist: 0,   maxDist: 220 },
+    { id: "west-utility",    spacing: 14, offset: 11, minDist: 0,   maxDist: 220 },
+  ];
+  for (const t of targets) {
+    const road = REGIONAL_ROADS.find((rr) => rr.id === t.id);
+    if (!road) continue;
+    const minOffset = road.width / 2 + 7;
+    const offset = Math.max(t.offset, minOffset);
+    let traveled = 0;
+    let nextSample = t.spacing * 0.5;
+    for (let i = 0; i < road.points.length - 1; i++) {
+      const [ax, az] = road.points[i];
+      const [bx, bz] = road.points[i + 1];
+      const dx = bx - ax;
+      const dz = bz - az;
+      const len = Math.hypot(dx, dz);
+      if (len < 1e-3) continue;
+      const tx = dx / len;
+      const tz = dz / len;
+      const nx = tz;
+      const nz = -tx;
+      while (nextSample < traveled + len) {
+        const tl = (nextSample - traveled) / len;
+        const px = ax + tl * dx;
+        const pz = az + tl * dz;
+        const radial = Math.hypot(px, pz);
+        nextSample += t.spacing;
+        if (radial < t.minDist || radial > t.maxDist) continue;
+        for (const side of [1, -1] as const) {
+          const x = px + side * offset * nx;
+          const z = pz + side * offset * nz;
+          if (cityEdgeRejected(x, z)) continue;
+          rows.push({ x, z, scale: 0.85 + r() * 0.4, rotY: r() * Math.PI * 2 });
+        }
+      }
+      traveled += len;
+    }
+  }
+  return rows;
+}
+
+function makeCityEdgeTrees(): TreeInstance[] {
+  const r = seededRandom(54321);
+  const out: TreeInstance[] = makeCityEdgeRoadsideRows();
+  const tooCloseToExisting = (x: number, z: number): boolean => {
+    for (const t of out) {
+      const dx = x - t.x;
+      const dz = z - t.z;
+      if (dx * dx + dz * dz < 9) return true; // 3m
+    }
+    return false;
+  };
+  const TARGET = 420;
+  const MAX_TRIES = TARGET * 14;
+  let tries = 0;
+  while (out.length < TARGET && tries < MAX_TRIES) {
+    tries++;
+    const x = (r() - 0.5) * 2 * CITY_EDGE_OUTER;
+    const z = (r() - 0.5) * 2 * CITY_EDGE_OUTER;
+    if (cityEdgeRejected(x, z)) continue;
+    if (tooCloseToExisting(x, z)) continue;
+    // Density bias: thin out scatter near a cardinal axis (≈road-exit
+    // corridor) so exits read as openings; corners stay at full density.
+    const axisOffset = Math.min(Math.abs(x), Math.abs(z));
+    if (axisOffset < 25 && r() < 0.4) continue;
+    out.push({ x, z, scale: 0.75 + r() * 0.8, rotY: r() * Math.PI * 2 });
+  }
+  return out;
+}
+
+export const CITY_EDGE_TREES: TreeInstance[] = makeCityEdgeTrees();
 
 // =============================================================
 // REGIONAL ROAD LIGHTING — fake-light pass over REGIONAL_ROADS
@@ -1979,6 +2137,101 @@ if (isViteDev) {
         `onObstacle:${lampsOnObstacle},inCarriageway:${lampsInCarriageway}]`
       : "");
 
+  // ---- Peri-city forest belt validator -----------------------------------
+  // Re-checks every CITY_EDGE tree against the SAME thresholds the
+  // generator uses (CITY_EDGE_* constants), so "cityForestBelt OK" is
+  // a real regression detector rather than a weaker spot-check.
+  let beltCoreViolations = 0;
+  let beltRoadViolations = 0;
+  let beltBuildingViolations = 0;
+  let beltObstacleViolations = 0;
+  let beltOobViolations = 0;
+  let beltBeltMembershipViolations = 0;
+  let beltN = 0, beltS = 0, beltE = 0, beltW = 0;
+  for (const t of CITY_EDGE_TREES) {
+    const { x, z } = t;
+    // World bounds (matches cityEdgeRejected: |x|,|z| > WORLD_HALF-2).
+    if (Math.abs(x) > WORLD_HALF - 2 || Math.abs(z) > WORLD_HALF - 2) {
+      beltOobViolations++;
+      issues.push(`city-edge tree at (${x.toFixed(0)}, ${z.toFixed(0)}) outside WORLD bounds`);
+    }
+    // Belt annulus membership.
+    if (!inCityEdgeBelt(x, z)) {
+      beltBeltMembershipViolations++;
+      issues.push(
+        `city-edge tree at (${x.toFixed(0)}, ${z.toFixed(0)}) outside belt ` +
+          `[${CITY_EDGE_INNER}, ${CITY_EDGE_OUTER}]`,
+      );
+    }
+    // Core margin (CITY_HALF + CITY_EDGE_CORE_MARGIN).
+    if (inCityCorePlusMargin(x, z)) {
+      beltCoreViolations++;
+      issues.push(
+        `city-edge tree at (${x.toFixed(0)}, ${z.toFixed(0)}) inside city core +${CITY_EDGE_CORE_MARGIN}m`,
+      );
+    }
+    // Road clearance — same threshold as generator.
+    if (tooCloseToAnyRoad(x, z, CITY_EDGE_ROAD_CLEAR)) {
+      beltRoadViolations++;
+      issues.push(
+        `city-edge tree at (${x.toFixed(0)}, ${z.toFixed(0)}) within ` +
+          `road halfWidth + ${CITY_EDGE_ROAD_CLEAR}m of a regional road`,
+      );
+    }
+    // Building clearance — same trunk radius as generator.
+    if (checkBuildingCollision(x, z, CITY_EDGE_BUILDING_CLEAR)) {
+      beltBuildingViolations++;
+      issues.push(
+        `city-edge tree at (${x.toFixed(0)}, ${z.toFixed(0)}) within ` +
+          `${CITY_EDGE_BUILDING_CLEAR}m of a building`,
+      );
+    }
+    // Static obstacle AABB-vs-circle, same clearance as generator.
+    for (const o of STATIC_OBSTACLES) {
+      const dx = Math.max(0, Math.abs(x - o.x) - o.w / 2);
+      const dz = Math.max(0, Math.abs(z - o.z) - o.d / 2);
+      if (dx * dx + dz * dz < CITY_EDGE_OBSTACLE_CLEAR * CITY_EDGE_OBSTACLE_CLEAR) {
+        beltObstacleViolations++;
+        issues.push(
+          `city-edge tree at (${x.toFixed(0)}, ${z.toFixed(0)}) within ` +
+            `${CITY_EDGE_OBSTACLE_CLEAR}m of obstacle ${o.kind}`,
+        );
+        break;
+      }
+    }
+    // Quadrant by dominant axis: trees closer to a vertical (E/W) edge
+    // count east/west, otherwise north/south.
+    if (Math.abs(x) >= Math.abs(z)) {
+      if (x >= 0) beltE++; else beltW++;
+    } else {
+      if (z >= 0) beltS++; else beltN++;
+    }
+  }
+  // Flag dramatically lopsided sides — anything below 12% of the belt
+  // population is treated as a coverage gap on that side.
+  const beltMinPerSide = Math.max(20, Math.floor(CITY_EDGE_TREES.length * 0.12));
+  for (const [name, n] of [
+    ["north", beltN], ["south", beltS], ["east", beltE], ["west", beltW],
+  ] as const) {
+    if (n < beltMinPerSide) {
+      issues.push(
+        `city forest belt ${name} side has only ${n} trees (expected >= ${beltMinPerSide})`,
+      );
+    }
+  }
+  const beltTotal = CITY_EDGE_TREES.length;
+  const beltRoadOK = beltTotal - beltRoadViolations;
+  const beltBldOK = beltTotal - beltBuildingViolations;
+  const cityForestBeltLine =
+    `cityForestBelt OK: ${beltTotal} trees, ` +
+    `north=${beltN} south=${beltS} east=${beltE} west=${beltW}, ` +
+    `roadClear=${beltRoadOK}/${beltTotal}, ` +
+    `buildingClear=${beltBldOK}/${beltTotal}` +
+    (beltCoreViolations || beltObstacleViolations || beltOobViolations || beltBeltMembershipViolations
+      ? ` [core:${beltCoreViolations},obstacle:${beltObstacleViolations},` +
+        `oob:${beltOobViolations},offBelt:${beltBeltMembershipViolations}]`
+      : "");
+
   const polishLine =
     `road clearances: ${totalWp - (polish.waypointsOff ?? 0)}/${totalWp} ` +
     `traffic waypoints on-road, ${CHECKPOINTS.length - (polish.checkpointsOff ?? 0)}/` +
@@ -2004,6 +2257,8 @@ if (isViteDev) {
     console.warn(`[city-sandbox] ${roadNetworkLine}`);
     // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${lightingLine}`);
+    // eslint-disable-next-line no-console
+    console.warn(`[city-sandbox] ${cityForestBeltLine}`);
   } else {
     // eslint-disable-next-line no-console
     console.info(
@@ -2024,5 +2279,7 @@ if (isViteDev) {
     console.info(`[city-sandbox] ${roadNetworkLine}`);
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${lightingLine}`);
+    // eslint-disable-next-line no-console
+    console.info(`[city-sandbox] ${cityForestBeltLine}`);
   }
 }

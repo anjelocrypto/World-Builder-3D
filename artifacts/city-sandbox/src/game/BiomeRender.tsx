@@ -11,8 +11,9 @@ import {
   REGIONAL_ROAD_LAMPS,
   VILLAGE_REAL_LIGHTS,
   JUNCTION_REAL_LIGHTS,
+  CITY_EDGE_TREES,
 } from "../shared/cityData";
-import type { RoadPath, StaticObstacle, RegionalLampData } from "../shared/types";
+import type { RoadPath, StaticObstacle, RegionalLampData, TreeInstance } from "../shared/types";
 
 // =============================================================
 // REGIONAL ROADS — chain of segment quads per polyline
@@ -347,10 +348,14 @@ function StaticObstacles() {
 // at a handful even for hundreds of trees. Per-instance transform is
 // composed into a Matrix4 once on mount; the data never changes.
 
-function ForestTrees() {
+// Reusable tree renderer — used by both the south-forest scatter and
+// the new peri-city forest belt. Same trunk/canopy geometry, separate
+// InstancedMesh per data set so we can keep deterministic ordering and
+// independent counts without forcing a single huge buffer.
+function TreeInstances({ data }: { data: ReadonlyArray<TreeInstance> }) {
   const trunkRef = useRef<THREE.InstancedMesh>(null!);
   const canopyRef = useRef<THREE.InstancedMesh>(null!);
-  const count = FOREST_TREES.length;
+  const count = data.length;
 
   useEffect(() => {
     if (!trunkRef.current || !canopyRef.current) return;
@@ -360,30 +365,24 @@ function ForestTrees() {
     const s = new THREE.Vector3();
     const p = new THREE.Vector3();
     for (let i = 0; i < count; i++) {
-      const t = FOREST_TREES[i];
+      const t = data[i];
       e.set(0, t.rotY, 0);
       q.setFromEuler(e);
       s.set(t.scale, t.scale, t.scale);
-      // Trunk geometry is height 4 centred on its own origin; lift by
-      // 2 * scale so its base sits on y=0.
       p.set(t.x, 2 * t.scale, t.z);
       m.compose(p, q, s);
       trunkRef.current.setMatrixAt(i, m);
-      // Canopy cone (height 5) sits on top of the trunk: trunk top is
-      // y = 4*scale, cone centre is + 2.5*scale above that.
       p.set(t.x, (4 + 2.5) * t.scale, t.z);
       m.compose(p, q, s);
       canopyRef.current.setMatrixAt(i, m);
     }
     trunkRef.current.instanceMatrix.needsUpdate = true;
     canopyRef.current.instanceMatrix.needsUpdate = true;
-    // Recompute bounds so frustum/shadow culling is correct in a
-    // 1000x1000 world (default bounds assume origin-centred unit mesh).
     trunkRef.current.computeBoundingSphere();
     trunkRef.current.computeBoundingBox();
     canopyRef.current.computeBoundingSphere();
     canopyRef.current.computeBoundingBox();
-  }, [count]);
+  }, [data, count]);
 
   if (count === 0) return null;
   return (
@@ -396,6 +395,15 @@ function ForestTrees() {
         <coneGeometry args={[1.6, 5, 8]} />
         <meshLambertMaterial color="#2c5a2a" />
       </instancedMesh>
+    </group>
+  );
+}
+
+function ForestTrees() {
+  return (
+    <group>
+      <TreeInstances data={FOREST_TREES} />
+      <TreeInstances data={CITY_EDGE_TREES} />
     </group>
   );
 }
