@@ -11,6 +11,9 @@ out-tsc
 # dependencies
 node_modules
 
+# user-attached screenshots / pasted prompts (Replit workspace artifacts)
+attached_assets/
+
 # IDEs and editors
 /.idea
 .project
