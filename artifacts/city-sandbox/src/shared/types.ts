@@ -104,3 +104,52 @@ export interface PropData {
   rotY: number;
   type: PropType;
 }
+
+// =============================================================
+// Expanded world: regional roads, static obstacles, instanced props
+// =============================================================
+
+export type RoadType = "asphalt" | "bridge" | "forest" | "mountain" | "dirt";
+
+export interface RoadPath {
+  id: string;
+  points: [number, number][];
+  width: number;
+  type: RoadType;
+}
+
+export type StaticObstacleKind =
+  | "bridge_rail"
+  | "large_rock"
+  | "tree_trunk"
+  | "cliff_wall"
+  | "warehouse"
+  | "water_tower_base"
+  | "cabin"
+  | "ranger_station"
+  | "depot"
+  | "gas_stop"
+  | "observatory"
+  | "guardrail";
+
+export interface StaticObstacle {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+  kind: StaticObstacleKind;
+}
+
+export interface TreeInstance {
+  x: number;
+  z: number;
+  scale: number;
+  rotY: number;
+}
+
+export interface RockInstance {
+  x: number;
+  z: number;
+  scale: number;
+  rotY: number;
+}

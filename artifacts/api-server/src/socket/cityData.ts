@@ -5,24 +5,39 @@
 // purely visual rendering (sedan/van/taxi/compact body shape).
 
 export const INITIAL_VEHICLES = [
-  // Inner ring — near plaza
+  // ===== City (14 cars) — original 200x200 hub =====
   { id: "car-0",  x:  22, y: 0.6, z: -22, rotY: 0,                  speed: 0, driverId: null, variant: "sedan",   color: "#e74c3c" },
   { id: "car-1",  x: -22, y: 0.6, z:  22, rotY: Math.PI,            speed: 0, driverId: null, variant: "sedan",   color: "#3498db" },
   { id: "car-2",  x:  22, y: 0.6, z:  22, rotY: 0,                  speed: 0, driverId: null, variant: "compact", color: "#c0392b" },
   { id: "car-3",  x: -22, y: 0.6, z: -22, rotY: Math.PI,            speed: 0, driverId: null, variant: "van",     color: "#7f8c8d" },
-  // Cardinal cars at mid-radius
   { id: "car-4",  x:  55, y: 0.6, z:   8, rotY: Math.PI / 2,        speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
   { id: "car-5",  x: -55, y: 0.6, z:  -8, rotY: -Math.PI / 2,       speed: 0, driverId: null, variant: "compact", color: "#f39c12" },
   { id: "car-6",  x:   8, y: 0.6, z:  55, rotY: Math.PI,            speed: 0, driverId: null, variant: "sedan",   color: "#9b59b6" },
   { id: "car-7",  x:  -8, y: 0.6, z: -49, rotY: 0,                  speed: 0, driverId: null, variant: "van",     color: "#16a085" },
-  // Mid ring
   { id: "car-8",  x:  35, y: 0.6, z:  35, rotY: Math.PI,            speed: 0, driverId: null, variant: "sedan",   color: "#e67e22" },
   { id: "car-9",  x: -35, y: 0.6, z: -35, rotY: 0,                  speed: 0, driverId: null, variant: "van",     color: "#34495e" },
   { id: "car-10", x:  35, y: 0.6, z: -35, rotY: -Math.PI / 2,       speed: 0, driverId: null, variant: "compact", color: "#1abc9c" },
   { id: "car-11", x: -35, y: 0.6, z:  35, rotY: Math.PI / 2,        speed: 0, driverId: null, variant: "sedan",   color: "#d35400" },
-  // Outer ring
   { id: "car-12", x:  41, y: 0.6, z: -70, rotY: 0,                  speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
   { id: "car-13", x: -41, y: 0.6, z:  70, rotY: Math.PI,            speed: 0, driverId: null, variant: "compact", color: "#27ae60" },
+  // ===== Mountain biome (4 cars) =====
+  { id: "car-14", x:  90, y: 0.6, z: -250, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#5d6d7e" },
+  { id: "car-15", x: -75, y: 0.6, z: -290, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#7d6e58" },
+  { id: "car-16", x:  75, y: 0.6, z: -340, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#a04060" },
+  { id: "car-17", x: -10, y: 0.6, z: -465, rotY: 0,                 speed: 0, driverId: null, variant: "taxi",    color: "#e8a02a" },
+  // ===== Forest biome (6 cars) =====
+  { id: "car-18", x:  16, y: 0.6, z:  205, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#2e7d32" },
+  { id: "car-19", x: 110, y: 0.6, z:  248, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#558b2f" },
+  { id: "car-20", x: -42, y: 0.6, z:  290, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#6d4c41" },
+  { id: "car-21", x:  62, y: 0.6, z:  368, rotY: Math.PI,           speed: 0, driverId: null, variant: "sedan",   color: "#8d6e63" },
+  { id: "car-22", x: -75, y: 0.6, z:  415, rotY: Math.PI / 2,       speed: 0, driverId: null, variant: "compact", color: "#33691e" },
+  { id: "car-23", x:  10, y: 0.6, z:  475, rotY: Math.PI,           speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
+  // ===== East suburban / industrial (3 cars) =====
+  { id: "car-24", x: 235, y: 0.6, z:  -30, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#455a64" },
+  { id: "car-25", x: 310, y: 0.6, z:   80, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#5d4037" },
+  { id: "car-26", x: 410, y: 0.6, z:  -55, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#37474f" },
+  // ===== West fields / depot (1 car) =====
+  { id: "car-27", x: -220, y: 0.6, z:   65, rotY: Math.PI / 2,      speed: 0, driverId: null, variant: "van",     color: "#3e2723" },
 ];
 
 // Spawn points placed inside the central plaza (cx=0, cz=0 block has no

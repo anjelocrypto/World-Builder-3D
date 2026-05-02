@@ -8,6 +8,7 @@ import {
   CHECKPOINTS,
   NPC_ROUTES,
   TRAFFIC_ROUTES,
+  WORLD_HALF,
 } from "../shared/cityData";
 import {
   PLAYER_BODY_RADIUS,
@@ -22,7 +23,9 @@ import {
   circleVsObb,
   obbVsObb,
   playerHitsAnyBuilding,
+  playerHitsAnyObstacle,
   vehicleHitsAnyBuilding,
+  vehicleHitsAnyObstacle,
   npcPositionAt,
   ambientCarStateAt,
   type OBB,
@@ -357,6 +360,7 @@ export default function LocalPlayer({
     // Try X first
     if (
       playerHitsAnyBuilding(nx, pos.current.z) ||
+      playerHitsAnyObstacle(nx, pos.current.z) ||
       obstacles.some((o) =>
         circleVsObb({ x: nx, z: pos.current.z, r: PLAYER_BODY_RADIUS }, o),
       )
@@ -367,6 +371,7 @@ export default function LocalPlayer({
     // Then Z
     if (
       playerHitsAnyBuilding(nx, nz) ||
+      playerHitsAnyObstacle(nx, nz) ||
       obstacles.some((o) =>
         circleVsObb({ x: nx, z: nz, r: PLAYER_BODY_RADIUS }, o),
       )
@@ -391,9 +396,10 @@ export default function LocalPlayer({
       }
     }
 
-    // Clamp to map
-    nx = Math.max(-95, Math.min(95, nx));
-    nz = Math.max(-95, Math.min(95, nz));
+    // Clamp to world bounds (small buffer for player body radius)
+    const WALK_LIMIT = WORLD_HALF - 1;
+    nx = Math.max(-WALK_LIMIT, Math.min(WALK_LIMIT, nx));
+    nz = Math.max(-WALK_LIMIT, Math.min(WALK_LIMIT, nz));
 
     pos.current.x = nx;
     pos.current.z = nz;
@@ -578,6 +584,7 @@ export default function LocalPlayer({
         VEHICLE_BUILDING_MARGIN,
       );
       if (vehicleHitsAnyBuilding(o)) return true;
+      if (vehicleHitsAnyObstacle(o)) return true;
       for (const ov of otherVehicles) if (obbVsObb(o, ov)) return true;
       return false;
     }
@@ -605,9 +612,10 @@ export default function LocalPlayer({
       if (Math.abs(vehicleSpeed.current) < 1.5) vehicleSpeed.current = 0;
     }
 
-    // Clamp to map
-    nx = Math.max(-93, Math.min(93, nx));
-    nz = Math.max(-93, Math.min(93, nz));
+    // Clamp to world bounds (a bit more buffer for vehicle half-extent)
+    const DRIVE_LIMIT = WORLD_HALF - 7;
+    nx = Math.max(-DRIVE_LIMIT, Math.min(DRIVE_LIMIT, nx));
+    nz = Math.max(-DRIVE_LIMIT, Math.min(DRIVE_LIMIT, nz));
 
     vehiclePos.current.x = nx;
     vehiclePos.current.z = nz;
@@ -779,10 +787,12 @@ export default function LocalPlayer({
       const wx = vehiclePos.current.x + lx * cosR + lz * sinR;
       const wz = vehiclePos.current.z + lx * -sinR + lz * cosR;
 
-      // Stay on the playable area
-      if (wx < -94 || wx > 94 || wz < -94 || wz > 94) continue;
+      // Stay on the playable area (full 1000-unit world)
+      const EXIT_LIMIT = WORLD_HALF - 2;
+      if (wx < -EXIT_LIMIT || wx > EXIT_LIMIT || wz < -EXIT_LIMIT || wz > EXIT_LIMIT) continue;
 
       if (playerHitsAnyBuilding(wx, wz)) continue;
+      if (playerHitsAnyObstacle(wx, wz)) continue;
 
       const c = { x: wx, z: wz, r: PLAYER_BODY_RADIUS };
       let bad = false;

@@ -12,6 +12,7 @@ import CheckpointRace from "./CheckpointRace";
 import HUD from "./HUD";
 import NPCs from "./NPCs";
 import AmbientTraffic from "./AmbientTraffic";
+import BiomeRender from "./BiomeRender";
 
 const KEY_MAP = [
   { name: Controls.forward,  keys: ["ArrowUp",    "KeyW"] },
@@ -158,12 +159,15 @@ export default function GameScene({
       <KeyboardControls map={KEY_MAP}>
         <Canvas
           shadows
-          camera={{ fov: 75, near: 0.1, far: 300, position: [0, 8, 15] }}
+          camera={{ fov: 75, near: 0.1, far: 1500, position: [0, 8, 15] }}
           style={{ width: "100%", height: "100%" }}
         >
           {/* Global lighting — kept light to preserve the evening mood
               while making the city readable. Only ONE shadow-casting
-              light to keep performance steady on Replit. */}
+              light to keep performance steady on Replit. Shadow camera
+              expanded to ±300 so the central city + immediate biome
+              ring still cast shadows; far biomes fall outside but they
+              are foggy at that distance anyway. */}
           <hemisphereLight
             args={["#aabbdd", "#242838", 0.55]}
           />
@@ -173,16 +177,17 @@ export default function GameScene({
             color="#ffe5c8"
             castShadow
             shadow-mapSize={[1024, 1024]}
-            shadow-camera-left={-90}
-            shadow-camera-right={90}
-            shadow-camera-top={90}
-            shadow-camera-bottom={-90}
+            shadow-camera-left={-300}
+            shadow-camera-right={300}
+            shadow-camera-top={300}
+            shadow-camera-bottom={-300}
             shadow-camera-near={0.5}
-            shadow-camera-far={200}
+            shadow-camera-far={500}
           />
           <ambientLight intensity={0.18} color="#1a2240" />
 
           <CityMap />
+          <BiomeRender />
 
           {/* Ambient life — pedestrians and AI traffic. Both client-only,
               deterministic from Date.now(), so no Socket.io traffic. */}

@@ -17,19 +17,22 @@ import type { Building, PropData } from "../shared/types";
 
 function Skybox() {
   // Slightly brighter night-blue so distant fog blends with sky and the
-  // city is readable. Was: #0a0a1a (near-black).
+  // city is readable. Was: #0a0a1a (near-black). Sphere radius bumped
+  // from 280 → 850 to enclose the 1000-unit expanded world.
   return (
     <mesh>
-      <sphereGeometry args={[280, 16, 16]} />
+      <sphereGeometry args={[850, 24, 16]} />
       <meshBasicMaterial color="#1a2440" side={THREE.BackSide} />
     </mesh>
   );
 }
 
 function Ground() {
+  // Base ground covers the full 1000-unit playable area plus a small
+  // overhang. Biome render layers a per-region tint plane on top.
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
-      <planeGeometry args={[300, 300]} />
+      <planeGeometry args={[1100, 1100]} />
       <meshLambertMaterial color="#2a2e3a" />
     </mesh>
   );
@@ -546,9 +549,10 @@ export default function CityMap() {
         />
       ))}
 
-      {/* Atmospheric fog — lighter than before so distant buildings remain
-          visible. Was: ["#0a0a1a", 60, 180]. */}
-      <fog attach="fog" args={["#1a2440", 90, 260]} />
+      {/* Atmospheric fog — extended for the 1000-unit world. Was
+          ["#1a2440", 90, 260]. Far end is set just inside the camera
+          far-plane so distant biomes fade into the sky. */}
+      <fog attach="fog" args={["#1a2440", 200, 800]} />
     </group>
   );
 }

@@ -11,7 +11,35 @@ import type {
   NpcRoute,
   TrafficRoute,
   PropData,
+  RoadPath,
+  StaticObstacle,
+  TreeInstance,
+  RockInstance,
 } from "./types";
+
+// =============================================================
+// WORLD BOUNDS
+// =============================================================
+// The full playable map is 1000x1000 (WORLD_HALF=500). The original
+// 200x200 city sits at the centre inside |x|,|z| ≤ CITY_HALF=100, and
+// new biomes occupy the surrounding ring: mountain (north), bridge +
+// forest (south), suburban/industrial (east), fields/depot (west).
+
+export const WORLD_HALF = 500;
+export const WORLD_SIZE = 1000;
+export const CITY_HALF = 100;
+
+// Per-biome rectangular bounds, used by the minimap tints and the
+// dev-time validator. Any point outside every biome rect is "wilderness"
+// (open ground with no road or obstacle).
+export const BIOME_BOUNDS = {
+  city:     { x0: -CITY_HALF, x1: CITY_HALF,  z0: -CITY_HALF, z1: CITY_HALF },
+  mountain: { x0: -300,        x1: 300,        z0: -WORLD_HALF, z1: -CITY_HALF },
+  bridge:   { x0: -30,         x1:  30,        z0:  CITY_HALF,  z1:  180 },
+  forest:   { x0: -300,        x1: 300,        z0:  180,        z1:  WORLD_HALF },
+  east:     { x0:  CITY_HALF,  x1:  WORLD_HALF, z0: -200,       z1:  200 },
+  west:     { x0: -WORLD_HALF, x1: -CITY_HALF, z0: -200,        z1:  200 },
+} as const;
 
 function seededRandom(seed: number) {
   let s = seed | 0;
@@ -209,25 +237,39 @@ export const BUILDINGS: Building[] = blockDefs.flatMap(
 // =============================================================
 
 export const INITIAL_VEHICLES: VehicleState[] = [
-  // Inner ring — near plaza, easy to find
+  // ===== City (14 cars) — original 200x200 hub =====
   { id: "car-0",  x:  22, y: 0.6, z: -22, rotY: 0,                  speed: 0, driverId: null, variant: "sedan",   color: "#e74c3c" },
   { id: "car-1",  x: -22, y: 0.6, z:  22, rotY: Math.PI,            speed: 0, driverId: null, variant: "sedan",   color: "#3498db" },
   { id: "car-2",  x:  22, y: 0.6, z:  22, rotY: 0,                  speed: 0, driverId: null, variant: "compact", color: "#c0392b" },
   { id: "car-3",  x: -22, y: 0.6, z: -22, rotY: Math.PI,            speed: 0, driverId: null, variant: "van",     color: "#7f8c8d" },
-  // Cardinal cars at mid-radius
   { id: "car-4",  x:  55, y: 0.6, z:   8, rotY: Math.PI / 2,        speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
   { id: "car-5",  x: -55, y: 0.6, z:  -8, rotY: -Math.PI / 2,       speed: 0, driverId: null, variant: "compact", color: "#f39c12" },
   { id: "car-6",  x:   8, y: 0.6, z:  55, rotY: Math.PI,            speed: 0, driverId: null, variant: "sedan",   color: "#9b59b6" },
   { id: "car-7",  x:  -8, y: 0.6, z: -49, rotY: 0,                  speed: 0, driverId: null, variant: "van",     color: "#16a085" },
-  // Mid ring
   { id: "car-8",  x:  35, y: 0.6, z:  35, rotY: Math.PI,            speed: 0, driverId: null, variant: "sedan",   color: "#e67e22" },
   { id: "car-9",  x: -35, y: 0.6, z: -35, rotY: 0,                  speed: 0, driverId: null, variant: "van",     color: "#34495e" },
   { id: "car-10", x:  35, y: 0.6, z: -35, rotY: -Math.PI / 2,       speed: 0, driverId: null, variant: "compact", color: "#1abc9c" },
   { id: "car-11", x: -35, y: 0.6, z:  35, rotY: Math.PI / 2,        speed: 0, driverId: null, variant: "sedan",   color: "#d35400" },
-  // Outer ring — parked along outer roads, between intersections, well
-  // clear of every corner block. Sit on the carriageway shoulder.
   { id: "car-12", x:  41, y: 0.6, z: -70, rotY: 0,                  speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
   { id: "car-13", x: -41, y: 0.6, z:  70, rotY: Math.PI,            speed: 0, driverId: null, variant: "compact", color: "#27ae60" },
+  // ===== Mountain biome (4 cars) — switchbacks + lookout + observatory =====
+  { id: "car-14", x:  90, y: 0.6, z: -250, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#5d6d7e" },
+  { id: "car-15", x: -75, y: 0.6, z: -290, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#7d6e58" },
+  { id: "car-16", x:  75, y: 0.6, z: -340, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#a04060" },
+  { id: "car-17", x: -10, y: 0.6, z: -465, rotY: 0,                 speed: 0, driverId: null, variant: "taxi",    color: "#e8a02a" },
+  // ===== Forest biome (6 cars) — gas stop + cabins + ranger =====
+  { id: "car-18", x:  16, y: 0.6, z:  205, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#2e7d32" },
+  { id: "car-19", x: 110, y: 0.6, z:  248, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#558b2f" },
+  { id: "car-20", x: -42, y: 0.6, z:  290, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#6d4c41" },
+  { id: "car-21", x:  62, y: 0.6, z:  368, rotY: Math.PI,           speed: 0, driverId: null, variant: "sedan",   color: "#8d6e63" },
+  { id: "car-22", x: -75, y: 0.6, z:  415, rotY: Math.PI / 2,       speed: 0, driverId: null, variant: "compact", color: "#33691e" },
+  { id: "car-23", x:  10, y: 0.6, z:  475, rotY: Math.PI,           speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
+  // ===== East suburban / industrial (3 cars) =====
+  { id: "car-24", x: 235, y: 0.6, z:  -30, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#455a64" },
+  { id: "car-25", x: 310, y: 0.6, z:   80, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#5d4037" },
+  { id: "car-26", x: 410, y: 0.6, z:  -55, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#37474f" },
+  // ===== West fields / depot (1 car) =====
+  { id: "car-27", x: -220, y: 0.6, z:   65, rotY: Math.PI / 2,      speed: 0, driverId: null, variant: "van",     color: "#3e2723" },
 ];
 
 // =============================================================
@@ -251,13 +293,26 @@ export const SPAWN_POINTS: [number, number, number][] = [
 
 // Checkpoints sit on road centerlines so the racing route stays on roads
 // and there is no risk of overlapping a generated building (the validator
-// below checks this).
+// below checks this). Three race routes are stitched together into one
+// flat array so the existing race UI can drive any of them in sequence.
 export const CHECKPOINTS: CheckpointData[] = [
-  { id: 0, x: 0, z: -45 },
-  { id: 1, x: 45, z: 0 },
-  { id: 2, x: 0, z: 45 },
-  { id: 3, x: -45, z: 0 },
-  { id: 4, x: 0, z: -45 },
+  // City race (5 gates)
+  { id: 0,  x:  0,   z: -45 },
+  { id: 1,  x:  45,  z:   0 },
+  { id: 2,  x:  0,   z:  45 },
+  { id: 3,  x: -45,  z:   0 },
+  { id: 4,  x:  0,   z: -45 },
+  // Forest run — city, bridge, forest spine
+  { id: 5,  x:  0,   z: 130 },
+  { id: 6,  x:  0,   z: 190 },
+  { id: 7,  x:  40,  z: 290 },
+  { id: 8,  x: -40,  z: 380 },
+  { id: 9,  x:  0,   z: 470 },
+  // Mountain run — city, switchbacks, summit
+  { id: 10, x:  0,   z: -150 },
+  { id: 11, x:  80,  z: -240 },
+  { id: 12, x: -80,  z: -340 },
+  { id: 13, x:  0,   z: -460 },
 ];
 
 // =============================================================
@@ -389,19 +444,54 @@ export const NPC_ROUTES: NpcRoute[] = blockDefs.map((b, i) => ({
 //   SW──────────────────────SE
 //      (heading E along z=+45)
 
+// City outer perimeter loop (counter-clockwise, original).
 const OUTER_LOOP: [number, number, number][] = [
-  // Top road segment, driving WEST (rotY = π/2): lane offset z = -41 (north side of road)
-  [45, -41, Math.PI / 2],
+  [ 45, -41, Math.PI / 2],
   [-45, -41, Math.PI / 2],
-  // Left road segment, driving SOUTH (rotY = π): lane offset x = -49 (west side)
   [-49, -45, Math.PI],
-  [-49, 45, Math.PI],
-  // Bottom road segment, driving EAST (rotY = -π/2): lane offset z = 41
-  [-45, 41, -Math.PI / 2],
-  [45, 41, -Math.PI / 2],
-  // Right road segment, driving NORTH (rotY = 0): lane offset x = 49
-  [49, 45, 0],
-  [49, -45, 0],
+  [-49,  45, Math.PI],
+  [-45,  41, -Math.PI / 2],
+  [ 45,  41, -Math.PI / 2],
+  [ 49,  45, 0],
+  [ 49, -45, 0],
+];
+
+// Mountain perimeter — wide rectangle around the switchback zone, runs
+// outside the rock-instance corridor so cars never visually clip rocks.
+const MOUNTAIN_LOOP: [number, number, number][] = [
+  [ 150, -465,  Math.PI / 2],
+  [-150, -465,  Math.PI / 2],
+  [-160, -465,  Math.PI],
+  [-160, -180,  Math.PI],
+  [-160, -170, -Math.PI / 2],
+  [ 150, -170, -Math.PI / 2],
+  [ 160, -180,  0],
+  [ 160, -465,  0],
+];
+
+// Bridge / forest spine — south lane out, north lane back, with two
+// 180° turns at the ends of the spine.
+const BRIDGE_FOREST_LOOP: [number, number, number][] = [
+  [ 5, 100, Math.PI],
+  [ 5, 180, Math.PI],
+  [ 5, 290, Math.PI],
+  [ 5, 470, Math.PI],
+  [-5, 470, 0],
+  [-5, 290, 0],
+  [-5, 180, 0],
+  [-5, 100, 0],
+];
+
+// East service-road perimeter — small rectangle inside the suburban biome.
+const EAST_LOOP: [number, number, number][] = [
+  [200, -30, -Math.PI / 2],
+  [470, -30, -Math.PI / 2],
+  [470, -30,  Math.PI],
+  [470,  60,  Math.PI],
+  [470,  60,  Math.PI / 2],
+  [200,  60,  Math.PI / 2],
+  [200,  60,  0],
+  [200, -30,  0],
 ];
 
 export const TRAFFIC_ROUTES: TrafficRoute[] = [
@@ -410,10 +500,37 @@ export const TRAFFIC_ROUTES: TrafficRoute[] = [
     waypoints: OUTER_LOOP,
     cycleSeconds: 70,
     cars: [
-      { id: "ai-0", color: "#5d6d7e", variant: "sedan", phase: 0.0 },
-      { id: "ai-1", color: "#6e2f1a", variant: "van", phase: 0.25 },
-      { id: "ai-2", color: "#1a3a2a", variant: "compact", phase: 0.5 },
-      { id: "ai-3", color: "#34495e", variant: "taxi", phase: 0.75 },
+      { id: "ai-0", color: "#5d6d7e", variant: "sedan",   phase: 0.0  },
+      { id: "ai-1", color: "#6e2f1a", variant: "van",     phase: 0.25 },
+      { id: "ai-2", color: "#1a3a2a", variant: "compact", phase: 0.5  },
+      { id: "ai-3", color: "#34495e", variant: "taxi",    phase: 0.75 },
+    ],
+  },
+  {
+    id: 1,
+    waypoints: MOUNTAIN_LOOP,
+    cycleSeconds: 110,
+    cars: [
+      { id: "ai-4", color: "#7d6e58", variant: "sedan", phase: 0.0 },
+      { id: "ai-5", color: "#5a4a3a", variant: "van",   phase: 0.5 },
+    ],
+  },
+  {
+    id: 2,
+    waypoints: BRIDGE_FOREST_LOOP,
+    cycleSeconds: 90,
+    cars: [
+      { id: "ai-6", color: "#2e5934", variant: "compact", phase: 0.0 },
+      { id: "ai-7", color: "#506e3a", variant: "sedan",   phase: 0.5 },
+    ],
+  },
+  {
+    id: 3,
+    waypoints: EAST_LOOP,
+    cycleSeconds: 80,
+    cars: [
+      { id: "ai-8", color: "#455a64", variant: "van",     phase: 0.0 },
+      { id: "ai-9", color: "#37474f", variant: "compact", phase: 0.5 },
     ],
   },
 ];
@@ -453,6 +570,151 @@ export const VARIANT_DIMENSIONS: Record<
   taxi:    { bodyW: 2.2, bodyH: 0.8, bodyD: 4.5, cabinW: 1.8, cabinH: 0.7, cabinD: 2.4, cabinOffsetZ: -0.2 },
   compact: { bodyW: 2.0, bodyH: 0.7, bodyD: 3.8, cabinW: 1.6, cabinH: 0.6, cabinD: 2.0, cabinOffsetZ: -0.2 },
 };
+
+// =============================================================
+// REGIONAL ROADS — polylines outside the central city grid
+// =============================================================
+// Each entry is rendered by BiomeRender as a chain of road quads
+// (one per segment), with width and surface type controlling colour
+// and lane markings. The minimap also draws every polyline.
+
+export const REGIONAL_ROADS: RoadPath[] = [
+  // North spine + mountain switchbacks
+  { id: "spine-north",
+    points: [[0, -100], [0, -150], [0, -200]],
+    width: 14, type: "asphalt" },
+  { id: "mountain-switchbacks",
+    points: [[0, -200], [80, -240], [-80, -290], [80, -340], [-80, -390], [80, -430], [0, -465]],
+    width: 12, type: "mountain" },
+  { id: "mountain-lookout",
+    points: [[80, -240], [110, -250]],
+    width: 10, type: "mountain" },
+  // South spine, bridge, forest
+  { id: "spine-south",
+    points: [[0, 100], [0, 130]],
+    width: 14, type: "asphalt" },
+  { id: "bridge",
+    points: [[0, 130], [0, 180]],
+    width: 14, type: "bridge" },
+  { id: "forest-main",
+    points: [[0, 180], [40, 230], [-30, 290], [50, 360], [-40, 430], [0, 480]],
+    width: 12, type: "forest" },
+  { id: "forest-spur",
+    points: [[40, 230], [120, 240]],
+    width: 8, type: "dirt" },
+  // East service road
+  { id: "east-service",
+    points: [[100, 0], [200, 0], [300, 30], [430, 30]],
+    width: 12, type: "asphalt" },
+  // West utility road
+  { id: "west-utility",
+    points: [[-100, 0], [-220, -20], [-360, -20], [-460, 0]],
+    width: 10, type: "dirt" },
+];
+
+// =============================================================
+// STATIC OBSTACLES — collidable AABBs in non-city biomes
+// =============================================================
+// Bridge rails, large rocks, big tree trunks, mountain cliff walls,
+// warehouses, water-tower base, cabins, ranger station, gas stop,
+// observatory, depots. The collision module iterates STATIC_OBSTACLES
+// in addition to BUILDINGS, and the safe-exit search rejects any
+// vehicle exit that would clip one.
+
+const _bridgeRails: StaticObstacle[] = [];
+for (let i = 0; i < 4; i++) {
+  _bridgeRails.push({ x:  9, z: 137 + i * 12, w: 0.8, d: 11.5, kind: "bridge_rail" });
+  _bridgeRails.push({ x: -9, z: 137 + i * 12, w: 0.8, d: 11.5, kind: "bridge_rail" });
+}
+
+export const STATIC_OBSTACLES: StaticObstacle[] = [
+  ..._bridgeRails,
+  // Mountain — cliff walls hugging outer edge of switchbacks
+  { x:  110, z: -260, w: 28, d: 10, kind: "cliff_wall" },
+  { x: -110, z: -315, w: 28, d: 10, kind: "cliff_wall" },
+  { x:  110, z: -360, w: 28, d: 10, kind: "cliff_wall" },
+  { x: -110, z: -415, w: 28, d: 10, kind: "cliff_wall" },
+  // Mountain — collidable boulders near the road
+  { x:  -50, z: -180, w: 6,  d: 6,  kind: "large_rock" },
+  { x:  140, z: -260, w: 8,  d: 6,  kind: "large_rock" },
+  { x: -140, z: -340, w: 7,  d: 7,  kind: "large_rock" },
+  { x:   50, z: -440, w: 6,  d: 6,  kind: "large_rock" },
+  // Mountain — observatory at the summit
+  { x:    0, z: -485, w: 16, d: 10, kind: "observatory" },
+  // Forest — gas stop, cabins, ranger station
+  { x:    0, z:  205, w: 10, d:  7, kind: "gas_stop" },
+  { x:  120, z:  240, w: 12, d:  9, kind: "cabin" },
+  { x:  -55, z:  280, w: 10, d:  8, kind: "cabin" },
+  { x:   62, z:  380, w: 12, d: 10, kind: "cabin" },
+  { x:  -90, z:  420, w: 14, d: 12, kind: "ranger_station" },
+  // Forest — collidable boulders + thick tree trunks near road
+  { x:   90, z:  270, w: 5,   d: 5,   kind: "large_rock" },
+  { x:  -70, z:  350, w: 6,   d: 5,   kind: "large_rock" },
+  { x:  120, z:  460, w: 5,   d: 6,   kind: "large_rock" },
+  { x:   20, z:  230, w: 1.6, d: 1.6, kind: "tree_trunk" },
+  { x:  -25, z:  260, w: 1.6, d: 1.6, kind: "tree_trunk" },
+  { x:   40, z:  320, w: 1.6, d: 1.6, kind: "tree_trunk" },
+  { x:  -45, z:  380, w: 1.6, d: 1.6, kind: "tree_trunk" },
+  { x:   35, z:  460, w: 1.6, d: 1.6, kind: "tree_trunk" },
+  // East — warehouses + water tower base
+  { x:  200, z:  -55, w: 30, d: 24, kind: "warehouse" },
+  { x:  290, z:   95, w: 28, d: 26, kind: "warehouse" },
+  { x:  390, z:  -50, w: 32, d: 25, kind: "warehouse" },
+  { x:  440, z:  100, w: 24, d: 22, kind: "warehouse" },
+  { x:  250, z:  140, w:  6, d:  6, kind: "water_tower_base" },
+  // West — depots
+  { x: -250, z:   65, w: 26, d: 18, kind: "depot" },
+  { x: -380, z:  -60, w: 22, d: 18, kind: "depot" },
+];
+
+// =============================================================
+// INSTANCED FLORA — trees + rocks scattered procedurally
+// =============================================================
+// Two seeded PRNGs keep distribution deterministic across reloads and
+// across clients, so every player sees the same forest / mountain.
+// Anything inside the road corridor (|x| < 14) is rejected to avoid
+// visually obstructing the spine road.
+
+function makeForestInstances(): { trees: TreeInstance[]; rocks: RockInstance[] } {
+  const r = seededRandom(12345);
+  const trees: TreeInstance[] = [];
+  const rocks: RockInstance[] = [];
+  const z0 = 195;
+  const z1 = 495;
+  const xMag = 285;
+  for (let i = 0; i < 220; i++) {
+    const x = (r() - 0.5) * 2 * xMag;
+    const z = z0 + r() * (z1 - z0);
+    if (Math.abs(x) < 14) continue;
+    trees.push({ x, z, scale: 0.7 + r() * 0.9, rotY: r() * Math.PI * 2 });
+  }
+  for (let i = 0; i < 60; i++) {
+    const x = (r() - 0.5) * 2 * xMag;
+    const z = z0 + r() * (z1 - z0);
+    if (Math.abs(x) < 14) continue;
+    rocks.push({ x, z, scale: 0.6 + r() * 1.1, rotY: r() * Math.PI * 2 });
+  }
+  return { trees, rocks };
+}
+
+function makeMountainRocks(): RockInstance[] {
+  const r = seededRandom(99999);
+  const out: RockInstance[] = [];
+  for (let i = 0; i < 120; i++) {
+    // Keep clear of both the switchback corridor (|x|<14) and the
+    // ambient-traffic perimeter (|x|=±160, z=-465/-170).
+    const x = (r() - 0.5) * 290; // ±145
+    const z = -460 + r() * 275;  // -460..-185
+    if (Math.abs(x) < 14) continue;
+    out.push({ x, z, scale: 1.0 + r() * 2.5, rotY: r() * Math.PI * 2 });
+  }
+  return out;
+}
+
+const _forest = makeForestInstances();
+export const FOREST_TREES: TreeInstance[] = _forest.trees;
+export const FOREST_ROCKS: RockInstance[] = _forest.rocks;
+export const MOUNTAIN_ROCKS: RockInstance[] = makeMountainRocks();
 
 // =============================================================
 // COLLISION & VALIDATION HELPERS
@@ -499,21 +761,88 @@ const isViteDev =
 if (isViteDev) {
   const issues: string[] = [];
 
+  // ---- Bounds + obstacle-overlap helpers ---------------------------------
+  const inBounds = (x: number, z: number, margin = 0): boolean =>
+    x >= -WORLD_HALF + margin && x <= WORLD_HALF - margin &&
+    z >= -WORLD_HALF + margin && z <= WORLD_HALF - margin;
+
+  const overlapsObstacle = (x: number, z: number, r: number): boolean => {
+    for (const o of STATIC_OBSTACLES) {
+      const dx = Math.max(0, Math.abs(x - o.x) - o.w / 2);
+      const dz = Math.max(0, Math.abs(z - o.z) - o.d / 2);
+      if (dx * dx + dz * dz < r * r) return true;
+    }
+    return false;
+  };
+
+  // ---- City building / road sanity (existing checks) --------------------
   for (const sp of SPAWN_POINTS) {
     if (checkBuildingCollision(sp[0], sp[2])) {
       issues.push(`spawn ${JSON.stringify(sp)} overlaps a building`);
+    }
+    if (!inBounds(sp[0], sp[2], 1)) {
+      issues.push(`spawn ${JSON.stringify(sp)} is outside WORLD bounds`);
+    }
+    if (overlapsObstacle(sp[0], sp[2], 1.0)) {
+      issues.push(`spawn ${JSON.stringify(sp)} overlaps a static obstacle`);
     }
   }
   for (const v of INITIAL_VEHICLES) {
     if (checkBuildingCollision(v.x, v.z, 1.5)) {
       issues.push(`vehicle ${v.id} at (${v.x}, ${v.z}) overlaps a building`);
     }
+    if (!inBounds(v.x, v.z, 7)) {
+      issues.push(`vehicle ${v.id} at (${v.x}, ${v.z}) is outside WORLD bounds`);
+    }
+    if (overlapsObstacle(v.x, v.z, 2.0)) {
+      issues.push(`vehicle ${v.id} at (${v.x}, ${v.z}) overlaps a static obstacle`);
+    }
   }
   for (const cp of CHECKPOINTS) {
     if (checkBuildingCollision(cp.x, cp.z, 4)) {
       issues.push(`checkpoint ${cp.id} at (${cp.x}, ${cp.z}) overlaps a building`);
     }
+    if (!inBounds(cp.x, cp.z, 4)) {
+      issues.push(`checkpoint ${cp.id} at (${cp.x}, ${cp.z}) is outside WORLD bounds`);
+    }
+    if (overlapsObstacle(cp.x, cp.z, 4.0)) {
+      issues.push(`checkpoint ${cp.id} at (${cp.x}, ${cp.z}) overlaps a static obstacle`);
+    }
   }
+
+  // ---- Traffic + regional road waypoint bounds ---------------------------
+  for (const route of TRAFFIC_ROUTES) {
+    for (const wp of route.waypoints) {
+      if (!inBounds(wp[0], wp[1], 3)) {
+        issues.push(`traffic route ${route.id} waypoint (${wp[0]}, ${wp[1]}) is outside WORLD bounds`);
+        break;
+      }
+    }
+  }
+  for (const r of REGIONAL_ROADS) {
+    for (const [x, z] of r.points) {
+      if (!inBounds(x, z, 0)) {
+        issues.push(`regional road ${r.id} point (${x}, ${z}) is outside WORLD bounds`);
+        break;
+      }
+    }
+  }
+
+  // ---- Forest / mountain instance bounds ---------------------------------
+  for (const t of FOREST_TREES) {
+    if (!inBounds(t.x, t.z, 0)) {
+      issues.push(`forest tree at (${t.x}, ${t.z}) is outside WORLD bounds`);
+      break;
+    }
+  }
+  for (const r of [...FOREST_ROCKS, ...MOUNTAIN_ROCKS]) {
+    if (!inBounds(r.x, r.z, 0)) {
+      issues.push(`rock at (${r.x}, ${r.z}) is outside WORLD bounds`);
+      break;
+    }
+  }
+
+  // ---- Existing building-on-road check ----------------------------------
   for (const b of BUILDINGS) {
     const corners: [number, number][] = [
       [b.x - b.w / 2, b.z - b.d / 2],
@@ -539,12 +868,14 @@ if (isViteDev) {
   } else {
     // eslint-disable-next-line no-console
     console.info(
-      `[city-sandbox] city OK: ${BUILDINGS.length} buildings across ` +
-        `${blockDefs.length} blocks, ${INITIAL_VEHICLES.length} vehicles, ` +
-        `${SPAWN_POINTS.length} spawns, ${CHECKPOINTS.length} checkpoints, ` +
-        `${STREET_LIGHTS.length} streetlamps, ${TRAFFIC_LIGHTS.length} ` +
-        `traffic lights, ${NPC_ROUTES.length} NPC routes, ` +
-        `${TRAFFIC_ROUTES.reduce((sum, r) => sum + r.cars.length, 0)} ambient cars.`
+      `[city-sandbox] world OK (${WORLD_SIZE}x${WORLD_SIZE}): ` +
+        `${BUILDINGS.length} buildings across ${blockDefs.length} blocks, ` +
+        `${INITIAL_VEHICLES.length} vehicles, ${SPAWN_POINTS.length} spawns, ` +
+        `${CHECKPOINTS.length} checkpoints, ${STREET_LIGHTS.length} streetlamps, ` +
+        `${TRAFFIC_LIGHTS.length} traffic lights, ${NPC_ROUTES.length} NPC routes, ` +
+        `${TRAFFIC_ROUTES.reduce((sum, r) => sum + r.cars.length, 0)} ambient cars, ` +
+        `${REGIONAL_ROADS.length} regional roads, ${STATIC_OBSTACLES.length} obstacles, ` +
+        `${FOREST_TREES.length} trees, ${FOREST_ROCKS.length + MOUNTAIN_ROCKS.length} rocks.`
     );
   }
 }

@@ -1,6 +1,12 @@
 import { useEffect, useRef } from "react";
-import type { CheckpointData } from "../shared/types";
-import { CHECKPOINTS } from "../shared/cityData";
+import {
+  CHECKPOINTS,
+  REGIONAL_ROADS,
+  ROADS,
+  BIOME_BOUNDS,
+  WORLD_HALF,
+  WORLD_SIZE,
+} from "../shared/cityData";
 
 interface HUDProps {
   health: number;
@@ -30,49 +36,83 @@ function Minimap({ px, pz }: { px: number; pz: number }) {
 
     const W = canvas.width;
     const H = canvas.height;
-    const SCALE = W / 200; // 200 units = full map width
+    // 1000-unit map covers the canvas; world x/z [-500..500] → [0..W].
+    const SCALE = W / WORLD_SIZE;
+    const toMapX = (wx: number) => (wx + WORLD_HALF) * SCALE;
+    const toMapZ = (wz: number) => (wz + WORLD_HALF) * SCALE;
 
     ctx.clearRect(0, 0, W, H);
-
-    // Background
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillStyle = "rgba(0,0,0,0.75)";
     ctx.fillRect(0, 0, W, H);
 
-    // Roads (N-S at x=-45,0,45; E-W at z=-45,0,45)
-    ctx.fillStyle = "#222";
-    for (const x of [-45, 0, 45]) {
-      const sx = (x + 100) * SCALE - 10 * SCALE;
-      ctx.fillRect(sx, 0, 20 * SCALE, H);
+    // Per-biome tints (drawn under everything)
+    const tints: Array<[keyof typeof BIOME_BOUNDS, string]> = [
+      ["mountain", "rgba(120,120,140,0.30)"],
+      ["forest",   "rgba(60,140,70,0.30)"],
+      ["bridge",   "rgba(120,100,80,0.40)"],
+      ["east",     "rgba(110,110,90,0.25)"],
+      ["west",     "rgba(140,130,90,0.20)"],
+      ["city",     "rgba(80,90,120,0.45)"],
+    ];
+    for (const [name, color] of tints) {
+      const b = BIOME_BOUNDS[name];
+      ctx.fillStyle = color;
+      ctx.fillRect(
+        toMapX(b.x0),
+        toMapZ(b.z0),
+        (b.x1 - b.x0) * SCALE,
+        (b.z1 - b.z0) * SCALE,
+      );
     }
-    for (const z of [-45, 0, 45]) {
-      const sz = (z + 100) * SCALE - 10 * SCALE;
-      ctx.fillRect(0, sz, W, 20 * SCALE);
+
+    // Central city road grid
+    ctx.fillStyle = "#1d1d22";
+    const roadW = 20 * SCALE;
+    for (const x of ROADS.ns) {
+      ctx.fillRect(toMapX(x) - roadW / 2, toMapZ(-100), roadW, 200 * SCALE);
+    }
+    for (const z of ROADS.ew) {
+      ctx.fillRect(toMapX(-100), toMapZ(z) - roadW / 2, 200 * SCALE, roadW);
+    }
+
+    // Regional road polylines
+    ctx.strokeStyle = "#2a2418";
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+    for (const r of REGIONAL_ROADS) {
+      ctx.lineWidth = Math.max(1.5, r.width * SCALE * 0.5);
+      ctx.beginPath();
+      const [x0, z0] = r.points[0];
+      ctx.moveTo(toMapX(x0), toMapZ(z0));
+      for (let i = 1; i < r.points.length; i++) {
+        const [x, z] = r.points[i];
+        ctx.lineTo(toMapX(x), toMapZ(z));
+      }
+      ctx.stroke();
     }
 
     // Checkpoints
     ctx.fillStyle = "#f39c12";
     for (const cp of CHECKPOINTS) {
-      const sx = (cp.x + 100) * SCALE;
-      const sz = (cp.z + 100) * SCALE;
       ctx.beginPath();
-      ctx.arc(sx, sz, 3, 0, Math.PI * 2);
+      ctx.arc(toMapX(cp.x), toMapZ(cp.z), 2.2, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Player dot
-    const mapX = (px + 100) * SCALE;
-    const mapZ = (pz + 100) * SCALE;
-
-    // Clamp to minimap bounds
-    const cx = Math.max(4, Math.min(W - 4, mapX));
-    const cz = Math.max(4, Math.min(H - 4, mapZ));
-
+    // Player dot (clamped so it stays on screen even at edges)
+    const cx = Math.max(4, Math.min(W - 4, toMapX(px)));
+    const cz = Math.max(4, Math.min(H - 4, toMapZ(pz)));
     ctx.fillStyle = "#00e5ff";
     ctx.beginPath();
     ctx.arc(cx, cz, 4, 0, Math.PI * 2);
     ctx.fill();
+    // Halo
+    ctx.strokeStyle = "#00e5ff";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.arc(cx, cz, 7, 0, Math.PI * 2);
+    ctx.stroke();
 
-    // Border
     ctx.strokeStyle = "#555";
     ctx.lineWidth = 1;
     ctx.strokeRect(0, 0, W, H);
@@ -81,8 +121,8 @@ function Minimap({ px, pz }: { px: number; pz: number }) {
   return (
     <canvas
       ref={canvasRef}
-      width={120}
-      height={120}
+      width={150}
+      height={150}
       style={{ display: "block" }}
     />
   );

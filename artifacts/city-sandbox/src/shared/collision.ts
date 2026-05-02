@@ -4,7 +4,7 @@ import type {
   TrafficRoute,
   VehicleVariant,
 } from "./types";
-import { BUILDINGS, VARIANT_DIMENSIONS } from "./cityData";
+import { BUILDINGS, STATIC_OBSTACLES, VARIANT_DIMENSIONS } from "./cityData";
 
 // =====================================================
 // Body radii / margins
@@ -165,6 +165,41 @@ export function playerHitsAnyBuilding(
 export function vehicleHitsAnyBuilding(o: OBB): boolean {
   for (const b of BUILDINGS) {
     if (obbVsAabb(o, buildingAabb(b, VEHICLE_BUILDING_MARGIN))) return true;
+  }
+  return false;
+}
+
+// =====================================================
+// Static obstacles (bridge rails, rocks, warehouses, etc.)
+// =====================================================
+//
+// Same AABB-based approach as buildings, just sourced from the
+// STATIC_OBSTACLES array in cityData. Bridge rails, large rocks, big
+// tree trunks, mountain cliff walls, and landmark structures are all
+// axis-aligned: they don't rotate.
+
+export function obstacleAabb(
+  o: { x: number; z: number; w: number; d: number },
+  margin = 0,
+): AABB {
+  return { x: o.x, z: o.z, hw: o.w / 2 + margin, hd: o.d / 2 + margin };
+}
+
+export function playerHitsAnyObstacle(
+  px: number,
+  pz: number,
+  r = PLAYER_BODY_RADIUS,
+): boolean {
+  const c: Circle = { x: px, z: pz, r };
+  for (const o of STATIC_OBSTACLES) {
+    if (circleVsAabb(c, obstacleAabb(o))) return true;
+  }
+  return false;
+}
+
+export function vehicleHitsAnyObstacle(o: OBB): boolean {
+  for (const obs of STATIC_OBSTACLES) {
+    if (obbVsAabb(o, obstacleAabb(obs, VEHICLE_BUILDING_MARGIN))) return true;
   }
   return false;
 }
