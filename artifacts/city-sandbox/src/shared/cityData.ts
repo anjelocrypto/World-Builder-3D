@@ -13,9 +13,11 @@ import type {
   PropData,
   RoadPath,
   StaticObstacle,
+  StaticObstacleKind,
   TreeInstance,
   RockInstance,
 } from "./types";
+import { distancePointToPolyline } from "./roadGeom";
 
 // =============================================================
 // WORLD BOUNDS
@@ -267,7 +269,7 @@ export const INITIAL_VEHICLES: VehicleState[] = [
   // ===== East suburban / industrial (3 cars) =====
   { id: "car-24", x: 235, y: 0.6, z:  -30, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#455a64" },
   { id: "car-25", x: 310, y: 0.6, z:   80, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#5d4037" },
-  { id: "car-26", x: 410, y: 0.6, z:  -55, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#37474f" },
+  { id: "car-26", x: 420, y: 0.6, z:  -55, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#37474f" },
   // ===== West fields / depot (1 car) =====
   { id: "car-27", x: -220, y: 0.6, z:   65, rotY: Math.PI / 2,      speed: 0, driverId: null, variant: "van",     color: "#3e2723" },
 ];
@@ -295,6 +297,12 @@ export const SPAWN_POINTS: [number, number, number][] = [
 // and there is no risk of overlapping a generated building (the validator
 // below checks this). Three race routes are stitched together into one
 // flat array so the existing race UI can drive any of them in sequence.
+//
+// Forest-run gates 6–9 trace the curved forest-main polyline at its
+// vertices: bridge end (0,180), forest apex (-30,290), the segment foot
+// (50,360)→(-40,430) at z≈380, and the (-40,430) vertex. Final gate sits
+// on the spine end. Mountain-run gates 10–13 step from the spine top at
+// (0,-200) through switchback vertices (80,-240), (-80,-390), (0,-465).
 export const CHECKPOINTS: CheckpointData[] = [
   // City race (5 gates)
   { id: 0,  x:  0,   z: -45 },
@@ -302,17 +310,17 @@ export const CHECKPOINTS: CheckpointData[] = [
   { id: 2,  x:  0,   z:  45 },
   { id: 3,  x: -45,  z:   0 },
   { id: 4,  x:  0,   z: -45 },
-  // Forest run — city, bridge, forest spine
-  { id: 5,  x:  0,   z: 130 },
-  { id: 6,  x:  0,   z: 190 },
-  { id: 7,  x:  40,  z: 290 },
-  { id: 8,  x: -40,  z: 380 },
-  { id: 9,  x:  0,   z: 470 },
-  // Mountain run — city, switchbacks, summit
-  { id: 10, x:  0,   z: -150 },
-  { id: 11, x:  80,  z: -240 },
-  { id: 12, x: -80,  z: -340 },
-  { id: 13, x:  0,   z: -460 },
+  // Forest run — city, bridge, forest spine (all on road centerlines)
+  { id: 5,  x:  0,   z: 130 }, // spine-south vertex
+  { id: 6,  x:  0,   z: 180 }, // bridge / forest-main junction
+  { id: 7,  x: -30,  z: 290 }, // forest-main vertex (apex)
+  { id: 8,  x:  25,  z: 380 }, // foot of perpendicular on (50,360)→(-40,430)
+  { id: 9,  x: -40,  z: 430 }, // forest-main vertex
+  // Mountain run — switchback vertices
+  { id: 10, x:  0,   z: -200 }, // spine-north / switchback junction
+  { id: 11, x:  80,  z: -240 }, // first switchback corner
+  { id: 12, x: -80,  z: -390 }, // mid-switchback corner
+  { id: 13, x:  0,   z: -465 }, // switchback exit
 ];
 
 // =============================================================
@@ -444,7 +452,49 @@ export const NPC_ROUTES: NpcRoute[] = blockDefs.map((b, i) => ({
 //   SW──────────────────────SE
 //      (heading E along z=+45)
 
+// =============================================================
+// Traffic-loop helpers
+// =============================================================
+//
+// `closedLoopRoute` walks a closed polyline once and assigns each
+// waypoint a heading aimed at the next waypoint (with wrap-around).
+// `forwardReverseRoute` turns a one-way polyline (e.g. a switchback or
+// a service spur) into a closed round-trip: forward leg, then the same
+// vertices in reverse, excluding endpoints to avoid duplicate stops.
+// At the two endpoints there is a hard 180° heading flip; the ambient
+// traffic interpolator (collision.ts → ambientCarStateAt) smooths the
+// rotation over the following segment via shortestAngleDelta.
+
+function closedLoopRoute(
+  poly: ReadonlyArray<readonly [number, number]>,
+): [number, number, number][] {
+  const out: [number, number, number][] = [];
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
+    const cur = poly[i];
+    const nxt = poly[(i + 1) % n];
+    const dx = nxt[0] - cur[0];
+    const dz = nxt[1] - cur[1];
+    out.push([cur[0], cur[1], Math.atan2(-dx, -dz)]);
+  }
+  return out;
+}
+
+function forwardReverseRoute(
+  poly: ReadonlyArray<readonly [number, number]>,
+): [number, number, number][] {
+  const n = poly.length;
+  if (n < 2) return [];
+  const path: [number, number][] = [];
+  for (let i = 0; i < n; i++) path.push([poly[i][0], poly[i][1]]);
+  for (let i = n - 2; i >= 1; i--) path.push([poly[i][0], poly[i][1]]);
+  return closedLoopRoute(path);
+}
+
 // City outer perimeter loop (counter-clockwise, original).
+// Hand-tuned so each waypoint sits on the city carriageway with a
+// readable lane offset; closedLoopRoute would also work but the
+// hand-tuned headings give nicer corner pivots.
 const OUTER_LOOP: [number, number, number][] = [
   [ 45, -41, Math.PI / 2],
   [-45, -41, Math.PI / 2],
@@ -456,34 +506,38 @@ const OUTER_LOOP: [number, number, number][] = [
   [ 49, -45, 0],
 ];
 
-// Mountain perimeter — wide rectangle around the switchback zone, runs
-// outside the rock-instance corridor so cars never visually clip rocks.
-const MOUNTAIN_LOOP: [number, number, number][] = [
-  [ 150, -465,  Math.PI / 2],
-  [-150, -465,  Math.PI / 2],
-  [-160, -465,  Math.PI],
-  [-160, -180,  Math.PI],
-  [-160, -170, -Math.PI / 2],
-  [ 150, -170, -Math.PI / 2],
-  [ 160, -180,  0],
-  [ 160, -465,  0],
+// Mountain switchback round-trip — follows the rendered
+// `mountain-switchbacks` polyline forward (top → summit) and back.
+const MOUNTAIN_SWITCHBACK_POLY: ReadonlyArray<readonly [number, number]> = [
+  [  0, -200], [ 80, -240], [-80, -290], [ 80, -340],
+  [-80, -390], [ 80, -430], [  0, -465],
 ];
+const MOUNTAIN_LOOP: [number, number, number][] = forwardReverseRoute(
+  MOUNTAIN_SWITCHBACK_POLY,
+);
 
-// Bridge / forest spine — south lane out, north lane back, with two
-// 180° turns at the ends of the spine.
-const BRIDGE_FOREST_LOOP: [number, number, number][] = [
-  [ 5, 100, Math.PI],
-  [ 5, 180, Math.PI],
-  [ 5, 290, Math.PI],
-  [ 5, 470, Math.PI],
-  [-5, 470, 0],
-  [-5, 290, 0],
-  [-5, 180, 0],
-  [-5, 100, 0],
+// Bridge / forest round-trip — follows spine-south (0,100→0,130),
+// bridge (0,130→0,180), and the curved forest-main polyline up to its
+// north endpoint. All coordinates match REGIONAL_ROADS centerlines.
+const BRIDGE_FOREST_POLY: ReadonlyArray<readonly [number, number]> = [
+  [  0, 100], [  0, 130], [  0, 180], [ 40, 230],
+  [-30, 290], [ 50, 360], [-40, 430], [  0, 480],
 ];
+const BRIDGE_FOREST_LOOP: [number, number, number][] = forwardReverseRoute(
+  BRIDGE_FOREST_POLY,
+);
 
-// East service-road perimeter — small rectangle inside the suburban biome.
-const EAST_LOOP: [number, number, number][] = [
+// East service-road round-trip — follows `east-service` end-to-end.
+const EAST_SERVICE_POLY: ReadonlyArray<readonly [number, number]> = [
+  [100, 0], [200, 0], [300, 30], [430, 30],
+];
+const EAST_LOOP: [number, number, number][] = forwardReverseRoute(
+  EAST_SERVICE_POLY,
+);
+
+// Legacy unused names (kept zeroed-out so any stale import would fail
+// loudly). The original `EAST_LOOP` rectangle was off-road; replaced.
+const _LEGACY_EAST_LOOP_UNUSED: [number, number, number][] = [
   [200, -30, -Math.PI / 2],
   [470, -30, -Math.PI / 2],
   [470, -30,  Math.PI],
@@ -610,6 +664,26 @@ export const REGIONAL_ROADS: RoadPath[] = [
   { id: "west-utility",
     points: [[-100, 0], [-220, -20], [-360, -20], [-460, 0]],
     width: 10, type: "dirt" },
+  // -----------------------------------------------------------------
+  // Driveways / parking spurs — connect outlier parked vehicles to
+  // their nearest carriageway. Width 12 so the parked car visibly sits
+  // on a service apron, not a shoulder.
+  // -----------------------------------------------------------------
+  { id: "drv-east-warehouse-a",
+    points: [[235, 8], [235, -30]],
+    width: 12, type: "dirt" }, // serves car-24 at (235,-30)
+  { id: "drv-east-warehouse-b",
+    points: [[310, 30], [310, 80]],
+    width: 12, type: "dirt" }, // serves car-25 at (310, 80)
+  { id: "drv-east-loading",
+    points: [[420, 30], [420, -55]],
+    width: 12, type: "dirt" }, // serves car-26 at (420,-55) — offset clear of warehouse at (390,-50)
+  { id: "drv-west-depot",
+    points: [[-220, -20], [-220, 65]],
+    width: 12, type: "dirt" }, // serves car-27 at (-220, 65)
+  { id: "drv-forest-cabin",
+    points: [[-25, 415], [-75, 415]],
+    width: 10, type: "dirt" }, // serves car-22 at (-75, 415); branches off forest-main
 ];
 
 // =============================================================
@@ -638,12 +712,20 @@ export const STATIC_OBSTACLES: StaticObstacle[] = [
   { x:  -50, z: -180, w: 6,  d: 6,  kind: "large_rock" },
   { x:  140, z: -260, w: 8,  d: 6,  kind: "large_rock" },
   { x: -140, z: -340, w: 7,  d: 7,  kind: "large_rock" },
-  { x:   50, z: -440, w: 6,  d: 6,  kind: "large_rock" },
+  { x:  130, z: -440, w: 6,  d: 6,  kind: "large_rock" },
+  // Mountain — guardrails on the outside of switchback corners (kind
+  // "guardrail" is excluded from the obstacle/road clearance check
+  // because they are explicitly placed at the edge of the carriageway).
+  { x:   95, z: -240, w: 12, d: 1.2, kind: "guardrail" },
+  { x:  -95, z: -290, w: 12, d: 1.2, kind: "guardrail" },
+  { x:   95, z: -340, w: 12, d: 1.2, kind: "guardrail" },
+  { x:  -95, z: -390, w: 12, d: 1.2, kind: "guardrail" },
+  { x:   95, z: -430, w: 12, d: 1.2, kind: "guardrail" },
   // Mountain — observatory at the summit
   { x:    0, z: -485, w: 16, d: 10, kind: "observatory" },
   // Forest — gas stop, cabins, ranger station
   { x:    0, z:  205, w: 10, d:  7, kind: "gas_stop" },
-  { x:  120, z:  240, w: 12, d:  9, kind: "cabin" },
+  { x:  120, z:  260, w: 12, d:  9, kind: "cabin" }, // off forest-spur end at (120,240)
   { x:  -55, z:  280, w: 10, d:  8, kind: "cabin" },
   { x:   62, z:  380, w: 12, d: 10, kind: "cabin" },
   { x:  -90, z:  420, w: 14, d: 12, kind: "ranger_station" },
@@ -675,6 +757,19 @@ export const STATIC_OBSTACLES: StaticObstacle[] = [
 // Anything inside the road corridor (|x| < 14) is rejected to avoid
 // visually obstructing the spine road.
 
+// Reject scatter points within (road halfWidth + clearance) of any
+// regional road polyline. Iterating REGIONAL_ROADS rather than
+// hard-coding |x|<14 means new roads (driveways, future spurs) keep
+// the scatter clear automatically.
+const SCATTER_ROAD_CLEARANCE = 2.0;
+function tooCloseToAnyRoad(x: number, z: number, clearance: number): boolean {
+  for (const road of REGIONAL_ROADS) {
+    const d = distancePointToPolyline(x, z, road.points);
+    if (d < road.width / 2 + clearance) return true;
+  }
+  return false;
+}
+
 function makeForestInstances(): { trees: TreeInstance[]; rocks: RockInstance[] } {
   const r = seededRandom(12345);
   const trees: TreeInstance[] = [];
@@ -682,16 +777,21 @@ function makeForestInstances(): { trees: TreeInstance[]; rocks: RockInstance[] }
   const z0 = 195;
   const z1 = 495;
   const xMag = 285;
-  for (let i = 0; i < 220; i++) {
+  // Up the over-sample budget: each rejected sample (close to a road)
+  // burns one PRNG draw. 4× the target keeps us deterministic without
+  // ever truncating the visual density.
+  const TREE_TARGET = 220;
+  const ROCK_TARGET = 60;
+  for (let i = 0; i < TREE_TARGET * 4 && trees.length < TREE_TARGET; i++) {
     const x = (r() - 0.5) * 2 * xMag;
     const z = z0 + r() * (z1 - z0);
-    if (Math.abs(x) < 14) continue;
+    if (tooCloseToAnyRoad(x, z, SCATTER_ROAD_CLEARANCE)) continue;
     trees.push({ x, z, scale: 0.7 + r() * 0.9, rotY: r() * Math.PI * 2 });
   }
-  for (let i = 0; i < 60; i++) {
+  for (let i = 0; i < ROCK_TARGET * 4 && rocks.length < ROCK_TARGET; i++) {
     const x = (r() - 0.5) * 2 * xMag;
     const z = z0 + r() * (z1 - z0);
-    if (Math.abs(x) < 14) continue;
+    if (tooCloseToAnyRoad(x, z, SCATTER_ROAD_CLEARANCE)) continue;
     rocks.push({ x, z, scale: 0.6 + r() * 1.1, rotY: r() * Math.PI * 2 });
   }
   return { trees, rocks };
@@ -700,12 +800,14 @@ function makeForestInstances(): { trees: TreeInstance[]; rocks: RockInstance[] }
 function makeMountainRocks(): RockInstance[] {
   const r = seededRandom(99999);
   const out: RockInstance[] = [];
-  for (let i = 0; i < 120; i++) {
-    // Keep clear of both the switchback corridor (|x|<14) and the
-    // ambient-traffic perimeter (|x|=±160, z=-465/-170).
+  const ROCK_TARGET = 120;
+  for (let i = 0; i < ROCK_TARGET * 4 && out.length < ROCK_TARGET; i++) {
+    // Keep clear of every rendered road polyline (switchbacks +
+    // lookout spur). Old code only rejected |x|<14, which let rocks
+    // intrude on the switchback corners at x=±80.
     const x = (r() - 0.5) * 290; // ±145
     const z = -460 + r() * 275;  // -460..-185
-    if (Math.abs(x) < 14) continue;
+    if (tooCloseToAnyRoad(x, z, SCATTER_ROAD_CLEARANCE)) continue;
     out.push({ x, z, scale: 1.0 + r() * 2.5, rotY: r() * Math.PI * 2 });
   }
   return out;
@@ -842,6 +944,148 @@ if (isViteDev) {
     }
   }
 
+  // ---- Polish-pass invariants -------------------------------------------
+  //
+  // Build a single list of road centerlines (regional polylines + city
+  // grid). For each (x, z) we want the nearest road, its half-width,
+  // and the signed clearance (positive = outside carriageway).
+
+  type RoadCorridor = {
+    id: string;
+    points: ReadonlyArray<readonly [number, number]>;
+    halfWidth: number;
+  };
+  const corridors: RoadCorridor[] = [];
+  for (const r of REGIONAL_ROADS) {
+    corridors.push({ id: r.id, points: r.points, halfWidth: r.width / 2 });
+  }
+  const cityHalf = ROADS.width / 2;
+  for (const x of ROADS.ns) {
+    corridors.push({
+      id: `city-ns-${x}`,
+      points: [[x, -CITY_HALF], [x, CITY_HALF]],
+      halfWidth: cityHalf,
+    });
+  }
+  for (const z of ROADS.ew) {
+    corridors.push({
+      id: `city-ew-${z}`,
+      points: [[-CITY_HALF, z], [CITY_HALF, z]],
+      halfWidth: cityHalf,
+    });
+  }
+
+  function nearestRoadDist(px: number, pz: number): {
+    id: string; dist: number; halfWidth: number;
+  } {
+    let bestId = "<none>", bestDist = Infinity, bestHw = 0;
+    for (const c of corridors) {
+      const d = distancePointToPolyline(px, pz, c.points);
+      if (d < bestDist) {
+        bestDist = d; bestId = c.id; bestHw = c.halfWidth;
+      }
+    }
+    return { id: bestId, dist: bestDist, halfWidth: bestHw };
+  }
+
+  // (a) Every traffic waypoint must be inside a carriageway.
+  // 0.5m of slack absorbs the lane offset used by OUTER_LOOP.
+  let waypointsOff = 0;
+  for (const route of TRAFFIC_ROUTES) {
+    for (const wp of route.waypoints) {
+      const nr = nearestRoadDist(wp[0], wp[1]);
+      if (nr.dist > nr.halfWidth + 0.5) {
+        waypointsOff++;
+        issues.push(
+          `traffic ${route.id} waypoint (${wp[0]}, ${wp[1]}) ` +
+            `${(nr.dist - nr.halfWidth).toFixed(1)}m off road ${nr.id} ` +
+            `(hw=${nr.halfWidth})`,
+        );
+      }
+    }
+  }
+
+  // (b) Every checkpoint must be on a road carriageway.
+  let checkpointsOff = 0;
+  for (const cp of CHECKPOINTS) {
+    const nr = nearestRoadDist(cp.x, cp.z);
+    if (nr.dist > nr.halfWidth + 0.5) {
+      checkpointsOff++;
+      issues.push(
+        `checkpoint ${cp.id} (${cp.x}, ${cp.z}) ` +
+          `${(nr.dist - nr.halfWidth).toFixed(1)}m off road ${nr.id}`,
+      );
+    }
+  }
+
+  // (c) Trees and rocks must clear the carriageway by ≥ SCATTER_ROAD_CLEARANCE.
+  // This mirrors the generation-time rejection so we catch any drift if
+  // a road moves in the future.
+  let scatterTooClose = 0;
+  const checkScatter = (x: number, z: number): boolean => {
+    for (const r of REGIONAL_ROADS) {
+      const d = distancePointToPolyline(x, z, r.points);
+      if (d < r.width / 2 + SCATTER_ROAD_CLEARANCE) return true;
+    }
+    return false;
+  };
+  for (const t of FOREST_TREES) if (checkScatter(t.x, t.z)) scatterTooClose++;
+  for (const rk of FOREST_ROCKS) if (checkScatter(rk.x, rk.z)) scatterTooClose++;
+  for (const rk of MOUNTAIN_ROCKS) if (checkScatter(rk.x, rk.z)) scatterTooClose++;
+  if (scatterTooClose > 0) {
+    issues.push(
+      `${scatterTooClose} trees/rocks within road halfWidth + ` +
+        `${SCATTER_ROAD_CLEARANCE} of a regional road`,
+    );
+  }
+
+  // (d) Every parked vehicle must be within 25m of a road centerline.
+  // Driveway entries in REGIONAL_ROADS exist precisely to satisfy this
+  // for warehouse / depot cars that are far from the through-roads.
+  let parkedFar = 0;
+  for (const v of INITIAL_VEHICLES) {
+    const nr = nearestRoadDist(v.x, v.z);
+    if (nr.dist > 25) {
+      parkedFar++;
+      issues.push(
+        `vehicle ${v.id} at (${v.x}, ${v.z}) is ${nr.dist.toFixed(1)}m ` +
+          `from nearest road (${nr.id}) — needs driveway/parking pad`,
+      );
+    }
+  }
+
+  // (e) Static obstacles other than rails / cliffs / guardrails must
+  // clear the road carriageway by ≥1.0m. The conservative AABB-edge
+  // estimate uses max(w, d)/2 as the obstacle's half extent toward the
+  // road; this slightly over-estimates clearance violation for long
+  // narrow obstacles oriented along the road, which is the safe side.
+  const ROAD_KIND_OBSTACLES = new Set<StaticObstacleKind>([
+    "bridge_rail", "cliff_wall", "guardrail",
+  ]);
+  let obstaclesIntruding = 0;
+  for (const o of STATIC_OBSTACLES) {
+    if (ROAD_KIND_OBSTACLES.has(o.kind)) continue;
+    const nr = nearestRoadDist(o.x, o.z);
+    const aabbHalf = Math.max(o.w, o.d) / 2;
+    const clearance = nr.dist - nr.halfWidth - aabbHalf;
+    if (clearance < 1.0) {
+      obstaclesIntruding++;
+      issues.push(
+        `obstacle ${o.kind} at (${o.x.toFixed(0)}, ${o.z.toFixed(0)}) ` +
+          `clearance ${clearance.toFixed(1)}m to road ${nr.id}`,
+      );
+    }
+  }
+
+  // Stash counts on a side-channel for the summary print below.
+  (issues as unknown as { _polish?: Record<string, number> })._polish = {
+    waypointsOff,
+    checkpointsOff,
+    scatterTooClose,
+    parkedFar,
+    obstaclesIntruding,
+  };
+
   // ---- Existing building-on-road check ----------------------------------
   for (const b of BUILDINGS) {
     const corners: [number, number][] = [
@@ -858,6 +1102,20 @@ if (isViteDev) {
     }
   }
 
+  const polish = (issues as unknown as { _polish?: Record<string, number> })
+    ._polish ?? {};
+  const totalWp = TRAFFIC_ROUTES.reduce((s, r) => s + r.waypoints.length, 0);
+  const totalScatter = FOREST_TREES.length + FOREST_ROCKS.length + MOUNTAIN_ROCKS.length;
+  const polishLine =
+    `road clearances: ${totalWp - (polish.waypointsOff ?? 0)}/${totalWp} ` +
+    `traffic waypoints on-road, ${CHECKPOINTS.length - (polish.checkpointsOff ?? 0)}/` +
+    `${CHECKPOINTS.length} checkpoints on-road, ` +
+    `${totalScatter - (polish.scatterTooClose ?? 0)}/${totalScatter} ` +
+    `trees+rocks ≥ road halfWidth + ${SCATTER_ROAD_CLEARANCE.toFixed(1)}m, ` +
+    `${INITIAL_VEHICLES.length - (polish.parkedFar ?? 0)}/${INITIAL_VEHICLES.length} ` +
+    `parked vehicles within 25m of a road, ` +
+    `${polish.obstaclesIntruding ?? 0} non-rail obstacles intruding into road carriageway.`;
+
   if (issues.length > 0) {
     // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${issues.length} city validation issue(s):`);
@@ -865,6 +1123,8 @@ if (isViteDev) {
       // eslint-disable-next-line no-console
       console.warn("  -", m);
     }
+    // eslint-disable-next-line no-console
+    console.warn(`[city-sandbox] ${polishLine}`);
   } else {
     // eslint-disable-next-line no-console
     console.info(
@@ -877,5 +1137,7 @@ if (isViteDev) {
         `${REGIONAL_ROADS.length} regional roads, ${STATIC_OBSTACLES.length} obstacles, ` +
         `${FOREST_TREES.length} trees, ${FOREST_ROCKS.length + MOUNTAIN_ROCKS.length} rocks.`
     );
+    // eslint-disable-next-line no-console
+    console.info(`[city-sandbox] ${polishLine}`);
   }
 }

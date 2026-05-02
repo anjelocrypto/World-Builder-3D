@@ -87,6 +87,11 @@ function RegionalRoads() {
 // =============================================================
 
 function BiomeGround() {
+  // Each biome has a base tint plus a thin transition strip drawn at a
+  // slightly higher Y, blending into the central city's tan ground.
+  // Without these strips the four biome rectangles meet the city in a
+  // hard rectangular seam; the strips paint over the seam with an
+  // intermediate colour so the eye reads it as a softer transition.
   return (
     <group>
       {/* Mountain (north) */}
@@ -114,6 +119,45 @@ function BiomeGround() {
         <planeGeometry args={[400, 400]} />
         <meshLambertMaterial color="#5a5238" />
       </mesh>
+
+      {/* Transition strips at biome→city seams (y=0.0015 sits just
+          above the base biome tints to overpaint the rectangular edge). */}
+      <mesh position={[0, 0.0015, -110]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[1000, 32]} />
+        <meshLambertMaterial color="#473e34" />
+      </mesh>
+      <mesh position={[0, 0.0015, 195]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[1000, 38]} />
+        <meshLambertMaterial color="#3a402c" />
+      </mesh>
+      <mesh position={[110, 0.0015, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[32, 400]} />
+        <meshLambertMaterial color="#473d35" />
+      </mesh>
+      <mesh position={[-110, 0.0015, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[32, 400]} />
+        <meshLambertMaterial color="#52472f" />
+      </mesh>
+    </group>
+  );
+}
+
+// Bridge lane stripes — five short white quads down the middle of the
+// (0,130)→(0,180) bridge segment, drawn just above the bridge surface.
+function BridgeLaneStripes() {
+  const positions = [137, 147, 157, 167, 177] as const;
+  return (
+    <group>
+      {positions.map((z) => (
+        <mesh
+          key={z}
+          position={[0, 0.012, z]}
+          rotation={[-Math.PI / 2, 0, 0]}
+        >
+          <planeGeometry args={[0.35, 4]} />
+          <meshBasicMaterial color="#f0e8c8" />
+        </mesh>
+      ))}
     </group>
   );
 }
@@ -424,6 +468,7 @@ export default function BiomeRender() {
     <group>
       <BiomeGround />
       <RegionalRoads />
+      <BridgeLaneStripes />
       <StaticObstacles />
       <ForestTrees />
       <ForestRocks />

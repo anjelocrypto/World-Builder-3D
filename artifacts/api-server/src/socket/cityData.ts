@@ -41,7 +41,7 @@ export const INITIAL_VEHICLES = [
   // ===== East suburban / industrial (3 cars) =====
   { id: "car-24", x: 235, y: 0.6, z:  -30, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#455a64" },
   { id: "car-25", x: 310, y: 0.6, z:   80, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#5d4037" },
-  { id: "car-26", x: 410, y: 0.6, z:  -55, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#37474f" },
+  { id: "car-26", x: 420, y: 0.6, z:  -55, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#37474f" },
   // ===== West fields / depot (1 car) =====
   { id: "car-27", x: -220, y: 0.6, z:   65, rotY: Math.PI / 2,      speed: 0, driverId: null, variant: "van",     color: "#3e2723" },
 ];

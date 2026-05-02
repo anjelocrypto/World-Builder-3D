@@ -4,7 +4,15 @@ import type {
   TrafficRoute,
   VehicleVariant,
 } from "./types";
-import { BUILDINGS, STATIC_OBSTACLES, VARIANT_DIMENSIONS } from "./cityData";
+import {
+  BUILDINGS,
+  CITY_HALF,
+  REGIONAL_ROADS,
+  ROADS,
+  STATIC_OBSTACLES,
+  VARIANT_DIMENSIONS,
+} from "./cityData";
+import { distancePointToPolyline } from "./roadGeom";
 
 // =====================================================
 // Body radii / margins
@@ -202,6 +210,68 @@ export function vehicleHitsAnyObstacle(o: OBB): boolean {
     if (obbVsAabb(o, obstacleAabb(obs, VEHICLE_BUILDING_MARGIN))) return true;
   }
   return false;
+}
+
+// =====================================================
+// Nearest road query
+// =====================================================
+//
+// Used by the dev-mode validator (in cityData.ts) and exposed for any
+// future gameplay code that wants to know "am I on a road right now?".
+// Iterates regional polylines plus the central city grid. The city
+// grid is treated as straight bounded segments from -CITY_HALF to
+// +CITY_HALF, matching the rendered carriageway.
+
+export interface NearestRoadInfo {
+  id: string;
+  /** 2D distance from the query point to the nearest road centerline. */
+  dist: number;
+  /** Half of that road's carriageway width. */
+  halfWidth: number;
+  /** dist - halfWidth: positive = outside carriageway, ≤0 = on the road. */
+  signedClearance: number;
+}
+
+const _cityCorridors: { id: string; points: [number, number][]; halfWidth: number }[] = [];
+function _ensureCityCorridors(): void {
+  if (_cityCorridors.length > 0) return;
+  const half = ROADS.width / 2;
+  for (const x of ROADS.ns) {
+    _cityCorridors.push({
+      id: `city-ns-${x}`,
+      points: [[x, -CITY_HALF], [x, CITY_HALF]],
+      halfWidth: half,
+    });
+  }
+  for (const z of ROADS.ew) {
+    _cityCorridors.push({
+      id: `city-ew-${z}`,
+      points: [[-CITY_HALF, z], [CITY_HALF, z]],
+      halfWidth: half,
+    });
+  }
+}
+
+export function nearestRoad(px: number, pz: number): NearestRoadInfo {
+  _ensureCityCorridors();
+  let best: NearestRoadInfo = {
+    id: "<none>",
+    dist: Infinity,
+    halfWidth: 0,
+    signedClearance: Infinity,
+  };
+  const consider = (id: string, dist: number, halfWidth: number): void => {
+    if (dist < best.dist) {
+      best = { id, dist, halfWidth, signedClearance: dist - halfWidth };
+    }
+  };
+  for (const r of REGIONAL_ROADS) {
+    consider(r.id, distancePointToPolyline(px, pz, r.points), r.width / 2);
+  }
+  for (const r of _cityCorridors) {
+    consider(r.id, distancePointToPolyline(px, pz, r.points), r.halfWidth);
+  }
+  return best;
 }
 
 // =====================================================
