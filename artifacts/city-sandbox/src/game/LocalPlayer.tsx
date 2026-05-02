@@ -549,11 +549,25 @@ export default function LocalPlayer({
     const tryX = vehiclePos.current.x + vfx * vehicleSpeed.current * dt;
     const tryZ = vehiclePos.current.z + vfz * vehicleSpeed.current * dt;
 
-    // Vehicle obstacle list (every other vehicle).
+    // Vehicle obstacle list (every other real vehicle, plus all ambient
+    // AI cars). Ambient cars are visually the same scale as drivable
+    // cars, so the driven vehicle treats them as solid even though they
+    // never reach the local player's `vehicles` map.
     const otherVehicles: OBB[] = [];
     for (const v of Object.values(vehicles)) {
       if (v.id === vId) continue;
       otherVehicles.push(vehicleObb(v, VEHICLE_VEHICLE_MARGIN));
+    }
+    for (const route of TRAFFIC_ROUTES) {
+      for (const seed of route.cars) {
+        const a = ambientCarStateAt(route, seed, now);
+        otherVehicles.push(
+          vehicleObb(
+            { x: a.x, z: a.z, rotY: a.rotY, variant: a.variant },
+            VEHICLE_VEHICLE_MARGIN,
+          ),
+        );
+      }
     }
 
     const variant = vData.variant;
@@ -711,10 +725,101 @@ export default function LocalPlayer({
     });
   }
 
+  // Search for a safe exit position around the vehicle. We try 12
+  // candidate offsets in vehicle-local space (right/left/back/front,
+  // diagonals, then farther fallbacks), transform each into world
+  // space, and accept the first that does NOT clip a building, any
+  // other vehicle (real or ambient), or any NPC. If none is safe, we
+  // abort the exit silently and the driver stays in the car.
+  function findSafeExit(now: number): { x: number; z: number } | null {
+    const cosR = Math.cos(vehicleRotY.current);
+    const sinR = Math.sin(vehicleRotY.current);
+
+    // Order: passenger door first, then driver, then around the car.
+    const localOffsets: Array<[number, number]> = [
+      [2.5, 0],
+      [-2.5, 0],
+      [0, 2.5],
+      [0, -2.5],
+      [2.0, 2.0],
+      [-2.0, 2.0],
+      [2.0, -2.0],
+      [-2.0, -2.0],
+      [3.5, 0],
+      [-3.5, 0],
+      [0, 3.5],
+      [0, -3.5],
+    ];
+
+    // Build full obstacle set once.
+    const vehicleObbs: OBB[] = [];
+    for (const v of Object.values(vehicles)) {
+      if (v.id === drivingVehicleId.current) continue;
+      vehicleObbs.push(vehicleObb(v, VEHICLE_PLAYER_MARGIN));
+    }
+    for (const route of TRAFFIC_ROUTES) {
+      for (const seed of route.cars) {
+        const a = ambientCarStateAt(route, seed, now);
+        vehicleObbs.push(
+          vehicleObb(
+            { x: a.x, z: a.z, rotY: a.rotY, variant: a.variant },
+            VEHICLE_PLAYER_MARGIN,
+          ),
+        );
+      }
+    }
+    const npcPositions: Array<{ x: number; z: number }> = [];
+    for (const route of NPC_ROUTES) {
+      npcPositions.push(npcPositionAt(route, now));
+    }
+    const minNpcDist = PLAYER_BODY_RADIUS + NPC_BODY_RADIUS;
+
+    for (const [lx, lz] of localOffsets) {
+      // Local→world: world = lx * (cosR, -sinR) + lz * (sinR, cosR)
+      const wx = vehiclePos.current.x + lx * cosR + lz * sinR;
+      const wz = vehiclePos.current.z + lx * -sinR + lz * cosR;
+
+      // Stay on the playable area
+      if (wx < -94 || wx > 94 || wz < -94 || wz > 94) continue;
+
+      if (playerHitsAnyBuilding(wx, wz)) continue;
+
+      const c = { x: wx, z: wz, r: PLAYER_BODY_RADIUS };
+      let bad = false;
+      for (const o of vehicleObbs) {
+        if (circleVsObb(c, o)) {
+          bad = true;
+          break;
+        }
+      }
+      if (bad) continue;
+
+      for (const npc of npcPositions) {
+        const dx = wx - npc.x;
+        const dz = wz - npc.z;
+        if (dx * dx + dz * dz < minNpcDist * minNpcDist) {
+          bad = true;
+          break;
+        }
+      }
+      if (bad) continue;
+
+      return { x: wx, z: wz };
+    }
+    return null;
+  }
+
   function exitVehicle() {
-    const vId = drivingVehicleId.current!;
-    // Drop player next to vehicle
-    pos.current.set(vehiclePos.current.x + 2.5, 1, vehiclePos.current.z);
+    const vId = drivingVehicleId.current;
+    if (!vId) return;
+    const safe = findSafeExit(Date.now());
+    if (!safe) {
+      // No safe spot exists — keep the driver in the car. The
+      // interact cooldown set by the caller still applies, so the
+      // player can try again after they roll forward.
+      return;
+    }
+    pos.current.set(safe.x, 1, safe.z);
     vel.current.set(0, 0, 0);
     inVehicle.current = false;
     drivingVehicleId.current = null;
