@@ -265,7 +265,7 @@ export const INITIAL_VEHICLES: VehicleState[] = [
   { id: "car-19", x: -58, y: 0.6, z:  320, rotY: Math.PI / 2,       speed: 0, driverId: null, variant: "sedan",   color: "#558b2f" }, // village loop W
   { id: "car-20", x:  60, y: 0.6, z:  340, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "van",     color: "#6d4c41" }, // village loop E
   { id: "car-21", x: -37, y: 0.6, z:  418, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#8d6e63" }, // cabin-W1 driveway
-  { id: "car-22", x:  45, y: 0.6, z:  388, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#33691e" }, // cabin-E1 driveway
+  { id: "car-22", x:  47, y: 0.6, z:  376, rotY: Math.atan2(10, 12), speed: 0, driverId: null, variant: "compact", color: "#33691e" }, // cabin-E1 driveway
   { id: "car-23", x: -15, y: 0.6, z:  482, rotY: Math.PI / 2,       speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" }, // trailhead-spur
   // ===== East suburban / industrial (3 cars) =====
   { id: "car-24", x: 235, y: 0.6, z:  -30, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#455a64" },
@@ -959,7 +959,7 @@ export const VILLAGE_LAMPS: StreetLightData[] = [
   // Forest-main spine through cabin row
   { x:  30, z: 380 },
   { x: -25, z: 415 },
-  { x:   0, z: 445 },
+  { x:   7, z: 456 }, // near drv-cabin-e3 endpoint (lights cabin-row + drv-e3)
   // Trailhead
   { x: -10, z: 482 },
   { x:  10, z: 482 },
@@ -1218,6 +1218,35 @@ if (isViteDev) {
     }
   }
 
+  // (d.2) South Forest Village parked cars (z ≥ 180) must sit ON a road
+  // strip (within road halfWidth + 1.0m of the centerline) OR inside a
+  // village parking pad (within 4.0m of pad center, covering the 3x6
+  // pad rect at any rotation). This is stricter than the 25m generic
+  // check above so the forest village reads as "cars on pads/driveways"
+  // rather than "cars roughly near a road".
+  const PAD_RADIUS = 4.0;
+  let forestParkedOff = 0;
+  for (const v of INITIAL_VEHICLES) {
+    if (v.z < 180) continue;
+    const nr = nearestRoadDist(v.x, v.z);
+    const onStrip = nr.dist <= nr.halfWidth + 1.0;
+    let onPad = false;
+    for (const p of VILLAGE_PARKING_PADS) {
+      const dx = v.x - p.x;
+      const dz = v.z - p.z;
+      if (dx * dx + dz * dz <= PAD_RADIUS * PAD_RADIUS) { onPad = true; break; }
+    }
+    if (!onStrip && !onPad) {
+      forestParkedOff++;
+      issues.push(
+        `forest vehicle ${v.id} at (${v.x.toFixed(0)}, ${v.z.toFixed(0)}) ` +
+          `is ${(nr.dist - nr.halfWidth).toFixed(1)}m off road ${nr.id} ` +
+          `and not on any parking pad — must sit on a road/driveway strip ` +
+          `or a village parking pad`,
+      );
+    }
+  }
+
   // (e) Static obstacles other than rails / cliffs / guardrails must
   // clear the road carriageway by ≥1.0m. The conservative AABB-edge
   // estimate uses max(w, d)/2 as the obstacle's half extent toward the
@@ -1247,6 +1276,7 @@ if (isViteDev) {
     checkpointsOff,
     scatterTooClose,
     parkedFar,
+    forestParkedOff,
     obstaclesIntruding,
   };
 
@@ -1288,10 +1318,12 @@ if (isViteDev) {
   for (const o of STATIC_OBSTACLES) {
     if (o.z >= 460 && o.z <= 498) trailheadEntities++;
   }
+  const forestCarsOnStripOrPad = villageCars - (polish.forestParkedOff ?? 0);
   const villageLine =
     `South Forest Village: ${VILLAGE_PARKING_PADS.length} pads, ` +
     `${VILLAGE_LAMPS.length} lamps, ${cabinRowCount} cabins, ` +
-    `${villageCars} forest cars, ${FOREST_CLEARINGS.length} clearings, ` +
+    `${forestCarsOnStripOrPad}/${villageCars} forest cars on strip/pad, ` +
+    `${FOREST_CLEARINGS.length} clearings, ` +
     `${FOREST_ROADSIDE_COUNT} roadside-row trees + ` +
     `${FOREST_SCATTER_TREE_COUNT} scatter trees, ` +
     `${trailheadEntities} trailhead entities.`;
