@@ -912,8 +912,9 @@ export function getRailPillars(): RailPillar[] {
 // Train station — east edge of the loop, midway between the SE chamfer
 // (110, -90) and the east-service crossing at (110, 0). Platform sits
 // ON the rail line (centerline x=110), spans z = [-75..-55] = 20m long,
-// 8m deep (x = 106..114). Stairs come down from the deck inside the
-// loop (toward the inner-city-ring at x ~ 106), foot at (102, -65).
+// 8m deep (x = 106..114). Stairs descend OUTWARD (away from the city)
+// so the foot lands at x = 122, well clear of the inner-city-ring
+// carriageway (centerline x=100, width 12 → carriageway 94..106).
 export const TRAIN_STATION: TrainStationData = {
   id: "central-loop-station",
   cx: 110,
@@ -922,7 +923,7 @@ export const TRAIN_STATION: TrainStationData = {
   d: 20,
   rotY: 0,
   deckY: RAIL_DECK_HEIGHT,
-  stairX: 102,
+  stairX: 122,
   stairZ: -65,
   signText: "Central Loop Station",
 };
@@ -2643,6 +2644,51 @@ if (isViteDev) {
       if (dx * dx + dz * dz < 25) {
         stationClear = false;
         issues.push(`spawn ${JSON.stringify(sp)} too close to station`);
+      }
+    }
+    // Stair-segment sweep: sample 9 points along the diagonal from the
+    // station edge (nearest the stair foot) out to (stairX, stairZ) and
+    // ensure none lands in any city or regional carriageway. The 1.6m
+    // stair tread width is included as slack via a half-width inflation.
+    const STAIR_HALF = 0.8;
+    const stairStartX = s.cx + Math.sign(s.stairX - s.cx) * (s.w / 2);
+    const stairStartZ = s.cz + Math.sign(s.stairZ - s.cz) * (s.d / 2);
+    for (let i = 0; i <= 8; i++) {
+      const t = i / 8;
+      const x = stairStartX + (s.stairX - stairStartX) * t;
+      const z = stairStartZ + (s.stairZ - stairStartZ) * t;
+      let onRoad = false;
+      for (const xr of ROADS.ns) {
+        if (Math.abs(x - xr) < ROAD_HALF + STAIR_HALF && Math.abs(z) <= CITY_HALF) {
+          onRoad = true; break;
+        }
+      }
+      if (!onRoad) {
+        for (const zr of ROADS.ew) {
+          if (Math.abs(z - zr) < ROAD_HALF + STAIR_HALF && Math.abs(x) <= CITY_HALF) {
+            onRoad = true; break;
+          }
+        }
+      }
+      if (!onRoad) {
+        for (const r of REGIONAL_ROADS) {
+          if (distancePointToPolyline(x, z, r.points) < r.width / 2 + STAIR_HALF) {
+            onRoad = true;
+            issues.push(
+              `station stair sample (${x.toFixed(0)}, ${z.toFixed(0)}) ` +
+                `intrudes road ${r.id}`,
+            );
+            break;
+          }
+        }
+      } else {
+        issues.push(
+          `station stair sample (${x.toFixed(0)}, ${z.toFixed(0)}) on city carriageway`,
+        );
+      }
+      if (onRoad) {
+        stationClear = false;
+        break;
       }
     }
   }

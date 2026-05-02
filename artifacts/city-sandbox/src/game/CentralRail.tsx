@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import {
   ELEVATED_RAIL_LOOP,
@@ -88,7 +88,9 @@ function RailPillars() {
   const colRef = useRef<THREE.InstancedMesh>(null);
   const beamRef = useRef<THREE.InstancedMesh>(null);
 
-  useMemo(() => {
+  // Refs are null on first render — write the instance matrices in a
+  // post-mount effect so the meshes actually become visible.
+  useEffect(() => {
     const col = colRef.current;
     const beam = beamRef.current;
     if (!col || !beam) return;
@@ -108,7 +110,9 @@ function RailPillars() {
     col.instanceMatrix.needsUpdate = true;
     beam.instanceMatrix.needsUpdate = true;
     col.computeBoundingSphere();
+    col.computeBoundingBox();
     beam.computeBoundingSphere();
+    beam.computeBoundingBox();
   }, [pillars, pillarHeight]);
 
   return (
