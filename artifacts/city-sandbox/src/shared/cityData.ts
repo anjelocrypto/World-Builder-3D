@@ -520,8 +520,10 @@ const MOUNTAIN_LOOP: [number, number, number][] = forwardReverseRoute(
 // Bridge / forest round-trip — follows spine-south (0,100→0,130),
 // bridge (0,130→0,180), and the curved forest-main polyline up to its
 // north endpoint. All coordinates match REGIONAL_ROADS centerlines.
+// (0,200) inserted to match the forest-main vertex that stitches into
+// the outer-loop south leg.
 const BRIDGE_FOREST_POLY: ReadonlyArray<readonly [number, number]> = [
-  [  0, 100], [  0, 130], [  0, 180], [ 40, 230],
+  [  0, 100], [  0, 130], [  0, 180], [  0, 200], [ 40, 230],
   [-30, 290], [ 50, 360], [-40, 430], [  0, 482],
 ];
 const BRIDGE_FOREST_LOOP: [number, number, number][] = forwardReverseRoute(
@@ -529,11 +531,36 @@ const BRIDGE_FOREST_LOOP: [number, number, number][] = forwardReverseRoute(
 );
 
 // East service-road round-trip — follows `east-service` end-to-end.
+// Extended to (460,30) to match the new east-service terminus on the
+// outer-loop east leg.
 const EAST_SERVICE_POLY: ReadonlyArray<readonly [number, number]> = [
-  [100, 0], [200, 0], [300, 30], [430, 30],
+  [100, 0], [200, 0], [300, 30], [430, 30], [460, 30],
 ];
 const EAST_LOOP: [number, number, number][] = forwardReverseRoute(
   EAST_SERVICE_POLY,
+);
+
+// Inner-city-ring closed loop — drives the eight cardinal/corner
+// vertices of inner-city-ring counter-clockwise starting from the SE
+// corner. closedLoopRoute supplies headings aimed at the next vertex.
+const INNER_RING_POLY: ReadonlyArray<readonly [number, number]> = [
+  [ 100, -100], [ 100,    0], [ 100,  100], [   0,  100],
+  [-100,  100], [-100,    0], [-100, -100], [   0, -100],
+];
+const INNER_CITY_RING_LOOP: [number, number, number][] = closedLoopRoute(
+  INNER_RING_POLY,
+);
+
+// Outer regional loop — drives the eleven outer-loop vertices counter-
+// clockwise starting from the SE corner.
+const OUTER_LOOP_POLY: ReadonlyArray<readonly [number, number]> = [
+  [ 460,  200], [ 460,   30], [ 460, -200],
+  [ 260, -380], [-260, -380],
+  [-460, -200], [-460,    0], [-460,  200],
+  [-220,  200], [   0,  200], [ 220,  200],
+];
+const OUTER_REGIONAL_LOOP: [number, number, number][] = closedLoopRoute(
+  OUTER_LOOP_POLY,
 );
 
 // Legacy unused names (kept zeroed-out so any stale import would fail
@@ -586,6 +613,27 @@ export const TRAFFIC_ROUTES: TrafficRoute[] = [
     cars: [
       { id: "ai-8", color: "#455a64", variant: "van",     phase: 0.0 },
       { id: "ai-9", color: "#37474f", variant: "compact", phase: 0.5 },
+    ],
+  },
+  {
+    id: 4,
+    waypoints: INNER_CITY_RING_LOOP,
+    cycleSeconds: 95,
+    cars: [
+      { id: "ai-10", color: "#4a5b6b", variant: "sedan",   phase: 0.0  },
+      { id: "ai-11", color: "#7a5a3a", variant: "taxi",    phase: 0.33 },
+      { id: "ai-12", color: "#3a3a4a", variant: "compact", phase: 0.66 },
+    ],
+  },
+  {
+    id: 5,
+    waypoints: OUTER_REGIONAL_LOOP,
+    cycleSeconds: 220,
+    cars: [
+      { id: "ai-13", color: "#2d3a4a", variant: "sedan",   phase: 0.0  },
+      { id: "ai-14", color: "#5a4030", variant: "van",     phase: 0.25 },
+      { id: "ai-15", color: "#3a2a1a", variant: "compact", phase: 0.5  },
+      { id: "ai-16", color: "#404848", variant: "taxi",    phase: 0.75 },
     ],
   },
 ];
@@ -652,7 +700,18 @@ export const REGIONAL_ROADS: RoadPath[] = [
     points: [[0, 130], [0, 180]],
     width: 14, type: "bridge" },
   { id: "forest-main",
-    points: [[0, 180], [40, 230], [-30, 290], [50, 360], [-40, 430], [0, 482]],
+    // (0,200) shares a node with outer-loop south leg so the road graph
+    // stitches the city/bridge spine into the regional outer loop. The
+    // intermediate vertices (10,391),(-30,422),(-6,473) are collinear on
+    // the original (50,360)→(-40,430) and (-40,430)→(0,482) segments;
+    // adding them does NOT change the rendered geometry — they exist
+    // purely so each cabin driveway start coincides with a graph node
+    // (i.e. drv-cabin-e2 starts at (10,391), drv-cabin-w1 at (-30,422),
+    // drv-cabin-e3 at (-6,473)). Without these, every cabin driveway
+    // shows up as an "isolated road" component in the road-graph
+    // validator even though it visibly hugs forest-main.
+    points: [[0, 180], [0, 200], [40, 230], [-30, 290], [50, 360],
+             [10, 391], [-30, 422], [-40, 430], [-6, 473], [0, 482]],
     width: 12, type: "forest" },
   { id: "forest-spur",
     points: [[40, 230], [120, 240]],
@@ -663,52 +722,119 @@ export const REGIONAL_ROADS: RoadPath[] = [
   // first point at end so the rendered chain draws every edge.
   // -----------------------------------------------------------------
   { id: "gateway-spur",
-    points: [[6, 213], [24, 213]],
+    // Prepended (0,200) so the spur shares a graph node with forest-main
+    // and outer-loop. The (0,200)→(6,213) segment is a short stub from
+    // the gateway intersection up to the original parking spur.
+    points: [[0, 200], [6, 213], [24, 213]],
     width: 6, type: "dirt" },
   { id: "village-loop",
     points: [[5, 285], [55, 295], [65, 325], [60, 355], [25, 365],
              [-30, 365], [-55, 345], [-60, 315], [-30, 290], [5, 285]],
     width: 10, type: "dirt" },
+  // drv-cabin-* — each driveway starts at a graph node on either the
+  // village-loop or forest-main polyline, so the road-graph validator
+  // sees it as connected to the main component.
   { id: "drv-cabin-e1",
-    points: [[40, 368], [50, 380]],
+    points: [[25, 365], [40, 368], [50, 380]], // start = village-loop vertex
     width: 6, type: "dirt" },
   { id: "drv-cabin-e2",
-    points: [[10, 392], [20, 405]],
+    // End nudged from (20,405) → (16,405) so the carriageway clears the
+    // cabin-E2 AABB at (28,399) by ~4m (was sitting at exactly 1.0m, the
+    // polish threshold). Driveway is purely cosmetic — no parked car
+    // depends on this exact endpoint.
+    points: [[10, 391], [16, 405]],            // start = forest-main vertex
     width: 6, type: "dirt" },
   { id: "drv-cabin-e3",
-    points: [[-6, 473], [10, 460]],
+    points: [[-6, 473], [10, 460]],            // start = forest-main vertex
     width: 6, type: "dirt" },
   { id: "drv-cabin-w1",
-    points: [[-30, 422], [-40, 410]],
+    points: [[-30, 422], [-40, 410]],          // start = forest-main vertex
     width: 6, type: "dirt" },
   { id: "drv-cabin-w2",
-    points: [[-40, 430], [-55, 440]],
+    points: [[-40, 430], [-55, 440]],          // start = forest-main vertex
     width: 6, type: "dirt" },
   { id: "trailhead-spur",
-    points: [[-25, 482], [25, 482]],
+    // (0,482) inserted so the spur shares a node with forest-main's end.
+    points: [[-25, 482], [0, 482], [25, 482]],
     width: 10, type: "dirt" },
-  // East service road
+  // East service road — extended to (460,30) so it terminates on the
+  // outer-loop east leg (which has a vertex at (460,30)).
   { id: "east-service",
-    points: [[100, 0], [200, 0], [300, 30], [430, 30]],
+    points: [[100, 0], [200, 0], [300, 30], [430, 30], [460, 30]],
     width: 12, type: "asphalt" },
-  // West utility road
+  // West utility road — terminus (-460, 0) shares a node with the
+  // outer-loop west leg vertex at (-460, 0).
   { id: "west-utility",
     points: [[-100, 0], [-220, -20], [-360, -20], [-460, 0]],
+    width: 10, type: "dirt" },
+  // -----------------------------------------------------------------
+  // ROAD-NETWORK MASTER PLAN
+  // -----------------------------------------------------------------
+  // inner-city-ring: a closed asphalt quad at |x|=|z|=100 that wraps the
+  // 200×200 city core. Cardinal vertices at (0,±100) and (±100,0) share
+  // graph nodes with spine-north / spine-south / east-service / west-
+  // utility, so the city-core grid + ring + four spokes are all one
+  // connected component.
+  { id: "inner-city-ring",
+    points: [
+      [ 100, -100], [ 100,    0], [ 100,  100], [   0,  100],
+      [-100,  100], [-100,    0], [-100, -100], [   0, -100],
+      [ 100, -100],
+    ],
+    width: 12, type: "asphalt" },
+  // outer-loop: a closed regional ring at radius ~ ±460 (east/west) and
+  // z = ±200/±380 (north/south corners chamfered). Vertices at (460,30)
+  // and (-460,0) share nodes with east-service / west-utility ends, and
+  // (0,200), (±220,200) share nodes with forest-main / forest-{east,
+  // west}-connector entries. Width 14 marks it as the primary
+  // regional arterial.
+  { id: "outer-loop",
+    points: [
+      [ 460,  200], [ 460,   30], [ 460, -200],
+      [ 260, -380], [-260, -380],
+      [-460, -200], [-460,    0], [-460,  200],
+      [-220,  200], [   0,  200], [ 220,  200],
+      [ 460,  200],
+    ],
+    width: 14, type: "asphalt" },
+  // ridge-east: mountain back-road from the (80,-340) switchback corner
+  // east through the foothills, terminating on the outer-loop NE corner
+  // at (460,-200). Without it the mountain switchbacks dead-end at the
+  // observatory; with it, the mountain joins the outer ring.
+  { id: "ridge-east",
+    points: [[80, -340], [180, -330], [280, -310], [380, -290], [460, -200]],
+    width: 10, type: "mountain" },
+  // forest-{east,west}-connector: dirt collectors that drop south from
+  // the village-loop frontage into the outer-loop south leg, giving the
+  // forest village two extra exits (east via (220,200) and west via
+  // (-220,200)) on top of the existing bridge spine. (65,325) and
+  // (-60,315) match village-loop vertices for graph stitching.
+  { id: "forest-east-connector",
+    // Routed east of the outlier fishing cabin at (120,260) — the original
+    // (100,280)→(160,240) middle leg passed within 5.5m of the cabin and
+    // intruded its AABB. Swung through (115,290)→(170,260)→(200,230) so
+    // the connector hugs the east edge of the village clearing.
+    points: [[65, 325], [115, 290], [170, 260], [200, 230], [220, 210], [220, 200]],
+    width: 10, type: "dirt" },
+  { id: "forest-west-connector",
+    points: [[-60, 315], [-100, 280], [-160, 240], [-220, 210], [-220, 200]],
     width: 10, type: "dirt" },
   // -----------------------------------------------------------------
   // Driveways / parking spurs — connect outlier parked vehicles to
   // their nearest carriageway. Width 12 so the parked car visibly sits
   // on a service apron, not a shoulder.
   // -----------------------------------------------------------------
+  // East-warehouse driveways — each starts at an existing east-service
+  // vertex so the road graph treats them as connected, not isolated.
   { id: "drv-east-warehouse-a",
-    points: [[235, 8], [235, -30]],
-    width: 12, type: "dirt" }, // serves car-24 at (235,-30)
+    points: [[200, 0], [235, -30]],
+    width: 12, type: "dirt" }, // start = east-service vertex (200,0); serves car-24
   { id: "drv-east-warehouse-b",
-    points: [[310, 30], [310, 80]],
-    width: 12, type: "dirt" }, // serves car-25 at (310, 80)
+    points: [[300, 30], [310, 80]],
+    width: 12, type: "dirt" }, // start = east-service vertex (300,30); serves car-25
   { id: "drv-east-loading",
-    points: [[420, 30], [420, -55]],
-    width: 12, type: "dirt" }, // serves car-26 at (420,-55) — offset clear of warehouse at (390,-50)
+    points: [[430, 30], [420, -55]],
+    width: 12, type: "dirt" }, // start = east-service vertex (430,30); serves car-26
   { id: "drv-west-depot",
     points: [[-220, -20], [-220, 65]],
     width: 12, type: "dirt" }, // serves car-27 at (-220, 65)
@@ -752,8 +878,10 @@ export const STATIC_OBSTACLES: StaticObstacle[] = [
   // Mountain — observatory at the summit
   { x:    0, z: -485, w: 16, d: 10, kind: "observatory" },
   // ---- South Forest Village -----------------------------------------
-  // Gateway (z≈190..230) — gas stop anchors the village entry.
-  { x:    0, z:  205, w: 12, d:  8, kind: "gas_stop" },
+  // Gateway (z≈215..235) — gas stop anchors the village entry. Moved
+  // north from z=205 to z=225 so the outer-loop south leg (centerline
+  // z=200, carriageway z=193..207) clears the gas-stop AABB.
+  { x:    0, z:  225, w: 12, d:  8, kind: "gas_stop" },
   // Outlier "fishing cabin" off forest-spur (not part of village).
   { x:  120, z:  260, w: 12, d:  9, kind: "cabin" },
   // Village center (x=-70..80, z=285..365) — buildings inside loop,
@@ -820,7 +948,7 @@ function tooCloseToAnyRoad(x: number, z: number, clearance: number): boolean {
 export const FOREST_CLEARINGS: ReadonlyArray<{
   x0: number; x1: number; z0: number; z1: number;
 }> = [
-  { x0:  -10, x1:  30, z0: 195, z1: 230 }, // Gateway / gas stop
+  { x0:  -10, x1:  30, z0: 215, z1: 235 }, // Gateway / gas stop (post outer-loop move)
   { x0:  100, x1: 145, z0: 245, z1: 280 }, // Outlier fishing cabin
   { x0:  -70, x1:  80, z0: 285, z1: 365 }, // Village center (loop interior + frontage)
   { x0:   38, x1:  70, z0: 363, z1: 386 }, // cabin-E1 plot (centre 58,374)
@@ -1301,6 +1429,210 @@ if (isViteDev) {
   const totalWp = TRAFFIC_ROUTES.reduce((s, r) => s + r.waypoints.length, 0);
   const totalScatter = FOREST_TREES.length + FOREST_ROCKS.length + MOUNTAIN_ROCKS.length;
 
+  // ---- Road-graph component analysis ------------------------------------
+  // Build a true road graph from REGIONAL_ROADS and the city N-S / E-W
+  // grid that respects interior segment-segment intersections. The
+  // builder runs in three phases:
+  //   1) Collect every polyline vertex as a graph node (snap-merged
+  //      within SNAP_RADIUS so coincident endpoints from different
+  //      polylines share a single node).
+  //   2) Add explicit junction nodes at city-grid crossings (x,z) for
+  //      every (x,z) ∈ ROADS.ns × ROADS.ew. Without this, a city N-S
+  //      line and a city E-W line that visibly cross at the centre of
+  //      the city would each be a single edge endpoint→endpoint and
+  //      remain in separate components.
+  //   3) For each polyline segment, find every graph node that lies on
+  //      it (perpendicular distance < SNAP_RADIUS, parameter t ∈ [0,1])
+  //      sort by t, dedupe by node index, then emit sub-edges between
+  //      consecutive nodes. This automatically subdivides a long edge
+  //      whenever another polyline's endpoint sits on its interior —
+  //      e.g. city-grid endpoints at (±45,±100) split the inner-city-
+  //      ring north/south edges into thirds, which is exactly how the
+  //      rendered geometry behaves on the ground.
+  type RoadType_ = RoadPath["type"];
+  type GraphPolyline = {
+    id: string;
+    points: ReadonlyArray<readonly [number, number]>;
+    type: RoadType_;
+    width: number;
+  };
+  type GraphEdge = {
+    a: number; b: number; len: number;
+    roadId: string; type: RoadType_; width: number;
+  };
+  const SNAP_RADIUS = 2.0;
+  const polylines: GraphPolyline[] = [];
+  for (const rd of REGIONAL_ROADS) {
+    polylines.push({ id: rd.id, points: rd.points, type: rd.type, width: rd.width });
+  }
+  for (const x of ROADS.ns) {
+    polylines.push({
+      id: `city-ns-${x}`,
+      points: [[x, -CITY_HALF], [x, CITY_HALF]],
+      type: "asphalt", width: ROADS.width,
+    });
+  }
+  for (const z of ROADS.ew) {
+    polylines.push({
+      id: `city-ew-${z}`,
+      points: [[-CITY_HALF, z], [CITY_HALF, z]],
+      type: "asphalt", width: ROADS.width,
+    });
+  }
+
+  const gNodes: { x: number; z: number }[] = [];
+  const findOrAddNode = (x: number, z: number): number => {
+    for (let i = 0; i < gNodes.length; i++) {
+      const dx = x - gNodes[i].x;
+      const dz = z - gNodes[i].z;
+      if (dx * dx + dz * dz < SNAP_RADIUS * SNAP_RADIUS) return i;
+    }
+    gNodes.push({ x, z });
+    return gNodes.length - 1;
+  };
+  // Phase 1: register every polyline vertex.
+  for (const pl of polylines) {
+    for (const [x, z] of pl.points) findOrAddNode(x, z);
+  }
+  // Phase 2: register city-grid interior crossings.
+  for (const x of ROADS.ns) {
+    for (const z of ROADS.ew) findOrAddNode(x, z);
+  }
+
+  // Phase 3: split each segment at every node lying on it.
+  const gEdges: GraphEdge[] = [];
+  for (const pl of polylines) {
+    for (let i = 0; i < pl.points.length - 1; i++) {
+      const [ax, az] = pl.points[i];
+      const [bx, bz] = pl.points[i + 1];
+      const dx = bx - ax, dz = bz - az;
+      const seg2 = dx * dx + dz * dz;
+      if (seg2 < 1e-6) continue;
+      const hits: { idx: number; t: number }[] = [];
+      for (let n = 0; n < gNodes.length; n++) {
+        const px = gNodes[n].x, pz = gNodes[n].z;
+        let t = ((px - ax) * dx + (pz - az) * dz) / seg2;
+        if (t < -1e-3 || t > 1 + 1e-3) continue;
+        if (t < 0) t = 0;
+        if (t > 1) t = 1;
+        const fx = ax + t * dx, fz = az + t * dz;
+        const ex = px - fx, ez = pz - fz;
+        if (ex * ex + ez * ez < SNAP_RADIUS * SNAP_RADIUS) {
+          hits.push({ idx: n, t });
+        }
+      }
+      hits.sort((u, v) => u.t - v.t);
+      // Dedupe by node idx — keep the earliest t per node so each
+      // distinct node appears at most once on this segment.
+      const seen = new Set<number>();
+      const ordered = hits.filter((h) =>
+        seen.has(h.idx) ? false : (seen.add(h.idx), true)
+      );
+      for (let k = 0; k < ordered.length - 1; k++) {
+        const a = ordered[k].idx, b = ordered[k + 1].idx;
+        if (a === b) continue;
+        const len = Math.hypot(
+          gNodes[b].x - gNodes[a].x,
+          gNodes[b].z - gNodes[a].z,
+        );
+        gEdges.push({ a, b, len, roadId: pl.id, type: pl.type, width: pl.width });
+      }
+    }
+  }
+
+  // Adjacency.
+  const adj: number[][] = gNodes.map(() => []);
+  for (const e of gEdges) { adj[e.a].push(e.b); adj[e.b].push(e.a); }
+
+  // Connected components via BFS.
+  const compOf = new Array<number>(gNodes.length).fill(-1);
+  const compSizes: number[] = [];
+  for (let i = 0; i < gNodes.length; i++) {
+    if (compOf[i] >= 0) continue;
+    const cid = compSizes.length;
+    let size = 0;
+    const q: number[] = [i];
+    compOf[i] = cid;
+    while (q.length > 0) {
+      const u = q.shift()!;
+      size++;
+      for (const v of adj[u]) {
+        if (compOf[v] < 0) { compOf[v] = cid; q.push(v); }
+      }
+    }
+    compSizes.push(size);
+  }
+  const nComponents = compSizes.length;
+  let mainCompId = 0;
+  for (let i = 1; i < compSizes.length; i++) {
+    if (compSizes[i] > compSizes[mainCompId]) mainCompId = i;
+  }
+  const mainCompSize = compSizes[mainCompId] ?? 0;
+
+  // Dead-ends per kind (node degree = 1, classified by the road type of
+  // the single incident edge).
+  const deadEndsByKind: Record<RoadType_, number> = {
+    asphalt: 0, bridge: 0, forest: 0, mountain: 0, dirt: 0,
+  };
+  for (let i = 0; i < gNodes.length; i++) {
+    if (adj[i].length !== 1) continue;
+    const incident = gEdges.find((e) => e.a === i || e.b === i);
+    if (incident) deadEndsByKind[incident.type]++;
+  }
+
+  // Lengths classified into arterial / collector / local. Arterial is
+  // wide asphalt (≥12) and bridges; collector is mountain + narrower
+  // asphalt; local is dirt + forest surface.
+  let arterialLen = 0, collectorLen = 0, localLen = 0;
+  for (const e of gEdges) {
+    if ((e.type === "asphalt" && e.width >= 12) || e.type === "bridge") {
+      arterialLen += e.len;
+    } else if (e.type === "mountain" || (e.type === "asphalt" && e.width < 12)) {
+      collectorLen += e.len;
+    } else {
+      localLen += e.len;
+    }
+  }
+
+  // Isolated roads — a regional road is isolated if NONE of its vertices
+  // lie in the main connected component.
+  const isolatedRoads: string[] = [];
+  for (const rd of REGIONAL_ROADS) {
+    let connectedToMain = false;
+    for (const [x, z] of rd.points) {
+      const idx = findOrAddNode(x, z); // existing vertex — no-op insert
+      if (compOf[idx] === mainCompId) { connectedToMain = true; break; }
+    }
+    if (!connectedToMain) isolatedRoads.push(rd.id);
+  }
+
+  // Landmark existence checks — these are the two structural roads the
+  // master-plan adds. Their absence is a hard regression.
+  const cityRingExists = REGIONAL_ROADS.some((r) => r.id === "inner-city-ring");
+  const outerLoopExists = REGIONAL_ROADS.some((r) => r.id === "outer-loop");
+  if (!cityRingExists) issues.push("inner-city-ring road missing");
+  if (!outerLoopExists) issues.push("outer-loop road missing");
+  if (isolatedRoads.length > 0) {
+    issues.push(`${isolatedRoads.length} isolated road(s): ${isolatedRoads.join(", ")}`);
+  }
+
+  const trafficOnRoad = totalWp - (polish.waypointsOff ?? 0);
+  const deadEndStr =
+    `{asphalt:${deadEndsByKind.asphalt},bridge:${deadEndsByKind.bridge},` +
+    `mountain:${deadEndsByKind.mountain},forest:${deadEndsByKind.forest},` +
+    `dirt:${deadEndsByKind.dirt}}`;
+  const roadNetworkLine =
+    `roadNetwork OK: components=${nComponents} ` +
+    `(main=${mainCompSize}/${gNodes.length} nodes), ` +
+    `deadEndsByKind=${deadEndStr}, ` +
+    `arterial=${arterialLen.toFixed(0)}m, ` +
+    `collector=${collectorLen.toFixed(0)}m, ` +
+    `local=${localLen.toFixed(0)}m, ` +
+    `trafficWaypointsOnRoad=${trafficOnRoad}/${totalWp}, ` +
+    `isolatedRoads=${isolatedRoads.length}` +
+    (isolatedRoads.length > 0 ? ` [${isolatedRoads.join(",")}]` : "") + `, ` +
+    `outerLoopExists=${outerLoopExists}, cityRingExists=${cityRingExists}`;
+
   // ---- South Forest Village summary -------------------------------------
   // Counts cabin-row buildings (z≈370..455 — cabins are offset off their
   // driveway endpoints so a few sit slightly upstream of the nominal band),
@@ -1348,6 +1680,8 @@ if (isViteDev) {
     console.warn(`[city-sandbox] ${polishLine}`);
     // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${villageLine}`);
+    // eslint-disable-next-line no-console
+    console.warn(`[city-sandbox] ${roadNetworkLine}`);
   } else {
     // eslint-disable-next-line no-console
     console.info(
@@ -1364,5 +1698,7 @@ if (isViteDev) {
     console.info(`[city-sandbox] ${polishLine}`);
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${villageLine}`);
+    // eslint-disable-next-line no-console
+    console.info(`[city-sandbox] ${roadNetworkLine}`);
   }
 }
