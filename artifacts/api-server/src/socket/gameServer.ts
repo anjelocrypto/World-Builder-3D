@@ -139,6 +139,19 @@ export function setupGameServer(httpServer: HttpServer) {
         return;
       }
 
+      // Authoritative driverId: a client may only ever assign its own
+      // socket id (claim the car) or null (release the car). Without
+      // this, a malicious client could spoof `driverId: "<victim-id>"`
+      // and frame another player as the driver of a vehicle they never
+      // entered.
+      if (
+        data.driverId !== undefined &&
+        data.driverId !== null &&
+        data.driverId !== socket.id
+      ) {
+        return;
+      }
+
       // `variant` and `color` are visual-only fields established by the
       // server's INITIAL_VEHICLES on boot and must NEVER be mutated from
       // the client. Stripping them here prevents a malicious client from
