@@ -31,13 +31,14 @@ export const INITIAL_VEHICLES = [
   { id: "car-15", x: -75, y: 0.6, z: -290, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#7d6e58" },
   { id: "car-16", x:  75, y: 0.6, z: -340, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#a04060" },
   { id: "car-17", x: -10, y: 0.6, z: -465, rotY: 0,                 speed: 0, driverId: null, variant: "taxi",    color: "#e8a02a" },
-  // ===== Forest biome (6 cars) =====
-  { id: "car-18", x:  16, y: 0.6, z:  205, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#2e7d32" },
-  { id: "car-19", x: 110, y: 0.6, z:  248, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#558b2f" },
-  { id: "car-20", x: -42, y: 0.6, z:  290, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#6d4c41" },
-  { id: "car-21", x:  62, y: 0.6, z:  368, rotY: Math.PI,           speed: 0, driverId: null, variant: "sedan",   color: "#8d6e63" },
-  { id: "car-22", x: -75, y: 0.6, z:  415, rotY: Math.PI / 2,       speed: 0, driverId: null, variant: "compact", color: "#33691e" },
-  { id: "car-23", x:  10, y: 0.6, z:  475, rotY: Math.PI,           speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
+  // ===== Forest biome (6 cars) — South Forest Village =====
+  // Each car parks on a pad/spur/driveway (validator enforces this).
+  { id: "car-18", x:  15, y: 0.6, z:  213, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#2e7d32" }, // gateway-spur
+  { id: "car-19", x: -58, y: 0.6, z:  320, rotY: Math.PI / 2,       speed: 0, driverId: null, variant: "sedan",   color: "#558b2f" }, // village loop W
+  { id: "car-20", x:  60, y: 0.6, z:  340, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "van",     color: "#6d4c41" }, // village loop E
+  { id: "car-21", x: -37, y: 0.6, z:  418, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#8d6e63" }, // cabin-W1 driveway
+  { id: "car-22", x:  45, y: 0.6, z:  388, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#33691e" }, // cabin-E1 driveway
+  { id: "car-23", x: -15, y: 0.6, z:  482, rotY: Math.PI / 2,       speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" }, // trailhead-spur
   // ===== East suburban / industrial (3 cars) =====
   { id: "car-24", x: 235, y: 0.6, z:  -30, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#455a64" },
   { id: "car-25", x: 310, y: 0.6, z:   80, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#5d4037" },

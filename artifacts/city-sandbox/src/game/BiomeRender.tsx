@@ -6,6 +6,8 @@ import {
   FOREST_TREES,
   FOREST_ROCKS,
   MOUNTAIN_ROCKS,
+  VILLAGE_LAMPS,
+  VILLAGE_PARKING_PADS,
 } from "../shared/cityData";
 import type { RoadPath, StaticObstacle } from "../shared/types";
 
@@ -460,6 +462,86 @@ function MountainRocks() {
 }
 
 // =============================================================
+// VILLAGE PARKING PADS — flat dirt rectangles under each village pad.
+// Like ParkingMarkings in CityMap, but darker and oriented per pad.
+// =============================================================
+
+const PAD_COLOR = "#3f3322";
+
+function VillageParkingPads() {
+  return (
+    <group>
+      {VILLAGE_PARKING_PADS.map((p, i) => (
+        <mesh
+          key={i}
+          position={[p.x, 0.025, p.z]}
+          rotation={[-Math.PI / 2, 0, p.rotY]}
+        >
+          <planeGeometry args={[3.0, 6.0]} />
+          <meshLambertMaterial color={PAD_COLOR} />
+        </mesh>
+      ))}
+    </group>
+  );
+}
+
+// =============================================================
+// FOREST / VILLAGE LAMPS — wooden poles + emissive head + ground pool.
+// Cheaper than the city streetlamps (no shadow casting); 3 real point
+// lights are added at the busiest village corners only.
+// =============================================================
+
+const FOREST_LAMP_HEAD = "#ffd58a";
+const FOREST_LAMP_POOL = "#f0c074";
+const FOREST_LAMP_POLE = "#3a2b1c";
+
+// Three village-center crossings get a real point light each. Coords
+// match VILLAGE_LAMPS entries near the loop perimeter / centre.
+const VILLAGE_REAL_LIGHTS: ReadonlyArray<readonly [number, number, number]> = [
+  [  0, 5, 320], // village green centre
+  [ 60, 5, 330], // east loop crossing
+  [-55, 5, 325], // west loop crossing
+];
+
+function ForestLamps() {
+  return (
+    <group>
+      {VILLAGE_LAMPS.map((lamp, i) => (
+        <group key={i} position={[lamp.x, 0, lamp.z]}>
+          {/* Wooden pole */}
+          <mesh position={[0, 2.4, 0]} castShadow>
+            <cylinderGeometry args={[0.09, 0.11, 4.8, 6]} />
+            <meshLambertMaterial color={FOREST_LAMP_POLE} />
+          </mesh>
+          {/* Emissive lantern head */}
+          <mesh position={[0, 5.0, 0]}>
+            <boxGeometry args={[0.55, 0.5, 0.55]} />
+            <meshBasicMaterial color={FOREST_LAMP_HEAD} />
+          </mesh>
+          {/* Fake light pool on the ground */}
+          <mesh position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <circleGeometry args={[4, 14]} />
+            <meshBasicMaterial color={FOREST_LAMP_POOL} transparent opacity={0.16} />
+          </mesh>
+        </group>
+      ))}
+      {/* Three warm point lights at the village centre — small distance
+          + decay=2 keeps the per-frame cost contained. */}
+      {VILLAGE_REAL_LIGHTS.map(([x, y, z], i) => (
+        <pointLight
+          key={i}
+          position={[x, y, z]}
+          color="#ffcb88"
+          intensity={5}
+          distance={26}
+          decay={2}
+        />
+      ))}
+    </group>
+  );
+}
+
+// =============================================================
 // ROOT
 // =============================================================
 
@@ -469,10 +551,12 @@ export default function BiomeRender() {
       <BiomeGround />
       <RegionalRoads />
       <BridgeLaneStripes />
+      <VillageParkingPads />
       <StaticObstacles />
       <ForestTrees />
       <ForestRocks />
       <MountainRocks />
+      <ForestLamps />
     </group>
   );
 }

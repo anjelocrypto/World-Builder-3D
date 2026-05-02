@@ -259,13 +259,14 @@ export const INITIAL_VEHICLES: VehicleState[] = [
   { id: "car-15", x: -75, y: 0.6, z: -290, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#7d6e58" },
   { id: "car-16", x:  75, y: 0.6, z: -340, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#a04060" },
   { id: "car-17", x: -10, y: 0.6, z: -465, rotY: 0,                 speed: 0, driverId: null, variant: "taxi",    color: "#e8a02a" },
-  // ===== Forest biome (6 cars) — gas stop + cabins + ranger =====
-  { id: "car-18", x:  16, y: 0.6, z:  205, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#2e7d32" },
-  { id: "car-19", x: 110, y: 0.6, z:  248, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#558b2f" },
-  { id: "car-20", x: -42, y: 0.6, z:  290, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#6d4c41" },
-  { id: "car-21", x:  62, y: 0.6, z:  368, rotY: Math.PI,           speed: 0, driverId: null, variant: "sedan",   color: "#8d6e63" },
-  { id: "car-22", x: -75, y: 0.6, z:  415, rotY: Math.PI / 2,       speed: 0, driverId: null, variant: "compact", color: "#33691e" },
-  { id: "car-23", x:  10, y: 0.6, z:  475, rotY: Math.PI,           speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
+  // ===== Forest biome (6 cars) — South Forest Village =====
+  // Each car parks on a pad/spur/driveway (validator enforces this).
+  { id: "car-18", x:  15, y: 0.6, z:  213, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#2e7d32" }, // gateway-spur
+  { id: "car-19", x: -58, y: 0.6, z:  320, rotY: Math.PI / 2,       speed: 0, driverId: null, variant: "sedan",   color: "#558b2f" }, // village loop W
+  { id: "car-20", x:  60, y: 0.6, z:  340, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "van",     color: "#6d4c41" }, // village loop E
+  { id: "car-21", x: -37, y: 0.6, z:  418, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#8d6e63" }, // cabin-W1 driveway
+  { id: "car-22", x:  45, y: 0.6, z:  388, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#33691e" }, // cabin-E1 driveway
+  { id: "car-23", x: -15, y: 0.6, z:  482, rotY: Math.PI / 2,       speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" }, // trailhead-spur
   // ===== East suburban / industrial (3 cars) =====
   { id: "car-24", x: 235, y: 0.6, z:  -30, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#455a64" },
   { id: "car-25", x: 310, y: 0.6, z:   80, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#5d4037" },
@@ -521,7 +522,7 @@ const MOUNTAIN_LOOP: [number, number, number][] = forwardReverseRoute(
 // north endpoint. All coordinates match REGIONAL_ROADS centerlines.
 const BRIDGE_FOREST_POLY: ReadonlyArray<readonly [number, number]> = [
   [  0, 100], [  0, 130], [  0, 180], [ 40, 230],
-  [-30, 290], [ 50, 360], [-40, 430], [  0, 480],
+  [-30, 290], [ 50, 360], [-40, 430], [  0, 482],
 ];
 const BRIDGE_FOREST_LOOP: [number, number, number][] = forwardReverseRoute(
   BRIDGE_FOREST_POLY,
@@ -651,11 +652,41 @@ export const REGIONAL_ROADS: RoadPath[] = [
     points: [[0, 130], [0, 180]],
     width: 14, type: "bridge" },
   { id: "forest-main",
-    points: [[0, 180], [40, 230], [-30, 290], [50, 360], [-40, 430], [0, 480]],
+    points: [[0, 180], [40, 230], [-30, 290], [50, 360], [-40, 430], [0, 482]],
     width: 12, type: "forest" },
   { id: "forest-spur",
     points: [[40, 230], [120, 240]],
-    width: 8, type: "dirt" },
+    width: 8, type: "dirt" }, // outlier fishing cabin
+  // -----------------------------------------------------------------
+  // South Forest Village — gateway / village center / cabin row /
+  // trailhead. All branch off forest-main. Loop is closed by repeating
+  // first point at end so the rendered chain draws every edge.
+  // -----------------------------------------------------------------
+  { id: "gateway-spur",
+    points: [[6, 213], [24, 213]],
+    width: 6, type: "dirt" },
+  { id: "village-loop",
+    points: [[5, 285], [55, 295], [65, 325], [60, 355], [25, 365],
+             [-30, 365], [-55, 345], [-60, 315], [-30, 290], [5, 285]],
+    width: 10, type: "dirt" },
+  { id: "drv-cabin-e1",
+    points: [[40, 368], [50, 380]],
+    width: 6, type: "dirt" },
+  { id: "drv-cabin-e2",
+    points: [[10, 392], [20, 405]],
+    width: 6, type: "dirt" },
+  { id: "drv-cabin-e3",
+    points: [[-6, 473], [10, 460]],
+    width: 6, type: "dirt" },
+  { id: "drv-cabin-w1",
+    points: [[-30, 422], [-40, 410]],
+    width: 6, type: "dirt" },
+  { id: "drv-cabin-w2",
+    points: [[-40, 430], [-55, 440]],
+    width: 6, type: "dirt" },
+  { id: "trailhead-spur",
+    points: [[-25, 482], [25, 482]],
+    width: 10, type: "dirt" },
   // East service road
   { id: "east-service",
     points: [[100, 0], [200, 0], [300, 30], [430, 30]],
@@ -681,9 +712,6 @@ export const REGIONAL_ROADS: RoadPath[] = [
   { id: "drv-west-depot",
     points: [[-220, -20], [-220, 65]],
     width: 12, type: "dirt" }, // serves car-27 at (-220, 65)
-  { id: "drv-forest-cabin",
-    points: [[-25, 415], [-75, 415]],
-    width: 10, type: "dirt" }, // serves car-22 at (-75, 415); branches off forest-main
 ];
 
 // =============================================================
@@ -723,19 +751,35 @@ export const STATIC_OBSTACLES: StaticObstacle[] = [
   { x:   95, z: -430, w: 12, d: 1.2, kind: "guardrail" },
   // Mountain — observatory at the summit
   { x:    0, z: -485, w: 16, d: 10, kind: "observatory" },
-  // Forest — gas stop, cabins, ranger station
-  { x:    0, z:  205, w: 10, d:  7, kind: "gas_stop" },
-  { x:  120, z:  260, w: 12, d:  9, kind: "cabin" }, // off forest-spur end at (120,240)
-  { x:  -55, z:  280, w: 10, d:  8, kind: "cabin" },
-  { x:   62, z:  380, w: 12, d: 10, kind: "cabin" },
-  { x:  -90, z:  420, w: 14, d: 12, kind: "ranger_station" },
-  // Forest — collidable boulders + thick tree trunks near road
+  // ---- South Forest Village -----------------------------------------
+  // Gateway (z≈190..230) — gas stop anchors the village entry.
+  { x:    0, z:  205, w: 12, d:  8, kind: "gas_stop" },
+  // Outlier "fishing cabin" off forest-spur (not part of village).
+  { x:  120, z:  260, w: 12, d:  9, kind: "cabin" },
+  // Village center (x=-70..80, z=285..365) — buildings inside loop,
+  // facing the village green at the centre. Lodge + Inn are offset from
+  // the forest-main diagonal that cuts through the village.
+  { x:  -10, z:  332, w: 18, d: 12, kind: "cabin" },          // Lodge
+  { x:  -45, z:  320, w: 12, d: 10, kind: "cabin" },          // General store
+  { x:   50, z:  330, w: 12, d: 10, kind: "cabin" },          // Inn
+  { x:  -10, z:  350, w:  8, d:  6, kind: "ranger_station" }, // Info booth
+  // Cabin / residential edge (z=380..455) — 5 cabins, each set ~10m
+  // perpendicular off its driveway endpoint so the driveway clears the
+  // building footprint cleanly.
+  { x:   58, z:  374, w: 12, d: 10, kind: "cabin" },          // E1 ← drv (40,368)→(50,380)
+  { x:   28, z:  399, w: 12, d: 10, kind: "cabin" },          // E2 ← drv (10,392)→(20,405)
+  { x:    4, z:  452, w: 12, d: 10, kind: "cabin" },          // E3 ← drv (-6,473)→(10,460)
+  { x:  -48, z:  416, w: 12, d: 10, kind: "cabin" },          // W1 ← drv (-30,422)→(-40,410)
+  { x:  -50, z:  449, w: 12, d: 10, kind: "cabin" },          // W2 ← drv (-40,430)→(-55,440)
+  // Trailhead (z=460..495) — ranger station behind trailhead-spur pad.
+  { x:    0, z:  495, w: 10, d:  8, kind: "ranger_station" },
+  // Forest — collidable boulders + thick tree trunks (kept clear of all
+  // village/cabin/trailhead clearings; see FOREST_CLEARINGS).
   { x:   90, z:  270, w: 5,   d: 5,   kind: "large_rock" },
-  { x:  -70, z:  350, w: 6,   d: 5,   kind: "large_rock" },
   { x:  120, z:  460, w: 5,   d: 6,   kind: "large_rock" },
+  { x:  -90, z:  250, w: 5,   d: 5,   kind: "large_rock" },
   { x:   20, z:  230, w: 1.6, d: 1.6, kind: "tree_trunk" },
   { x:  -25, z:  260, w: 1.6, d: 1.6, kind: "tree_trunk" },
-  { x:   40, z:  320, w: 1.6, d: 1.6, kind: "tree_trunk" },
   { x:  -45, z:  380, w: 1.6, d: 1.6, kind: "tree_trunk" },
   { x:   35, z:  460, w: 1.6, d: 1.6, kind: "tree_trunk" },
   // East — warehouses + water tower base
@@ -770,27 +814,97 @@ function tooCloseToAnyRoad(x: number, z: number, clearance: number): boolean {
   return false;
 }
 
-function makeForestInstances(): { trees: TreeInstance[]; rocks: RockInstance[] } {
+// South Forest Village clearings — rectangles where tree/rock scatter is
+// excluded so the village reads cleanly. Roads alone are not enough — the
+// village green and cabin plots need open ground around the buildings.
+export const FOREST_CLEARINGS: ReadonlyArray<{
+  x0: number; x1: number; z0: number; z1: number;
+}> = [
+  { x0:  -10, x1:  30, z0: 195, z1: 230 }, // Gateway / gas stop
+  { x0:  100, x1: 145, z0: 245, z1: 280 }, // Outlier fishing cabin
+  { x0:  -70, x1:  80, z0: 285, z1: 365 }, // Village center (loop interior + frontage)
+  { x0:   38, x1:  70, z0: 363, z1: 386 }, // cabin-E1 plot (centre 58,374)
+  { x0:   18, x1:  40, z0: 388, z1: 410 }, // cabin-E2 plot (centre 28,399)
+  { x0:   -6, x1:  16, z0: 442, z1: 463 }, // cabin-E3 plot (centre  4,452)
+  { x0:  -56, x1: -38, z0: 408, z1: 425 }, // cabin-W1 plot (centre -48,416)
+  { x0:  -60, x1: -38, z0: 440, z1: 460 }, // cabin-W2 plot (centre -50,449)
+  { x0:  -30, x1:  30, z0: 470, z1: 500 }, // Trailhead
+];
+
+function inAnyClearing(x: number, z: number): boolean {
+  for (const c of FOREST_CLEARINGS) {
+    if (x >= c.x0 && x <= c.x1 && z >= c.z0 && z <= c.z1) return true;
+  }
+  return false;
+}
+
+// Walk forest-main and place trees deterministically every 12m, alternating
+// sides at offset 10 (halfwidth 6 + 4m clearance). This gives the road a
+// readable lined-with-trees look without relying on random scatter.
+function makeRoadsideRows(): TreeInstance[] {
+  const out: TreeInstance[] = [];
+  const fm = REGIONAL_ROADS.find((r) => r.id === "forest-main");
+  if (!fm) return out;
+  const SPACING = 12;
+  const OFFSET = 10;
+  const r = seededRandom(31415);
+  let traveled = 0;
+  let nextSample = 6;
+  let sampleIdx = 0;
+  for (let i = 0; i < fm.points.length - 1; i++) {
+    const [ax, az] = fm.points[i];
+    const [bx, bz] = fm.points[i + 1];
+    const dx = bx - ax;
+    const dz = bz - az;
+    const len = Math.hypot(dx, dz);
+    if (len < 1e-3) continue;
+    const tx = dx / len;
+    const tz = dz / len;
+    // Right-hand normal (rotated +90° in 2D). Both sides used via `side`.
+    const nx = tz;
+    const nz = -tx;
+    while (nextSample < traveled + len) {
+      const t = (nextSample - traveled) / len;
+      const px = ax + t * dx;
+      const pz = az + t * dz;
+      const side = sampleIdx % 2 === 0 ? 1 : -1;
+      const x = px + side * OFFSET * nx;
+      const z = pz + side * OFFSET * nz;
+      sampleIdx++;
+      nextSample += SPACING;
+      if (inAnyClearing(x, z)) continue;
+      if (tooCloseToAnyRoad(x, z, SCATTER_ROAD_CLEARANCE)) continue;
+      out.push({ x, z, scale: 0.9 + r() * 0.5, rotY: r() * Math.PI * 2 });
+    }
+    traveled += len;
+  }
+  return out;
+}
+
+function makeForestScatter(
+  initialTrees: TreeInstance[],
+): { trees: TreeInstance[]; rocks: RockInstance[] } {
   const r = seededRandom(12345);
-  const trees: TreeInstance[] = [];
+  const trees: TreeInstance[] = [...initialTrees];
   const rocks: RockInstance[] = [];
   const z0 = 195;
   const z1 = 495;
   const xMag = 285;
-  // Up the over-sample budget: each rejected sample (close to a road)
-  // burns one PRNG draw. 4× the target keeps us deterministic without
-  // ever truncating the visual density.
+  // Total target includes the roadside rows already in `trees`. Scatter
+  // tops the array up to TREE_TARGET so the visual density stays steady.
   const TREE_TARGET = 220;
   const ROCK_TARGET = 60;
   for (let i = 0; i < TREE_TARGET * 4 && trees.length < TREE_TARGET; i++) {
     const x = (r() - 0.5) * 2 * xMag;
     const z = z0 + r() * (z1 - z0);
+    if (inAnyClearing(x, z)) continue;
     if (tooCloseToAnyRoad(x, z, SCATTER_ROAD_CLEARANCE)) continue;
     trees.push({ x, z, scale: 0.7 + r() * 0.9, rotY: r() * Math.PI * 2 });
   }
   for (let i = 0; i < ROCK_TARGET * 4 && rocks.length < ROCK_TARGET; i++) {
     const x = (r() - 0.5) * 2 * xMag;
     const z = z0 + r() * (z1 - z0);
+    if (inAnyClearing(x, z)) continue;
     if (tooCloseToAnyRoad(x, z, SCATTER_ROAD_CLEARANCE)) continue;
     rocks.push({ x, z, scale: 0.6 + r() * 1.1, rotY: r() * Math.PI * 2 });
   }
@@ -813,10 +927,60 @@ function makeMountainRocks(): RockInstance[] {
   return out;
 }
 
-const _forest = makeForestInstances();
+const _roadsideTrees = makeRoadsideRows();
+const _forest = makeForestScatter(_roadsideTrees);
 export const FOREST_TREES: TreeInstance[] = _forest.trees;
 export const FOREST_ROCKS: RockInstance[] = _forest.rocks;
 export const MOUNTAIN_ROCKS: RockInstance[] = makeMountainRocks();
+// Counts kept for the South Forest Village validator line.
+export const FOREST_ROADSIDE_COUNT = _roadsideTrees.length;
+export const FOREST_SCATTER_TREE_COUNT = FOREST_TREES.length - FOREST_ROADSIDE_COUNT;
+
+// =============================================================
+// SOUTH FOREST VILLAGE — lamps + parking pads
+// =============================================================
+//
+// Lamps reuse StreetLightData (only x/z). The renderer (BiomeRender)
+// draws a cheap emissive head + transparent ground "light pool"; a few
+// real point lights are added at the village center to anchor the scene
+// without breaking the per-frame budget.
+export const VILLAGE_LAMPS: StreetLightData[] = [
+  // Gateway (z≈213)
+  { x:  -8, z: 213 },
+  { x:   8, z: 213 },
+  // Forest-main spine between gateway and village
+  { x:  28, z: 250 },
+  { x: -28, z: 285 },
+  // Village loop perimeter
+  { x:  60, z: 320 },
+  { x:  25, z: 365 },
+  { x: -55, z: 345 },
+  { x: -55, z: 305 },
+  // Forest-main spine through cabin row
+  { x:  30, z: 380 },
+  { x: -25, z: 415 },
+  { x:   0, z: 445 },
+  // Trailhead
+  { x: -10, z: 482 },
+  { x:  10, z: 482 },
+  { x:   0, z: 470 },
+];
+
+// Village center parking pads (rendered by BiomeRender as dirt rectangles).
+// Cars park on a few of these; the rest stand empty for visual density.
+export const VILLAGE_PARKING_PADS: ParkingSpot[] = [
+  // East loop edge (parallel parking, facing N/S)
+  { x:  60, z: 320, rotY: Math.PI / 2 },
+  { x:  60, z: 340, rotY: Math.PI / 2 }, // car-20
+  // West loop edge
+  { x: -58, z: 320, rotY: Math.PI / 2 }, // car-19
+  { x: -58, z: 340, rotY: Math.PI / 2 },
+  // Interior frontage near the village green
+  { x:  25, z: 295, rotY: 0 },
+  { x: -25, z: 295, rotY: 0 },
+  { x:  25, z: 358, rotY: 0 },
+  { x: -25, z: 358, rotY: 0 },
+];
 
 // =============================================================
 // COLLISION & VALIDATION HELPERS
@@ -1106,6 +1270,31 @@ if (isViteDev) {
     ._polish ?? {};
   const totalWp = TRAFFIC_ROUTES.reduce((s, r) => s + r.waypoints.length, 0);
   const totalScatter = FOREST_TREES.length + FOREST_ROCKS.length + MOUNTAIN_ROCKS.length;
+
+  // ---- South Forest Village summary -------------------------------------
+  // Counts cabin-row buildings (z≈370..455 — cabins are offset off their
+  // driveway endpoints so a few sit slightly upstream of the nominal band),
+  // village forest cars (z=190..495), trailhead entities, etc., so a
+  // regression in the village structure is loud in the console.
+  let cabinRowCount = 0;
+  for (const o of STATIC_OBSTACLES) {
+    if (o.kind === "cabin" && o.z >= 370 && o.z <= 455) cabinRowCount++;
+  }
+  let villageCars = 0;
+  for (const v of INITIAL_VEHICLES) {
+    if (v.z >= 190 && v.z <= 495 && Math.abs(v.x) <= 150) villageCars++;
+  }
+  let trailheadEntities = 0;
+  for (const o of STATIC_OBSTACLES) {
+    if (o.z >= 460 && o.z <= 498) trailheadEntities++;
+  }
+  const villageLine =
+    `South Forest Village: ${VILLAGE_PARKING_PADS.length} pads, ` +
+    `${VILLAGE_LAMPS.length} lamps, ${cabinRowCount} cabins, ` +
+    `${villageCars} forest cars, ${FOREST_CLEARINGS.length} clearings, ` +
+    `${FOREST_ROADSIDE_COUNT} roadside-row trees + ` +
+    `${FOREST_SCATTER_TREE_COUNT} scatter trees, ` +
+    `${trailheadEntities} trailhead entities.`;
   const polishLine =
     `road clearances: ${totalWp - (polish.waypointsOff ?? 0)}/${totalWp} ` +
     `traffic waypoints on-road, ${CHECKPOINTS.length - (polish.checkpointsOff ?? 0)}/` +
@@ -1125,6 +1314,8 @@ if (isViteDev) {
     }
     // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${polishLine}`);
+    // eslint-disable-next-line no-console
+    console.warn(`[city-sandbox] ${villageLine}`);
   } else {
     // eslint-disable-next-line no-console
     console.info(
@@ -1139,5 +1330,7 @@ if (isViteDev) {
     );
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${polishLine}`);
+    // eslint-disable-next-line no-console
+    console.info(`[city-sandbox] ${villageLine}`);
   }
 }
