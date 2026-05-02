@@ -124,21 +124,42 @@ interface BlockDef {
   district: DistrictType;
 }
 
+// Block layout note: the road grid runs at x = -45, 0, 45 and z = -45, 0,
+// 45. Any block whose footprint crosses one of those centerlines would
+// place buildings on the carriageway. To avoid that, the four cardinal
+// "edge" blocks (north/south/east/west of the plaza) are SPLIT into two
+// half-blocks on either side of the road that bisects them. This keeps
+// every block strictly off-road while preserving the visual feel of a
+// continuous street wall.
 const blockDefs: BlockDef[] = [
-  // Downtown — northern row (negative z = "north"), tall buildings.
+  // Northwest corner — downtown
   { cx: -65, cz: -65, bw: 30, bd: 30, count: 4, district: "downtown" },
-  { cx: 0, cz: -65, bw: 30, bd: 30, count: 4, district: "downtown" },
-  { cx: 65, cz: -65, bw: 30, bd: 30, count: 4, district: "downtown" },
-  // Commercial — middle row (z = 0). Center block (cx=0, cz=0) is the
-  // plaza/spawn area, intentionally building-free.
-  { cx: -65, cz: 0, bw: 30, bd: 30, count: 4, district: "commercial" },
-  { cx: 65, cz: 0, bw: 30, bd: 30, count: 4, district: "commercial" },
-  // Residential — southern row, shorter buildings.
-  { cx: -65, cz: 65, bw: 30, bd: 30, count: 4, district: "residential" },
-  { cx: 0, cz: 65, bw: 30, bd: 30, count: 4, district: "residential" },
-  { cx: 65, cz: 65, bw: 30, bd: 30, count: 4, district: "residential" },
+  // North row — split around the N-S road at x = 0
+  { cx: -22.5, cz: -65, bw: 15, bd: 30, count: 2, district: "downtown" },
+  { cx:  22.5, cz: -65, bw: 15, bd: 30, count: 2, district: "downtown" },
+  // Northeast corner — downtown
+  { cx:  65, cz: -65, bw: 30, bd: 30, count: 4, district: "downtown" },
+  // West row — split around the E-W road at z = 0
+  { cx: -65, cz: -22.5, bw: 30, bd: 15, count: 2, district: "commercial" },
+  { cx: -65, cz:  22.5, bw: 30, bd: 15, count: 2, district: "commercial" },
+  // East row — split around the E-W road at z = 0
+  { cx:  65, cz: -22.5, bw: 30, bd: 15, count: 2, district: "commercial" },
+  { cx:  65, cz:  22.5, bw: 30, bd: 15, count: 2, district: "commercial" },
+  // Center plaza (cx=0, cz=0) is intentionally empty — see SPAWN_POINTS.
+  // Southwest corner — residential
+  { cx: -65, cz:  65, bw: 30, bd: 30, count: 4, district: "residential" },
+  // South row — split around the N-S road at x = 0
+  { cx: -22.5, cz:  65, bw: 15, bd: 30, count: 2, district: "residential" },
+  { cx:  22.5, cz:  65, bw: 15, bd: 30, count: 2, district: "residential" },
+  // Southeast corner — residential
+  { cx:  65, cz:  65, bw: 30, bd: 30, count: 4, district: "residential" },
 ];
 
+// Generate one building inside a block. Dimensions are clamped to fit
+// inside `block_dim - padding * 2` so the building footprint can never
+// extend past the block boundary, and `padding = 5` gives the validator's
+// road check a safe 5-unit margin between every block edge and the
+// nearest road carriageway.
 function genBuilding(
   cx: number,
   cz: number,
@@ -147,10 +168,15 @@ function genBuilding(
   district: DistrictType
 ): Building {
   const def = DISTRICTS[district];
-  const padding = 4;
+  const padding = 5;
   const [minW, maxW] = def.widthRange;
-  const w = minW + rng() * (maxW - minW);
-  const d = minW + rng() * (maxW - minW);
+  // Effective dimension ranges: never larger than (bw - 2*padding) etc.
+  const effMaxW = Math.max(3, Math.min(maxW, bw - padding * 2));
+  const effMinW = Math.min(minW, effMaxW);
+  const effMaxD = Math.max(3, Math.min(maxW, bd - padding * 2));
+  const effMinD = Math.min(minW, effMaxD);
+  const w = effMinW + rng() * (effMaxW - effMinW);
+  const d = effMinD + rng() * (effMaxD - effMinD);
   const [minH, maxH] = def.heightRange;
   const h = minH + rng() * (maxH - minH);
   const ox = (rng() - 0.5) * Math.max(0, bw - w - padding * 2);
@@ -192,15 +218,16 @@ export const INITIAL_VEHICLES: VehicleState[] = [
   { id: "car-4",  x:  55, y: 0.6, z:   8, rotY: Math.PI / 2,        speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
   { id: "car-5",  x: -55, y: 0.6, z:  -8, rotY: -Math.PI / 2,       speed: 0, driverId: null, variant: "compact", color: "#f39c12" },
   { id: "car-6",  x:   8, y: 0.6, z:  55, rotY: Math.PI,            speed: 0, driverId: null, variant: "sedan",   color: "#9b59b6" },
-  { id: "car-7",  x:  -8, y: 0.6, z: -55, rotY: 0,                  speed: 0, driverId: null, variant: "van",     color: "#16a085" },
+  { id: "car-7",  x:  -8, y: 0.6, z: -49, rotY: 0,                  speed: 0, driverId: null, variant: "van",     color: "#16a085" },
   // Mid ring
   { id: "car-8",  x:  35, y: 0.6, z:  35, rotY: Math.PI,            speed: 0, driverId: null, variant: "sedan",   color: "#e67e22" },
   { id: "car-9",  x: -35, y: 0.6, z: -35, rotY: 0,                  speed: 0, driverId: null, variant: "van",     color: "#34495e" },
   { id: "car-10", x:  35, y: 0.6, z: -35, rotY: -Math.PI / 2,       speed: 0, driverId: null, variant: "compact", color: "#1abc9c" },
   { id: "car-11", x: -35, y: 0.6, z:  35, rotY: Math.PI / 2,        speed: 0, driverId: null, variant: "sedan",   color: "#d35400" },
-  // Outer ring
-  { id: "car-12", x:  60, y: 0.6, z: -55, rotY: 0,                  speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
-  { id: "car-13", x: -60, y: 0.6, z:  55, rotY: Math.PI,            speed: 0, driverId: null, variant: "compact", color: "#27ae60" },
+  // Outer ring — parked along outer roads, between intersections, well
+  // clear of every corner block. Sit on the carriageway shoulder.
+  { id: "car-12", x:  41, y: 0.6, z: -70, rotY: 0,                  speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
+  { id: "car-13", x: -41, y: 0.6, z:  70, rotY: Math.PI,            speed: 0, driverId: null, variant: "compact", color: "#27ae60" },
 ];
 
 // =============================================================
@@ -222,12 +249,15 @@ export const SPAWN_POINTS: [number, number, number][] = [
 // CHECKPOINTS — drive-through race gates
 // =============================================================
 
+// Checkpoints sit on road centerlines so the racing route stays on roads
+// and there is no risk of overlapping a generated building (the validator
+// below checks this).
 export const CHECKPOINTS: CheckpointData[] = [
-  { id: 0, x: 0, z: -42 },
-  { id: 1, x: 55, z: 0 },
-  { id: 2, x: 0, z: 55 },
-  { id: 3, x: -55, z: 0 },
-  { id: 4, x: 0, z: -42 },
+  { id: 0, x: 0, z: -45 },
+  { id: 1, x: 45, z: 0 },
+  { id: 2, x: 0, z: 45 },
+  { id: 3, x: -45, z: 0 },
+  { id: 4, x: 0, z: -45 },
 ];
 
 // =============================================================
@@ -314,23 +344,28 @@ const NPC_PALETTE: { skin: string; shirt: string }[] = [
   { skin: "#a87753", shirt: "#34495e" },
 ];
 
+// Walk the four corners of the block at a fixed offset OUTSIDE its
+// footprint (block_half + 3) so the NPC always travels on or near the
+// sidewalk — even for narrow split blocks where bw ≠ bd.
 function makeBlockSidewalkLoop(
   cx: number,
   cz: number,
-  half: number
+  bw: number,
+  bd: number
 ): [number, number][] {
-  // Walk the four corners of the block on the outside of the sidewalk.
+  const halfW = bw / 2 + 3;
+  const halfD = bd / 2 + 3;
   return [
-    [cx + half, cz - half],
-    [cx + half, cz + half],
-    [cx - half, cz + half],
-    [cx - half, cz - half],
+    [cx + halfW, cz - halfD],
+    [cx + halfW, cz + halfD],
+    [cx - halfW, cz + halfD],
+    [cx - halfW, cz - halfD],
   ];
 }
 
 export const NPC_ROUTES: NpcRoute[] = blockDefs.map((b, i) => ({
   id: i,
-  waypoints: makeBlockSidewalkLoop(b.cx, b.cz, 18),
+  waypoints: makeBlockSidewalkLoop(b.cx, b.cz, b.bw, b.bd),
   cycleSeconds: 60 + (i % 3) * 8,
   skinColor: NPC_PALETTE[i % NPC_PALETTE.length].skin,
   shirtColor: NPC_PALETTE[i % NPC_PALETTE.length].shirt,

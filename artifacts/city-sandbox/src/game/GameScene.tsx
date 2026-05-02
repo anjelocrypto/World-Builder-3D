@@ -9,6 +9,8 @@ import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
 import HUD from "./HUD";
+import NPCs from "./NPCs";
+import AmbientTraffic from "./AmbientTraffic";
 
 const KEY_MAP = [
   { name: Controls.forward,  keys: ["ArrowUp",    "KeyW"] },
@@ -153,17 +155,33 @@ export default function GameScene({
           camera={{ fov: 75, near: 0.1, far: 300, position: [0, 8, 15] }}
           style={{ width: "100%", height: "100%" }}
         >
-          {/* Ambient + directional light */}
-          <ambientLight intensity={0.3} color="#2244aa" />
+          {/* Global lighting — kept light to preserve the evening mood
+              while making the city readable. Only ONE shadow-casting
+              light to keep performance steady on Replit. */}
+          <hemisphereLight
+            args={["#aabbdd", "#242838", 0.55]}
+          />
           <directionalLight
-            position={[30, 50, 20]}
-            intensity={0.6}
-            color="#ffffff"
+            position={[40, 60, 30]}
+            intensity={0.55}
+            color="#ffe5c8"
             castShadow
             shadow-mapSize={[1024, 1024]}
+            shadow-camera-left={-90}
+            shadow-camera-right={90}
+            shadow-camera-top={90}
+            shadow-camera-bottom={-90}
+            shadow-camera-near={0.5}
+            shadow-camera-far={200}
           />
+          <ambientLight intensity={0.18} color="#1a2240" />
 
           <CityMap />
+
+          {/* Ambient life — pedestrians and AI traffic. Both client-only,
+              deterministic from Date.now(), so no Socket.io traffic. */}
+          <NPCs />
+          <AmbientTraffic />
 
           {/* Remote players */}
           {remotePlayers.map((p) => (

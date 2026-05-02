@@ -25,6 +25,10 @@ interface VehicleState {
   speed: number;
   driverId: string | null;
   color: string;
+  // Visual-only field that flows through from INITIAL_VEHICLES so the
+  // client can render different car body shapes. The server itself does
+  // not act on this value.
+  variant?: string;
 }
 
 const players = new Map<string, PlayerState>();
@@ -112,12 +116,24 @@ export function setupGameServer(httpServer: HttpServer) {
       const vehicle = vehicles.get(data.id);
       if (!vehicle) return;
 
-      // Only driver can update vehicle
-      if (vehicle.driverId && vehicle.driverId !== socket.id && data.driverId !== null) {
+      // Strict ownership check: if this vehicle is occupied by someone
+      // else, reject ALL updates unconditionally. The previous gate let
+      // a non-driver send `driverId: null` to forcibly eject the real
+      // driver and teleport the car (griefing / IDOR). An unoccupied
+      // vehicle (driverId === null) may still be claimed by anyone,
+      // which is how `enter vehicle` works.
+      if (vehicle.driverId !== null && vehicle.driverId !== socket.id) {
         return;
       }
 
-      const updated: VehicleState = { ...vehicle, ...data };
+      // `variant` and `color` are visual-only fields established by the
+      // server's INITIAL_VEHICLES on boot and must NEVER be mutated from
+      // the client. Stripping them here prevents a malicious client from
+      // injecting an invalid variant string that could crash other
+      // clients when they look it up in VARIANT_DIMENSIONS.
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      const { variant: _v, color: _c, ...safe } = data;
+      const updated: VehicleState = { ...vehicle, ...safe };
       vehicles.set(data.id, updated);
       socket.broadcast.emit("vehicleMoved", updated);
     });
