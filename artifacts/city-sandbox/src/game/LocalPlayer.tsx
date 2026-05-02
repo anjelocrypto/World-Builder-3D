@@ -900,8 +900,11 @@ export default function LocalPlayer({
             variant={drivingVehicleState.variant}
             color={drivingVehicleState.color}
           />
+          {/* Driving headlight — vehicle forward is local -Z (see
+              CarVisual + updateVehicle), so the front-mounted point
+              light sits at z = -2.5, not +2.5. */}
           <pointLight
-            position={[0, 1.5, 2.5]}
+            position={[0, 1.5, -2.5]}
             color="#ffffc0"
             intensity={6}
             distance={12}

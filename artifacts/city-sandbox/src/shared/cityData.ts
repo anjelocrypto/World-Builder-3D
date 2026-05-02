@@ -974,10 +974,14 @@ export const VARIANT_DIMENSIONS: Record<
   VehicleVariant,
   { bodyW: number; bodyH: number; bodyD: number; cabinW: number; cabinH: number; cabinD: number; cabinOffsetZ: number }
 > = {
-  sedan:   { bodyW: 2.2, bodyH: 0.8, bodyD: 4.5, cabinW: 1.8, cabinH: 0.7, cabinD: 2.4, cabinOffsetZ: -0.2 },
-  van:     { bodyW: 2.3, bodyH: 1.0, bodyD: 5.0, cabinW: 2.1, cabinH: 1.4, cabinD: 3.6, cabinOffsetZ: -0.4 },
-  taxi:    { bodyW: 2.2, bodyH: 0.8, bodyD: 4.5, cabinW: 1.8, cabinH: 0.7, cabinD: 2.4, cabinOffsetZ: -0.2 },
-  compact: { bodyW: 2.0, bodyH: 0.7, bodyD: 3.8, cabinW: 1.6, cabinH: 0.6, cabinD: 2.0, cabinOffsetZ: -0.2 },
+  // cabinOffsetZ is the cabin's local-Z offset from the body center.
+  // The vehicle's gameplay forward is local -Z (LocalPlayer + traffic
+  // routes use forward = (-sin rotY, -cos rotY)), so the cabin sits
+  // slightly toward the REAR (positive Z) of the body.
+  sedan:   { bodyW: 2.2, bodyH: 0.8, bodyD: 4.5, cabinW: 1.8, cabinH: 0.7, cabinD: 2.4, cabinOffsetZ:  0.2 },
+  van:     { bodyW: 2.3, bodyH: 1.0, bodyD: 5.0, cabinW: 2.1, cabinH: 1.4, cabinD: 3.6, cabinOffsetZ:  0.4 },
+  taxi:    { bodyW: 2.2, bodyH: 0.8, bodyD: 4.5, cabinW: 1.8, cabinH: 0.7, cabinD: 2.4, cabinOffsetZ:  0.2 },
+  compact: { bodyW: 2.0, bodyH: 0.7, bodyD: 3.8, cabinW: 1.6, cabinH: 0.6, cabinD: 2.0, cabinOffsetZ:  0.2 },
 };
 
 // =============================================================

@@ -39,6 +39,15 @@ interface CarVisualProps {
  * cosmetic AmbientTraffic AI cars. Geometry is parameterised by
  * VARIANT_DIMENSIONS so sedan / van / taxi / compact look distinct.
  *
+ * IMPORTANT — vehicle facing convention:
+ *   The gameplay convention (LocalPlayer.updateVehicle, traffic-route
+ *   atan2(-dx,-dz), collision.ts) is that a vehicle's FORWARD direction
+ *   is local -Z. Therefore in this visual:
+ *     • headlights / front windshield  → local -Z side
+ *     • taillights / rear windshield   → local +Z side
+ *     • cabin sits slightly toward the REAR (+Z), so cabinOffsetZ > 0
+ *   Do NOT reintroduce +Z-as-front assumptions here.
+ *
  * `variant` may be an arbitrary string from the network; we fall back to
  * "sedan" if it's unknown rather than crashing on
  * `VARIANT_DIMENSIONS[undefined]`.
@@ -59,7 +68,7 @@ export function CarVisual({ variant, color }: CarVisualProps) {
         <boxGeometry args={[dim.bodyW, dim.bodyH, dim.bodyD]} />
         <meshLambertMaterial color={color} />
       </mesh>
-      {/* Cabin */}
+      {/* Cabin (sits slightly toward rear / +Z) */}
       <mesh
         position={[0, dim.bodyH + dim.cabinH / 2, dim.cabinOffsetZ]}
         castShadow
@@ -67,21 +76,21 @@ export function CarVisual({ variant, color }: CarVisualProps) {
         <boxGeometry args={[dim.cabinW, dim.cabinH, dim.cabinD]} />
         <meshLambertMaterial color={color} />
       </mesh>
-      {/* Windshield (front) */}
-      <mesh
-        position={[0, dim.bodyH + dim.cabinH * 0.5, dim.cabinOffsetZ + dim.cabinD / 2 + 0.02]}
-        rotation={[-0.4, 0, 0]}
-      >
-        <planeGeometry args={[dim.cabinW * 0.95, dim.cabinH * 0.9]} />
-        <meshBasicMaterial color="#aaddff" transparent opacity={0.55} />
-      </mesh>
-      {/* Windshield (rear) */}
+      {/* Windshield (FRONT — local -Z side of the cabin) */}
       <mesh
         position={[0, dim.bodyH + dim.cabinH * 0.5, dim.cabinOffsetZ - dim.cabinD / 2 - 0.02]}
         rotation={[0.4, 0, 0]}
       >
         <planeGeometry args={[dim.cabinW * 0.95, dim.cabinH * 0.9]} />
         <meshBasicMaterial color="#aaddff" transparent opacity={0.55} />
+      </mesh>
+      {/* Rear glass (REAR — local +Z side of the cabin) */}
+      <mesh
+        position={[0, dim.bodyH + dim.cabinH * 0.5, dim.cabinOffsetZ + dim.cabinD / 2 + 0.02]}
+        rotation={[-0.4, 0, 0]}
+      >
+        <planeGeometry args={[dim.cabinW * 0.95, dim.cabinH * 0.9]} />
+        <meshBasicMaterial color="#88aacc" transparent opacity={0.55} />
       </mesh>
       {/* Wheels */}
       {[
@@ -95,25 +104,25 @@ export function CarVisual({ variant, color }: CarVisualProps) {
           <meshLambertMaterial color="#1a1a1a" />
         </mesh>
       ))}
-      {/* Headlights (emissive — visually feel like lights without per-car real lighting) */}
-      <mesh position={[-0.6, dim.bodyH / 2, dim.bodyD / 2 + 0.03]}>
-        <boxGeometry args={[0.4, 0.2, 0.1]} />
-        <meshBasicMaterial color="#fff5d0" />
-      </mesh>
-      <mesh position={[ 0.6, dim.bodyH / 2, dim.bodyD / 2 + 0.03]}>
-        <boxGeometry args={[0.4, 0.2, 0.1]} />
-        <meshBasicMaterial color="#fff5d0" />
-      </mesh>
-      {/* Taillights */}
+      {/* Headlights (emissive, FRONT = local -Z) */}
       <mesh position={[-0.6, dim.bodyH / 2, -dim.bodyD / 2 - 0.03]}>
         <boxGeometry args={[0.4, 0.2, 0.1]} />
-        <meshBasicMaterial color="#e74c3c" />
+        <meshBasicMaterial color="#fff5d0" />
       </mesh>
       <mesh position={[ 0.6, dim.bodyH / 2, -dim.bodyD / 2 - 0.03]}>
         <boxGeometry args={[0.4, 0.2, 0.1]} />
+        <meshBasicMaterial color="#fff5d0" />
+      </mesh>
+      {/* Taillights (REAR = local +Z) */}
+      <mesh position={[-0.6, dim.bodyH / 2, dim.bodyD / 2 + 0.03]}>
+        <boxGeometry args={[0.4, 0.2, 0.1]} />
         <meshBasicMaterial color="#e74c3c" />
       </mesh>
-      {/* Taxi rooftop sign */}
+      <mesh position={[ 0.6, dim.bodyH / 2, dim.bodyD / 2 + 0.03]}>
+        <boxGeometry args={[0.4, 0.2, 0.1]} />
+        <meshBasicMaterial color="#e74c3c" />
+      </mesh>
+      {/* Taxi rooftop sign — sits over the cabin */}
       {variant === "taxi" && (
         <group position={[0, dim.bodyH + dim.cabinH + 0.18, dim.cabinOffsetZ]}>
           <mesh>
@@ -122,9 +131,9 @@ export function CarVisual({ variant, color }: CarVisualProps) {
           </mesh>
         </group>
       )}
-      {/* Van rear cargo box bump */}
+      {/* Van rear cargo box bump — REAR = +Z side of the cabin */}
       {variant === "van" && (
-        <mesh position={[0, dim.bodyH + dim.cabinH * 0.4, dim.cabinOffsetZ - dim.cabinD / 2 + 0.02]}>
+        <mesh position={[0, dim.bodyH + dim.cabinH * 0.4, dim.cabinOffsetZ + dim.cabinD / 2 - 0.02]}>
           <boxGeometry args={[dim.cabinW * 0.98, dim.cabinH * 0.85, 0.15]} />
           <meshLambertMaterial color={color} />
         </mesh>
