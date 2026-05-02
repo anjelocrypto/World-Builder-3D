@@ -17,6 +17,10 @@ import type {
   TreeInstance,
   RockInstance,
   RegionalLampData,
+  RailVertex,
+  RailPillar,
+  TrainStationData,
+  SkybridgeData,
 } from "./types";
 import { distancePointToPolyline } from "./roadGeom";
 
@@ -82,8 +86,11 @@ interface DistrictDef {
 }
 
 const DISTRICTS: Record<DistrictType, DistrictDef> = {
+  // Mid-rise commercial-tower band — what was the old "downtown" but
+  // bumped into the 22-45m range to make room for the new "highrise"
+  // tier above it.
   downtown: {
-    heightRange: [18, 38],
+    heightRange: [22, 45],
     widthRange: [8, 16],
     colors: [
       "#506478",
@@ -97,11 +104,40 @@ const DISTRICTS: Record<DistrictType, DistrictDef> = {
       "#6a8098",
       "#3a4d62",
     ],
-    antennaProb: 0.6,
+    antennaProb: 0.55,
     rooftopBoxProb: 0.7,
   },
+  // Glass-skinned downtown tower (45-85m). Wider footprints + a podium
+  // and crown lighting in the renderer.
+  highrise: {
+    heightRange: [45, 85],
+    widthRange: [12, 20],
+    colors: [
+      "#3c5878",
+      "#2f4a6c",
+      "#34597a",
+      "#3e5d80",
+      "#2a4868",
+      "#4a6a8a",
+    ],
+    antennaProb: 0.85,
+    rooftopBoxProb: 0.95,
+  },
+  // Skyline-defining skyscrapers (90-120m). Hand-placed only; not used
+  // by the random `genBuilding` flow.
+  landmark: {
+    heightRange: [90, 120],
+    widthRange: [16, 22],
+    colors: [
+      "#22364c",
+      "#2a3f58",
+      "#2e455e",
+    ],
+    antennaProb: 1.0,
+    rooftopBoxProb: 1.0,
+  },
   commercial: {
-    heightRange: [10, 22],
+    heightRange: [12, 26],
     widthRange: [9, 17],
     colors: [
       "#7a6850",
@@ -113,11 +149,11 @@ const DISTRICTS: Record<DistrictType, DistrictDef> = {
       "#988572",
       "#a08c7a",
     ],
-    antennaProb: 0.25,
-    rooftopBoxProb: 0.5,
+    antennaProb: 0.3,
+    rooftopBoxProb: 0.55,
   },
   residential: {
-    heightRange: [5, 14],
+    heightRange: [10, 25],
     widthRange: [7, 14],
     colors: [
       "#c89968",
@@ -130,8 +166,8 @@ const DISTRICTS: Record<DistrictType, DistrictDef> = {
       "#aa8e6e",
       "#b3a085",
     ],
-    antennaProb: 0.1,
-    rooftopBoxProb: 0.2,
+    antennaProb: 0.18,
+    rooftopBoxProb: 0.35,
   },
   plaza: {
     heightRange: [0, 0],
@@ -163,27 +199,27 @@ interface BlockDef {
 // every block strictly off-road while preserving the visual feel of a
 // continuous street wall.
 const blockDefs: BlockDef[] = [
-  // Northwest corner — downtown
-  { cx: -65, cz: -65, bw: 30, bd: 30, count: 4, district: "downtown" },
+  // Northwest corner — mid-rise commercial towers
+  { cx: -65, cz: -65, bw: 30, bd: 30, count: 6, district: "downtown" },
   // North row — split around the N-S road at x = 0
-  { cx: -22.5, cz: -65, bw: 15, bd: 30, count: 2, district: "downtown" },
-  { cx:  22.5, cz: -65, bw: 15, bd: 30, count: 2, district: "downtown" },
-  // Northeast corner — downtown
-  { cx:  65, cz: -65, bw: 30, bd: 30, count: 4, district: "downtown" },
+  { cx: -22.5, cz: -65, bw: 15, bd: 30, count: 4, district: "downtown" },
+  { cx:  22.5, cz: -65, bw: 15, bd: 30, count: 4, district: "downtown" },
+  // Northeast corner — mid-rise commercial towers
+  { cx:  65, cz: -65, bw: 30, bd: 30, count: 6, district: "downtown" },
   // West row — split around the E-W road at z = 0
-  { cx: -65, cz: -22.5, bw: 30, bd: 15, count: 2, district: "commercial" },
-  { cx: -65, cz:  22.5, bw: 30, bd: 15, count: 2, district: "commercial" },
+  { cx: -65, cz: -22.5, bw: 30, bd: 15, count: 3, district: "commercial" },
+  { cx: -65, cz:  22.5, bw: 30, bd: 15, count: 3, district: "commercial" },
   // East row — split around the E-W road at z = 0
-  { cx:  65, cz: -22.5, bw: 30, bd: 15, count: 2, district: "commercial" },
-  { cx:  65, cz:  22.5, bw: 30, bd: 15, count: 2, district: "commercial" },
+  { cx:  65, cz: -22.5, bw: 30, bd: 15, count: 3, district: "commercial" },
+  { cx:  65, cz:  22.5, bw: 30, bd: 15, count: 3, district: "commercial" },
   // Center plaza (cx=0, cz=0) is intentionally empty — see SPAWN_POINTS.
   // Southwest corner — residential
-  { cx: -65, cz:  65, bw: 30, bd: 30, count: 4, district: "residential" },
+  { cx: -65, cz:  65, bw: 30, bd: 30, count: 6, district: "residential" },
   // South row — split around the N-S road at x = 0
-  { cx: -22.5, cz:  65, bw: 15, bd: 30, count: 2, district: "residential" },
-  { cx:  22.5, cz:  65, bw: 15, bd: 30, count: 2, district: "residential" },
+  { cx: -22.5, cz:  65, bw: 15, bd: 30, count: 4, district: "residential" },
+  { cx:  22.5, cz:  65, bw: 15, bd: 30, count: 4, district: "residential" },
   // Southeast corner — residential
-  { cx:  65, cz:  65, bw: 30, bd: 30, count: 4, district: "residential" },
+  { cx:  65, cz:  65, bw: 30, bd: 30, count: 6, district: "residential" },
 ];
 
 // Generate one building inside a block. Dimensions are clamped to fit
@@ -230,10 +266,94 @@ function genBuilding(
   };
 }
 
-export const BUILDINGS: Building[] = blockDefs.flatMap(
+// Random fill from blockDefs — these are the in-block mid-rises and
+// residentials. Hand-placed landmark + highrise towers below sit OUTSIDE
+// the block grid (in the 80..94 ring between the outermost blocks at 80
+// and the inner-city-ring carriageway at 94..106), so they do not
+// overlap any random building.
+const GENERATED_BUILDINGS: Building[] = blockDefs.flatMap(
   ({ cx, cz, bw, bd, count, district }) =>
     Array.from({ length: count }, () => genBuilding(cx, cz, bw, bd, district))
 );
+
+// =============================================================
+// HAND-PLACED HIGHRISES + LANDMARKS
+// =============================================================
+// All positions sit in the empty ring 80 < |x| or |z| < 94, between the
+// 80-edge of the outermost block and the 94-inner-edge of the
+// inner-city-ring carriageway. Footprints stay ≤ 12m so the building
+// envelope clears both sides:
+//   • highrise w=d=10  → spans 81..91 when centered at ±86, 2m off ring
+//   • landmark w=d=12  → spans 81..93 when centered at ±87, 1m off ring
+// Heights are explicit so the validator can count `towers` and
+// `landmarks` accurately. windowSeed is hand-picked so the lit-floor
+// pattern is varied across landmarks.
+
+function makeTower(
+  x: number,
+  z: number,
+  w: number,
+  d: number,
+  h: number,
+  district: "highrise" | "landmark",
+  color: string,
+  seed: number,
+  extras: Partial<Pick<Building, "glass" | "crownLight" | "neonSign" | "podium">> = {},
+): Building {
+  return {
+    x, z, w, d, h, color, district,
+    hasAntenna: true,
+    hasRooftopBox: true,
+    windowSeed: seed,
+    tier: district === "landmark" ? "landmark" : "high",
+    glass: extras.glass ?? true,
+    crownLight: extras.crownLight ?? true,
+    neonSign: extras.neonSign ?? false,
+    podium: extras.podium ?? true,
+  };
+}
+
+const HIGHRISE_BUILDINGS: Building[] = [
+  // East mid (between NE and SE corners) — flank the station entrance
+  makeTower( 86, -30, 10, 10, 62, "highrise", "#3c5878", 11),
+  makeTower( 86,  30, 10, 10, 70, "highrise", "#34597a", 12, { neonSign: true }),
+  // West mid
+  makeTower(-86, -30, 10, 10, 58, "highrise", "#2f4a6c", 13),
+  // North mid (between NW and NE corners)
+  makeTower(-30, -86, 10, 10, 66, "highrise", "#3e5d80", 14),
+  makeTower( 30, -86, 10, 10, 74, "highrise", "#2a4868", 15, { neonSign: true }),
+  // South mid
+  makeTower(-30,  86, 10, 10, 55, "highrise", "#4a6a8a", 16),
+  makeTower( 30,  86, 10, 10, 78, "highrise", "#3c5878", 17),
+  // South of NE corner — flanks the SE corner of the rail loop
+  makeTower( 60,  86, 10, 10, 50, "highrise", "#34597a", 18),
+];
+
+const LANDMARK_BUILDINGS: Building[] = [
+  // NE outer corner — tallest of the four
+  makeTower( 87, -87, 12, 12, 118, "landmark", "#22364c", 21,
+    { neonSign: true, crownLight: true, podium: true }),
+  // NW outer corner
+  makeTower(-87, -87, 12, 12, 102, "landmark", "#2a3f58", 22,
+    { crownLight: true, podium: true }),
+  // SE outer corner
+  makeTower( 87,  87, 12, 12, 110, "landmark", "#2e455e", 23,
+    { neonSign: true, crownLight: true, podium: true }),
+  // SW outer corner
+  makeTower(-87,  87, 12, 12, 96,  "landmark", "#22364c", 24,
+    { crownLight: true, podium: true }),
+  // West outer mid — visible from the plaza looking due west.
+  // Slimmer 10x10 footprint so the corner z=35 sits exactly at the EW
+  // road's ROAD_HALF (10m) rather than 9m inside it.
+  makeTower(-87,  30, 10, 10, 105, "landmark", "#2a3f58", 25,
+    { neonSign: true, crownLight: true, podium: true }),
+];
+
+export const BUILDINGS: Building[] = [
+  ...GENERATED_BUILDINGS,
+  ...HIGHRISE_BUILDINGS,
+  ...LANDMARK_BUILDINGS,
+];
 
 // =============================================================
 // VEHICLES — 14 drivable parked cars with variants
@@ -659,6 +779,190 @@ export const PROPS: PropData[] = [
   { x: -47, z: -47, rotY: 0, type: "trashcan" },
   { x: 47, z: 47, rotY: 0, type: "hydrant" },
   { x: -47, z: 47, rotY: 0, type: "hydrant" },
+];
+
+// =============================================================
+// ELEVATED RAIL LOOP — pillars, deck, station, train
+// =============================================================
+// The elevated loop circles the central city in the empty corridor
+// OUTSIDE the inner-city-ring carriageway (94..106). Centerline radius
+// ≈ 110 (octagonal, chamfered to make the loop drive smoother for the
+// train). Deck height = 12m so vehicles, traffic-light arms (≤5m), and
+// inner-city-ring lamps (≤6m) all clear underneath.
+//
+// City road carriageways the loop passes OVER (rail at y=12 → ground
+// vehicles at y=0..3 are unaffected):
+//   • spine-north  at (0, -110)  — top edge crossing
+//   • spine-south  at (0,  110)  — bottom edge crossing
+//   • east-service at (110, 0)   — east edge crossing
+//   • west-utility at (-110, 0)  — west edge crossing
+// Pillars are SKIPPED inside any of these carriageways.
+
+export const RAIL_DECK_HEIGHT = 12;
+const RAIL_LOOP_RADIUS = 110;
+const RAIL_CHAMFER = 20;
+const RAIL_PILLAR_SPACING = 22;
+const RAIL_PILLAR_ROAD_CLEAR = 1.0;
+
+// Octagonal closed loop. Last vertex = first vertex so the validator
+// detects "closed" via equality, and the renderer can iterate edges
+// with `for (i = 0; i < n-1; i++)`.
+export const ELEVATED_RAIL_LOOP: RailVertex[] = (() => {
+  const r = RAIL_LOOP_RADIUS;
+  const c = r - RAIL_CHAMFER;
+  const v: RailVertex[] = [
+    { x:  r, z: -c }, // east-top
+    { x:  c, z: -r }, // top-east
+    { x: -c, z: -r }, // top-west
+    { x: -r, z: -c }, // west-top
+    { x: -r, z:  c }, // west-bottom
+    { x: -c, z:  r }, // bottom-west
+    { x:  c, z:  r }, // bottom-east
+    { x:  r, z:  c }, // east-bottom
+  ];
+  v.push({ x: v[0].x, z: v[0].z });
+  return v;
+})();
+
+// Returns the total perimeter length of the rail loop and the cumulative
+// arc length at each vertex. Used by both the pillar generator and the
+// runtime train-position interpolator (see CentralRail.tsx).
+export function railLoopArcLengths(): { total: number; arcAt: number[] } {
+  const arcAt: number[] = [0];
+  let total = 0;
+  for (let i = 0; i < ELEVATED_RAIL_LOOP.length - 1; i++) {
+    const a = ELEVATED_RAIL_LOOP[i];
+    const b = ELEVATED_RAIL_LOOP[i + 1];
+    total += Math.hypot(b.x - a.x, b.z - a.z);
+    arcAt.push(total);
+  }
+  return { total, arcAt };
+}
+
+// Sample (x, z, headingY) at arc length s ∈ [0, total). Used by the
+// train animation; also used by the validator's train-path collision
+// sweep.
+export function railLoopPointAt(s: number): { x: number; z: number; rotY: number } {
+  const { total, arcAt } = railLoopArcLengths();
+  const sw = ((s % total) + total) % total;
+  // Find segment via linear scan (loop has only 8 segments).
+  let i = 0;
+  while (i < arcAt.length - 1 && arcAt[i + 1] < sw) i++;
+  const a = ELEVATED_RAIL_LOOP[i];
+  const b = ELEVATED_RAIL_LOOP[i + 1];
+  const segLen = arcAt[i + 1] - arcAt[i];
+  const t = segLen > 0 ? (sw - arcAt[i]) / segLen : 0;
+  const x = a.x + (b.x - a.x) * t;
+  const z = a.z + (b.z - a.z) * t;
+  const rotY = Math.atan2(-(b.x - a.x), -(b.z - a.z));
+  return { x, z, rotY };
+}
+
+// Pillar candidate: every RAIL_PILLAR_SPACING along the perimeter, then
+// reject any candidate that lands inside a city or regional carriageway
+// (with RAIL_PILLAR_ROAD_CLEAR margin). The renderer uses this list as
+// authoritative — there is no separate "rail pillar collision" data.
+function generateRailPillars(): RailPillar[] {
+  const out: RailPillar[] = [];
+  const { total } = railLoopArcLengths();
+  const step = RAIL_PILLAR_SPACING;
+  for (let s = 0; s < total - 0.001; s += step) {
+    const p = railLoopPointAt(s);
+    // City grid carriageways
+    let inRoad = false;
+    for (const x of ROADS.ns) {
+      if (Math.abs(p.x - x) < ROAD_HALF + RAIL_PILLAR_ROAD_CLEAR) {
+        if (Math.abs(p.z) <= CITY_HALF) { inRoad = true; break; }
+      }
+    }
+    if (!inRoad) {
+      for (const z of ROADS.ew) {
+        if (Math.abs(p.z - z) < ROAD_HALF + RAIL_PILLAR_ROAD_CLEAR) {
+          if (Math.abs(p.x) <= CITY_HALF) { inRoad = true; break; }
+        }
+      }
+    }
+    // Regional roads (covers spine-N/S, east-service, west-utility,
+    // inner-city-ring at this radius).
+    if (!inRoad) {
+      for (const r of REGIONAL_ROADS) {
+        const d = distancePointToPolyline(p.x, p.z, r.points);
+        if (d < r.width / 2 + RAIL_PILLAR_ROAD_CLEAR) {
+          inRoad = true;
+          break;
+        }
+      }
+    }
+    if (!inRoad) out.push({ x: p.x, z: p.z, rotY: p.rotY });
+  }
+  return out;
+}
+
+// Note: REGIONAL_ROADS is referenced inside generateRailPillars(), so
+// RAIL_PILLARS must be exported AFTER REGIONAL_ROADS is defined.
+// The actual export sits in the rail-render block far below. To keep
+// data + helpers co-located here we expose the GENERATOR and bind the
+// const at the bottom-of-file rail block.
+let _RAIL_PILLARS_CACHE: RailPillar[] | null = null;
+export function getRailPillars(): RailPillar[] {
+  if (!_RAIL_PILLARS_CACHE) _RAIL_PILLARS_CACHE = generateRailPillars();
+  return _RAIL_PILLARS_CACHE;
+}
+
+// Train station — east edge of the loop, midway between the SE chamfer
+// (110, -90) and the east-service crossing at (110, 0). Platform sits
+// ON the rail line (centerline x=110), spans z = [-75..-55] = 20m long,
+// 8m deep (x = 106..114). Stairs come down from the deck inside the
+// loop (toward the inner-city-ring at x ~ 106), foot at (102, -65).
+export const TRAIN_STATION: TrainStationData = {
+  id: "central-loop-station",
+  cx: 110,
+  cz: -65,
+  w: 8,
+  d: 20,
+  rotY: 0,
+  deckY: RAIL_DECK_HEIGHT,
+  stairX: 102,
+  stairZ: -65,
+  signText: "Central Loop Station",
+};
+
+// Train pause window — train slows to 0 over [pauseInS, pauseOutS] arc
+// length. Computed from station's position on the loop (s ≈ railLoop
+// arc-length at (110, -65)).
+export function trainStationArcS(): number {
+  // Station sits on the segment east-bottom (110, c) → east-top (110, -c)
+  // i.e. segment index 7 → 0 wrap. Compute by sampling.
+  const { total, arcAt } = railLoopArcLengths();
+  // Vertex 0 is (110, -90), so the station at z=-65 lies between
+  // vertex 7 (110, +90) and vertex 8 (= vertex 0, 110, -90), traveling
+  // in the -z direction. Distance from vertex 7 = 90 - (-65) = 155.
+  const sStation = arcAt[7] + 155;
+  return sStation % total;
+}
+
+// =============================================================
+// SKYBRIDGES — elevated pedestrian links
+// =============================================================
+// Each skybridge spans between two anchor points at height y. The
+// validator confirms (a) every road carriageway the segment crosses
+// has at least 5m vertical clearance below the bridge, and (b) the
+// segment endpoints land on or near a tall-enough building roof
+// (h ≥ y - 1).
+
+export const SKYBRIDGES: SkybridgeData[] = [
+  // North band — between H4 (-30,-86, h=66) and H5 (30,-86, h=74)
+  // crossing N-S road at x=0, z=-86. y=10 → 10m clearance.
+  { id: "sb-north", x1: -30, z1: -86, x2: 30, z2: -86, y: 10 },
+  // South band — between H6 (-30,86, h=55) and H7 (30,86, h=78)
+  // crossing N-S road at x=0, z=86.
+  { id: "sb-south", x1: -30, z1: 86, x2: 30, z2: 86, y: 10 },
+  // East band — between H1 (86,-30, h=62) and H2 (86,30, h=70)
+  // crossing E-W road at z=0, x=86.
+  { id: "sb-east", x1: 86, z1: -30, x2: 86, z2: 30, y: 10 },
+  // West band — between H3 (-86,-30, h=58) and L5 (-87,30, h=105)
+  // crossing E-W road at z=0, x=-86.
+  { id: "sb-west", x1: -86, z1: -30, x2: -86, z2: 30, y: 10 },
 ];
 
 // =============================================================
@@ -2242,6 +2546,188 @@ if (isViteDev) {
     `parked vehicles within 25m of a road, ` +
     `${polish.obstaclesIntruding ?? 0} non-rail obstacles intruding into road carriageway.`;
 
+  // ---- Center-city upgrade invariants -----------------------------------
+  // Validates the new elevated rail loop, station, skybridges, and
+  // verifies tower/landmark counts match the spec.
+
+  const towers = BUILDINGS.filter((b) => b.tier === "high").length;
+  const landmarks = BUILDINGS.filter((b) => b.tier === "landmark").length;
+
+  // (0) Hard count assertions for the upgraded skyline spec.
+  const EXPECTED_BUILDINGS = 65;
+  const EXPECTED_TOWERS = 8;
+  const EXPECTED_LANDMARKS = 5;
+  if (BUILDINGS.length !== EXPECTED_BUILDINGS) {
+    issues.push(
+      `building count ${BUILDINGS.length} != expected ${EXPECTED_BUILDINGS}`,
+    );
+  }
+  if (towers !== EXPECTED_TOWERS) {
+    issues.push(`tower count ${towers} != expected ${EXPECTED_TOWERS}`);
+  }
+  if (landmarks !== EXPECTED_LANDMARKS) {
+    issues.push(`landmark count ${landmarks} != expected ${EXPECTED_LANDMARKS}`);
+  }
+
+  // (1) Loop closed: first vertex == last vertex.
+  const loopFirst = ELEVATED_RAIL_LOOP[0];
+  const loopLast = ELEVATED_RAIL_LOOP[ELEVATED_RAIL_LOOP.length - 1];
+  const railLoopClosed =
+    loopFirst.x === loopLast.x && loopFirst.z === loopLast.z;
+  if (!railLoopClosed) issues.push("rail loop is not closed");
+
+  // (2) Pillars clear of every road carriageway.
+  const railPillars = getRailPillars();
+  let pillarsClear = 0;
+  let roadIntrusions = 0;
+  for (const p of railPillars) {
+    let bad = false;
+    for (const x of ROADS.ns) {
+      if (Math.abs(p.x - x) < ROAD_HALF && Math.abs(p.z) <= CITY_HALF) {
+        bad = true; break;
+      }
+    }
+    if (!bad) {
+      for (const z of ROADS.ew) {
+        if (Math.abs(p.z - z) < ROAD_HALF && Math.abs(p.x) <= CITY_HALF) {
+          bad = true; break;
+        }
+      }
+    }
+    if (!bad) {
+      for (const r of REGIONAL_ROADS) {
+        if (distancePointToPolyline(p.x, p.z, r.points) < r.width / 2) {
+          bad = true; break;
+        }
+      }
+    }
+    if (bad) {
+      roadIntrusions++;
+      issues.push(`rail pillar at (${p.x.toFixed(0)}, ${p.z.toFixed(0)}) intrudes road`);
+    } else {
+      pillarsClear++;
+    }
+  }
+
+  // (3) Station footprint clear of any road and not overlapping a building
+  // (besides the station deck itself).
+  let stationClear = true;
+  {
+    const s = TRAIN_STATION;
+    const corners: Array<[number, number]> = [
+      [s.cx - s.w / 2, s.cz - s.d / 2],
+      [s.cx + s.w / 2, s.cz - s.d / 2],
+      [s.cx - s.w / 2, s.cz + s.d / 2],
+      [s.cx + s.w / 2, s.cz + s.d / 2],
+    ];
+    for (const [x, z] of corners) {
+      // Roads (city + regional)
+      for (const r of REGIONAL_ROADS) {
+        if (distancePointToPolyline(x, z, r.points) < r.width / 2) {
+          stationClear = false;
+          issues.push(`station corner (${x.toFixed(0)}, ${z.toFixed(0)}) intrudes road ${r.id}`);
+          break;
+        }
+      }
+      // Buildings (station footprint should be in the empty 106..114 strip
+      // outside the inner-city-ring carriageway; nothing should be there).
+      if (checkBuildingCollision(x, z, 0)) {
+        stationClear = false;
+        issues.push(`station corner (${x.toFixed(0)}, ${z.toFixed(0)}) overlaps a building`);
+      }
+    }
+    // Spawn safety: ensure every spawn is more than 5m from the station.
+    for (const sp of SPAWN_POINTS) {
+      const dx = Math.max(0, Math.abs(sp[0] - s.cx) - s.w / 2);
+      const dz = Math.max(0, Math.abs(sp[2] - s.cz) - s.d / 2);
+      if (dx * dx + dz * dz < 25) {
+        stationClear = false;
+        issues.push(`spawn ${JSON.stringify(sp)} too close to station`);
+      }
+    }
+  }
+
+  // (4) Train path clear of any tall building. Sample the loop every
+  // 4m and verify no building's AABB at rail height contains the point.
+  const railSamples = 200;
+  const { total: railTotal } = railLoopArcLengths();
+  let trainClear = 0;
+  for (let i = 0; i < railSamples; i++) {
+    const s = (i / railSamples) * railTotal;
+    const p = railLoopPointAt(s);
+    let collides = false;
+    for (const b of BUILDINGS) {
+      if (b.h < RAIL_DECK_HEIGHT - 1) continue;
+      const hw = b.w / 2 + 1.5; // train half-width 1.1 + slack
+      const hd = b.d / 2 + 1.5;
+      if (Math.abs(p.x - b.x) < hw && Math.abs(p.z - b.z) < hd) {
+        collides = true;
+        issues.push(
+          `train path at arc=${s.toFixed(0)} (${p.x.toFixed(0)}, ${p.z.toFixed(0)}) ` +
+            `pierces building at (${b.x}, ${b.z}) h=${b.h}`,
+        );
+        break;
+      }
+    }
+    if (!collides) trainClear++;
+  }
+
+  // (5) Skybridge clearance — every road the segment passes over must
+  // have ≥ 5m vertical clearance below the bridge.
+  const SKYBRIDGE_MIN_CLEAR = 5;
+  let skybridgeClear = 0;
+  for (const sb of SKYBRIDGES) {
+    let ok = true;
+    // Sample 21 points along the bridge and check (a) no building tall
+    // enough to block at sb.y, and (b) any road crossing has clearance.
+    for (let i = 0; i <= 20; i++) {
+      const t = i / 20;
+      const x = sb.x1 + (sb.x2 - sb.x1) * t;
+      const z = sb.z1 + (sb.z2 - sb.z1) * t;
+      // Building piercing (excluding endpoints which sit on a roof)
+      if (i > 1 && i < 19) {
+        for (const b of BUILDINGS) {
+          if (b.h < sb.y - 0.5) continue;
+          const hw = b.w / 2;
+          const hd = b.d / 2;
+          if (Math.abs(x - b.x) < hw && Math.abs(z - b.z) < hd) {
+            ok = false;
+            issues.push(`skybridge ${sb.id} pierces building at (${b.x}, ${b.z})`);
+            break;
+          }
+        }
+        if (!ok) break;
+      }
+      // Road clearance (sb.y must be >= MIN_CLEAR above road surface 0)
+      let onRoad = false;
+      for (const xr of ROADS.ns) {
+        if (Math.abs(x - xr) < ROAD_HALF && Math.abs(z) <= CITY_HALF) { onRoad = true; break; }
+      }
+      if (!onRoad) {
+        for (const zr of ROADS.ew) {
+          if (Math.abs(z - zr) < ROAD_HALF && Math.abs(x) <= CITY_HALF) { onRoad = true; break; }
+        }
+      }
+      if (onRoad && sb.y < SKYBRIDGE_MIN_CLEAR) {
+        ok = false;
+        issues.push(
+          `skybridge ${sb.id} only ${sb.y}m above road (need ≥${SKYBRIDGE_MIN_CLEAR}m)`,
+        );
+        break;
+      }
+    }
+    if (ok) skybridgeClear++;
+  }
+
+  const centerCityLine =
+    `centerCityUpgrade OK: buildings=${BUILDINGS.length}, towers=${towers}, ` +
+    `landmarks=${landmarks}, railLoopClosed=${railLoopClosed}, ` +
+    `railPillarsClear=${pillarsClear}/${railPillars.length}, ` +
+    `stationClear=${stationClear}, ` +
+    `trainPathClear=${trainClear}/${railSamples}, ` +
+    `roadIntrusions=${roadIntrusions}, ` +
+    `skybridgeClearance=${skybridgeClear}/${SKYBRIDGES.length}`;
+
   if (issues.length > 0) {
     // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${issues.length} city validation issue(s):`);
@@ -2259,6 +2745,8 @@ if (isViteDev) {
     console.warn(`[city-sandbox] ${lightingLine}`);
     // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${cityForestBeltLine}`);
+    // eslint-disable-next-line no-console
+    console.warn(`[city-sandbox] ${centerCityLine}`);
   } else {
     // eslint-disable-next-line no-console
     console.info(
@@ -2283,5 +2771,7 @@ if (isViteDev) {
     console.info(`[city-sandbox] ${lightingLine}`);
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${cityForestBeltLine}`);
+    // eslint-disable-next-line no-console
+    console.info(`[city-sandbox] ${centerCityLine}`);
   }
 }

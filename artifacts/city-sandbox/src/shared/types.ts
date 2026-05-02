@@ -30,7 +30,20 @@ export interface GameState {
   vehicles: Record<string, VehicleState>;
 }
 
-export type DistrictType = "downtown" | "commercial" | "residential" | "plaza";
+export type DistrictType =
+  | "downtown"
+  | "highrise"
+  | "landmark"
+  | "commercial"
+  | "residential"
+  | "plaza";
+
+// Building "tier" is an optional richer-rendering hint used by the city
+// renderer. Original rendering still works for entries that omit these.
+//   mid       — commercial/residential/downtown mid-rise (≤45h)
+//   high      — glass downtown tower (45–85h)
+//   landmark  — skyline-defining skyscraper (90–120h)
+export type BuildingTier = "mid" | "high" | "landmark";
 
 export interface Building {
   x: number;
@@ -43,6 +56,60 @@ export interface Building {
   hasAntenna: boolean;
   hasRooftopBox: boolean;
   windowSeed: number;
+  tier?: BuildingTier;
+  glass?: boolean;
+  crownLight?: boolean;
+  neonSign?: boolean;
+  podium?: boolean;
+}
+
+// =============================================================
+// Center-city upgrade — elevated rail loop, station, skybridges
+// =============================================================
+
+// One vertex of the closed elevated rail loop polyline. Loop is closed by
+// repeating the first vertex at index n; the renderer / validator both
+// rely on `loop[0] == loop[loop.length-1]`.
+export interface RailVertex {
+  x: number;
+  z: number;
+}
+
+// One support column for the elevated rail. The pillar is centered at
+// (x,z), runs from y=0 up to the rail deck height, and is rotated so its
+// crossbeam aligns with the local rail direction (`rotY` in radians).
+export interface RailPillar {
+  x: number;
+  z: number;
+  rotY: number;
+}
+
+// Elevated train station deck. Footprint is an AABB centered at (cx,cz).
+// `deckY` is the platform top height in metres. `stairX`/`stairZ` mark the
+// ground-side foot of the staircase that comes down from the platform.
+export interface TrainStationData {
+  id: string;
+  cx: number;
+  cz: number;
+  w: number;
+  d: number;
+  rotY: number;
+  deckY: number;
+  stairX: number;
+  stairZ: number;
+  signText: string;
+}
+
+// One pedestrian skybridge between two endpoints at height y. The
+// validator checks that the line segment passes entirely above any city
+// road carriageway it crosses, with at least 5m vertical clearance.
+export interface SkybridgeData {
+  id: string;
+  x1: number;
+  z1: number;
+  x2: number;
+  z2: number;
+  y: number;
 }
 
 export interface RampData {

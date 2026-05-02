@@ -10,6 +10,7 @@ import {
   PROPS,
 } from "../shared/cityData";
 import type { Building, PropData } from "../shared/types";
+import CentralRail from "./CentralRail";
 
 // =============================================================
 // SKY + GROUND
@@ -190,6 +191,41 @@ interface BuildingMeshProps {
   b: Building;
 }
 
+// Crown / podium / neon helpers extend the original mesh for the new
+// `highrise` and `landmark` tiers. Plain mid-rises render unchanged.
+function BuildingExtras({ b }: { b: Building }) {
+  if (!b.tier || b.tier === "mid") return null;
+  return (
+    <group>
+      {/* Podium — wider 2-floor base wrapping the tower */}
+      {b.podium && (
+        <mesh position={[0, 3, 0]} castShadow receiveShadow>
+          <boxGeometry args={[b.w + 1.6, 6, b.d + 1.6]} />
+          <meshLambertMaterial color="#2a2f38" />
+        </mesh>
+      )}
+      {/* Crown light — emissive halo near the roof */}
+      {b.crownLight && (
+        <mesh position={[0, b.h - 0.3, 0]}>
+          <boxGeometry args={[b.w + 0.4, 0.6, b.d + 0.4]} />
+          <meshBasicMaterial
+            color={b.tier === "landmark" ? "#7ed4ff" : "#ffd070"}
+            transparent
+            opacity={0.85}
+          />
+        </mesh>
+      )}
+      {/* Neon vertical sign on the +Z face */}
+      {b.neonSign && (
+        <mesh position={[0, b.h * 0.6, b.d / 2 + 0.06]}>
+          <planeGeometry args={[1.2, b.h * 0.5]} />
+          <meshBasicMaterial color="#ff5a8a" />
+        </mesh>
+      )}
+    </group>
+  );
+}
+
 function BuildingMesh({ b }: BuildingMeshProps) {
   // Floor count varies by height. Each floor renders one emissive strip
   // per side of the building → 4 strips per floor. windowSeed-derived
@@ -281,6 +317,9 @@ function BuildingMesh({ b }: BuildingMeshProps) {
           </mesh>
         </group>
       )}
+
+      {/* Highrise / landmark extras (podium, crown light, neon sign). */}
+      <BuildingExtras b={b} />
     </group>
   );
 }
@@ -530,6 +569,7 @@ export default function CityMap() {
       <TrafficLights />
       <Props />
       <Ramps />
+      <CentralRail />
 
       {/* Four real point lights at the central plaza corners.
           Decay=2 + small distance keeps cost contained. */}
