@@ -2269,7 +2269,9 @@ if (isViteDev) {
         `${TRAFFIC_LIGHTS.length} traffic lights, ${NPC_ROUTES.length} NPC routes, ` +
         `${TRAFFIC_ROUTES.reduce((sum, r) => sum + r.cars.length, 0)} ambient cars, ` +
         `${REGIONAL_ROADS.length} regional roads, ${STATIC_OBSTACLES.length} obstacles, ` +
-        `${FOREST_TREES.length} trees, ${FOREST_ROCKS.length + MOUNTAIN_ROCKS.length} rocks.`
+        `${FOREST_TREES.length + CITY_EDGE_TREES.length} trees ` +
+        `(${FOREST_TREES.length} forest + ${CITY_EDGE_TREES.length} city-edge), ` +
+        `${FOREST_ROCKS.length + MOUNTAIN_ROCKS.length} rocks.`
     );
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${polishLine}`);
