@@ -3,6 +3,7 @@ import { Canvas } from "@react-three/fiber";
 import { KeyboardControls } from "@react-three/drei";
 import * as THREE from "three";
 import type { VehicleState } from "../shared/types";
+import type { NpcStumbleMap } from "../shared/collision";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
 import RemotePlayer from "./RemotePlayer";
@@ -58,6 +59,11 @@ export default function GameScene({
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Shared map of NPC stumble entries. LocalPlayer writes when its
+  // driven car hits a pedestrian; NPCs.tsx reads each frame to apply a
+  // decaying lateral knockback + tilt. Local-only — never networked.
+  const npcStumbleRef = useRef<NpcStumbleMap>(new Map());
 
   // Authoritative spawn position from the server's gameState. Computed once
   // on first mount of LocalPlayer (initialSpawn is only read in useRef
@@ -180,7 +186,7 @@ export default function GameScene({
 
           {/* Ambient life — pedestrians and AI traffic. Both client-only,
               deterministic from Date.now(), so no Socket.io traffic. */}
-          <NPCs />
+          <NPCs stumbleRef={npcStumbleRef} />
           <AmbientTraffic />
 
           {/* Remote players */}
@@ -218,6 +224,7 @@ export default function GameScene({
             onVehicleUpdate={handleVehicleUpdate}
             emitPlayerUpdate={emitPlayerUpdate}
             emitVehicleUpdate={emitVehicleUpdate}
+            npcStumbleRef={npcStumbleRef}
             onUIUpdate={setUIState}
             playerPosRef={playerPosRef}
             initialSpawn={initialSpawn}
