@@ -153,3 +153,17 @@ export interface RockInstance {
   scale: number;
   rotY: number;
 }
+
+// Lamp poles placed along the edges of regional roads. Style controls the
+// pole/head/light-pool look in the renderer (urban=metal+warm white,
+// bridge=brighter warm both sides, rural=wooden+orange, mountain=short
+// hazard post). The renderer fakes most of the lighting via emissive
+// heads + transparent ground discs so we never need one real pointLight
+// per lamp.
+export interface RegionalLampData {
+  x: number;
+  z: number;
+  rotY: number;
+  roadId: string;
+  style: "urban" | "rural" | "mountain" | "bridge";
+}

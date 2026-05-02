@@ -16,6 +16,7 @@ import type {
   StaticObstacleKind,
   TreeInstance,
   RockInstance,
+  RegionalLampData,
 } from "./types";
 import { distancePointToPolyline } from "./roadGeom";
 
@@ -1111,6 +1112,204 @@ export const VILLAGE_PARKING_PADS: ParkingSpot[] = [
 ];
 
 // =============================================================
+// REGIONAL ROAD LIGHTING — fake-light pass over REGIONAL_ROADS
+// =============================================================
+//
+// Lamp poles are generated procedurally from REGIONAL_ROADS so every
+// arterial / collector / local road gets shoulder lighting at night.
+// The renderer (BiomeRender) draws each lamp as an emissive head + a
+// transparent ground "light pool" disc; only a small fixed set of real
+// pointLights at major junctions provide actual scene lighting. This
+// keeps the per-frame light cost flat regardless of how many lamps we
+// generate.
+//
+// Style is derived from RoadPath.type:
+//   asphalt → "urban", bridge → "bridge",
+//   forest/dirt → "rural", mountain → "mountain".
+// Driveway-class roads (anything matching /^drv-/ or *-spur) get one
+// marker lamp at the entrance instead of a full row.
+
+// Real point lights: a small fixed list of warm, no-shadow lights at
+// the busiest road junctions. VILLAGE_REAL_LIGHTS lights the south-
+// forest village center; JUNCTION_REAL_LIGHTS covers regional choke
+// points (inner-ring exits, bridge head, outer-loop corners, mountain
+// switchback foot, east/west service junctions).
+export const VILLAGE_REAL_LIGHTS: ReadonlyArray<readonly [number, number, number]> = [
+  [  0, 5, 320], // village green centre
+  [ 60, 5, 330], // east loop crossing
+  [-55, 5, 325], // west loop crossing
+];
+export const JUNCTION_REAL_LIGHTS: ReadonlyArray<readonly [number, number, number]> = [
+  // Inner-city-ring cardinal exits
+  [   0, 6,  100], [ 100, 6,    0], [   0, 6, -100], [-100, 6,    0],
+  // Bridge / forest entrance
+  [   0, 6,  130], [   0, 6,  180],
+  // East-service / outer-loop junction
+  [ 460, 6,   30],
+  // West-utility / outer-loop junction
+  [-460, 6,    0],
+  // Ridge-east / mountain switchback junction
+  [  80, 6, -340],
+  // Outer-loop major corners
+  [ 260, 6, -380], [-260, 6, -380], [ 460, 6, -200],
+];
+
+const LAMP_DEDUP_RADIUS = 8.0;
+const LAMP_OBSTACLE_INFLATE = 1.0;
+
+function isDrivewayRoad(id: string): boolean {
+  // drv-* are explicit driveways; *-spur are short branch roads
+  // (forest-spur outlier, gateway-spur, trailhead-spur) that the
+  // lighting spec treats as entrance-marker rather than full lit
+  // arterials.
+  return /^drv-/.test(id) || /-spur$/.test(id);
+}
+
+function styleForRoad(r: RoadPath): RegionalLampData["style"] {
+  if (r.type === "bridge") return "bridge";
+  if (r.type === "mountain") return "mountain";
+  if (r.type === "asphalt") return "urban";
+  return "rural";
+}
+
+function generateRegionalRoadLamps(): RegionalLampData[] {
+  const out: RegionalLampData[] = [];
+  const existing: { x: number; z: number }[] = [
+    ...STREET_LIGHTS,
+    ...VILLAGE_LAMPS,
+  ];
+  const tooCloseExisting = (x: number, z: number): boolean => {
+    for (const e of existing) {
+      const dx = x - e.x, dz = z - e.z;
+      if (dx * dx + dz * dz < LAMP_DEDUP_RADIUS * LAMP_DEDUP_RADIUS) return true;
+    }
+    const localR = LAMP_DEDUP_RADIUS * 0.6;
+    for (const o of out) {
+      const dx = x - o.x, dz = z - o.z;
+      if (dx * dx + dz * dz < localR * localR) return true;
+    }
+    return false;
+  };
+  const insideObstacle = (x: number, z: number): boolean => {
+    for (const o of STATIC_OBSTACLES) {
+      if (o.kind === "guardrail" || o.kind === "bridge_rail") continue;
+      const hx = o.w / 2 + LAMP_OBSTACLE_INFLATE;
+      const hz = o.d / 2 + LAMP_OBSTACLE_INFLATE;
+      if (
+        x >= o.x - hx && x <= o.x + hx &&
+        z >= o.z - hz && z <= o.z + hz
+      ) return true;
+    }
+    return false;
+  };
+  const inWorld = (x: number, z: number): boolean =>
+    Math.abs(x) <= WORLD_HALF - 5 && Math.abs(z) <= WORLD_HALF - 5;
+
+  // Per-style spacing (m) along the road centerline and whether to
+  // alternate sides. Both-sides placement (urban/bridge) doubles the
+  // lamp density visually without changing the spacing.
+  const SPACING: Record<RegionalLampData["style"], number> = {
+    urban: 42, bridge: 32, rural: 55, mountain: 65,
+  };
+  const ALTERNATE: Record<RegionalLampData["style"], boolean> = {
+    urban: false, bridge: false, rural: true, mountain: true,
+  };
+
+  // At sharp polyline corners the segment-local normal can cut back
+  // across the previous segment's centerline, putting the lamp inside
+  // the carriageway. After computing a candidate position, verify it
+  // sits at least halfWidth+0.5m from the entire polyline.
+  const insideOwnCarriageway = (
+    x: number, z: number, r: RoadPath
+  ): boolean => {
+    const d = distancePointToPolyline(x, z, r.points);
+    return d < r.width / 2 + 0.5;
+  };
+
+  for (const r of REGIONAL_ROADS) {
+    const style = styleForRoad(r);
+    const offset = r.width / 2 + 3.5;
+
+    // Total polyline arc length.
+    let total = 0;
+    const segLens: number[] = [];
+    for (let i = 0; i < r.points.length - 1; i++) {
+      const [ax, az] = r.points[i];
+      const [bx, bz] = r.points[i + 1];
+      const L = Math.hypot(bx - ax, bz - az);
+      segLens.push(L);
+      total += L;
+    }
+    if (total < 1e-3) continue;
+
+    // Driveway-class or very short roads → one marker lamp at entrance.
+    if (isDrivewayRoad(r.id) || total < 30) {
+      const [ax, az] = r.points[0];
+      const [bx, bz] = r.points[1];
+      const L = segLens[0];
+      if (L < 1e-3) continue;
+      const tx = (bx - ax) / L, tz = (bz - az) / L;
+      const nx = -tz, nz = tx;
+      const t = Math.min(4, L / 2);
+      const px = ax + tx * t + nx * offset;
+      const pz = az + tz * t + nz * offset;
+      const rotY = Math.atan2(tx, tz);
+      if (
+        inWorld(px, pz) &&
+        !insideObstacle(px, pz) &&
+        !tooCloseExisting(px, pz) &&
+        !insideOwnCarriageway(px, pz, r)
+      ) {
+        out.push({ x: px, z: pz, rotY, roadId: r.id, style: "rural" });
+      }
+      continue;
+    }
+
+    const spacing = SPACING[style];
+    const alternate = ALTERNATE[style];
+
+    // Walk the polyline by arc length. First lamp is offset half a
+    // spacing into the road so closed loops don't double-up at the
+    // start vertex. Short roads (total < spacing) get one midpoint
+    // lamp instead of being skipped entirely.
+    let arc = Math.min(spacing * 0.5, total * 0.5);
+    let lampIdx = 0;
+    for (let i = 0; i < r.points.length - 1; i++) {
+      const [ax, az] = r.points[i];
+      const [bx, bz] = r.points[i + 1];
+      const L = segLens[i];
+      if (L < 1e-3) continue;
+      const tx = (bx - ax) / L, tz = (bz - az) / L;
+      const nx = -tz, nz = tx;
+      const rotY = Math.atan2(tx, tz);
+      let t = arc;
+      while (t < L) {
+        const sides = alternate
+          ? [lampIdx % 2 === 0 ? +1 : -1]
+          : [+1, -1];
+        for (const s of sides) {
+          const px = ax + tx * t + nx * offset * s;
+          const pz = az + tz * t + nz * offset * s;
+          if (!inWorld(px, pz)) continue;
+          if (insideObstacle(px, pz)) continue;
+          if (tooCloseExisting(px, pz)) continue;
+          if (insideOwnCarriageway(px, pz, r)) continue;
+          out.push({ x: px, z: pz, rotY, roadId: r.id, style });
+        }
+        lampIdx++;
+        t += spacing;
+      }
+      arc = t - L;
+    }
+  }
+  return out;
+}
+
+export const REGIONAL_ROAD_LAMPS: RegionalLampData[] = generateRegionalRoadLamps();
+export const TOTAL_REAL_LIGHTS =
+  VILLAGE_REAL_LIGHTS.length + JUNCTION_REAL_LIGHTS.length;
+
+// =============================================================
 // COLLISION & VALIDATION HELPERS
 // =============================================================
 
@@ -1659,6 +1858,127 @@ if (isViteDev) {
     `${FOREST_ROADSIDE_COUNT} roadside-row trees + ` +
     `${FOREST_SCATTER_TREE_COUNT} scatter trees, ` +
     `${trailheadEntities} trailhead entities.`;
+  // ---- Regional road lighting validator --------------------------------
+  // Lamps must be inside world bounds, sit between halfWidth+0.5 and
+  // halfWidth+12 from their source road centerline (i.e. on the shoulder,
+  // not in the carriageway and not 30m off in the trees), and clear all
+  // non-rail obstacles. Coverage check samples each arterial/collector
+  // road every 30m and asks whether the nearest lamp (any road) is within
+  // 65m — that's the night-driving readability threshold.
+  const ROAD_BY_ID = new Map<string, RoadPath>();
+  for (const r of REGIONAL_ROADS) ROAD_BY_ID.set(r.id, r);
+  let lampsOutOfBounds = 0;
+  let lampsOffShoulder = 0;
+  let lampsOnObstacle = 0;
+  let lampsInCarriageway = 0;
+  for (const lamp of REGIONAL_ROAD_LAMPS) {
+    if (
+      Math.abs(lamp.x) > WORLD_HALF - 1 ||
+      Math.abs(lamp.z) > WORLD_HALF - 1
+    ) {
+      lampsOutOfBounds++;
+      issues.push(
+        `regional lamp (road=${lamp.roadId}) at (${lamp.x.toFixed(1)},` +
+          `${lamp.z.toFixed(1)}) is outside WORLD bounds`
+      );
+      continue;
+    }
+    const src = ROAD_BY_ID.get(lamp.roadId);
+    if (!src) {
+      lampsOffShoulder++;
+      issues.push(`regional lamp references unknown road id ${lamp.roadId}`);
+      continue;
+    }
+    const hw = src.width / 2;
+    const d = distancePointToPolyline(lamp.x, lamp.z, src.points);
+    if (d < hw + 0.4) {
+      lampsInCarriageway++;
+      issues.push(
+        `regional lamp on ${lamp.roadId} at (${lamp.x.toFixed(1)},` +
+          `${lamp.z.toFixed(1)}) sits inside carriageway (d=${d.toFixed(2)}m, ` +
+          `hw=${hw}m)`
+      );
+    } else if (d > hw + 12) {
+      lampsOffShoulder++;
+      issues.push(
+        `regional lamp on ${lamp.roadId} at (${lamp.x.toFixed(1)},` +
+          `${lamp.z.toFixed(1)}) sits ${d.toFixed(1)}m off the road shoulder`
+      );
+    }
+    for (const o of STATIC_OBSTACLES) {
+      if (o.kind === "guardrail" || o.kind === "bridge_rail") continue;
+      const hx = o.w / 2, hz = o.d / 2;
+      if (
+        lamp.x >= o.x - hx && lamp.x <= o.x + hx &&
+        lamp.z >= o.z - hz && lamp.z <= o.z + hz
+      ) {
+        lampsOnObstacle++;
+        issues.push(
+          `regional lamp on ${lamp.roadId} at (${lamp.x.toFixed(1)},` +
+            `${lamp.z.toFixed(1)}) sits inside ${o.kind} AABB`
+        );
+        break;
+      }
+    }
+  }
+
+  // Coverage: walk every arterial/collector road by 30m steps; for each
+  // sample, find nearest lamp (regional + city + village).
+  const ALL_LAMPS: { x: number; z: number }[] = [
+    ...REGIONAL_ROAD_LAMPS,
+    ...STREET_LIGHTS,
+    ...VILLAGE_LAMPS,
+  ];
+  const COVERAGE_RADIUS = 65;
+  const COVERAGE_STEP = 30;
+  let coverSamples = 0, coverHits = 0;
+  for (const r of REGIONAL_ROADS) {
+    if (r.type === "forest" || r.type === "dirt") continue; // local only
+    if (isDrivewayRoad(r.id)) continue;
+    let total = 0;
+    for (let i = 0; i < r.points.length - 1; i++) {
+      const [ax, az] = r.points[i];
+      const [bx, bz] = r.points[i + 1];
+      total += Math.hypot(bx - ax, bz - az);
+    }
+    let arc = COVERAGE_STEP * 0.5;
+    for (let i = 0; i < r.points.length - 1; i++) {
+      const [ax, az] = r.points[i];
+      const [bx, bz] = r.points[i + 1];
+      const L = Math.hypot(bx - ax, bz - az);
+      if (L < 1e-3) continue;
+      const tx = (bx - ax) / L, tz = (bz - az) / L;
+      let t = arc;
+      while (t < L) {
+        const sx = ax + tx * t, sz = az + tz * t;
+        coverSamples++;
+        let best = Infinity;
+        for (const lp of ALL_LAMPS) {
+          const dx = sx - lp.x, dz = sz - lp.z;
+          const d2 = dx * dx + dz * dz;
+          if (d2 < best) best = d2;
+        }
+        if (best < COVERAGE_RADIUS * COVERAGE_RADIUS) coverHits++;
+        else issues.push(
+          `lighting coverage gap on ${r.id} near (${sx.toFixed(0)},` +
+            `${sz.toFixed(0)}): nearest lamp ${Math.sqrt(best).toFixed(0)}m > ` +
+            `${COVERAGE_RADIUS}m`
+        );
+        t += COVERAGE_STEP;
+      }
+      arc = t - L;
+    }
+    void total;
+  }
+  const lightingLine =
+    `regionalRoadLighting OK: ${REGIONAL_ROAD_LAMPS.length} lamps, ` +
+    `${TOTAL_REAL_LIGHTS} real lights, coverage=${coverHits}/${coverSamples} ` +
+    `major samples` +
+    (lampsOutOfBounds || lampsOffShoulder || lampsOnObstacle || lampsInCarriageway
+      ? ` [oob:${lampsOutOfBounds},offShoulder:${lampsOffShoulder},` +
+        `onObstacle:${lampsOnObstacle},inCarriageway:${lampsInCarriageway}]`
+      : "");
+
   const polishLine =
     `road clearances: ${totalWp - (polish.waypointsOff ?? 0)}/${totalWp} ` +
     `traffic waypoints on-road, ${CHECKPOINTS.length - (polish.checkpointsOff ?? 0)}/` +
@@ -1682,6 +2002,8 @@ if (isViteDev) {
     console.warn(`[city-sandbox] ${villageLine}`);
     // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${roadNetworkLine}`);
+    // eslint-disable-next-line no-console
+    console.warn(`[city-sandbox] ${lightingLine}`);
   } else {
     // eslint-disable-next-line no-console
     console.info(
@@ -1700,5 +2022,7 @@ if (isViteDev) {
     console.info(`[city-sandbox] ${villageLine}`);
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${roadNetworkLine}`);
+    // eslint-disable-next-line no-console
+    console.info(`[city-sandbox] ${lightingLine}`);
   }
 }

@@ -8,8 +8,11 @@ import {
   MOUNTAIN_ROCKS,
   VILLAGE_LAMPS,
   VILLAGE_PARKING_PADS,
+  REGIONAL_ROAD_LAMPS,
+  VILLAGE_REAL_LIGHTS,
+  JUNCTION_REAL_LIGHTS,
 } from "../shared/cityData";
-import type { RoadPath, StaticObstacle } from "../shared/types";
+import type { RoadPath, StaticObstacle, RegionalLampData } from "../shared/types";
 
 // =============================================================
 // REGIONAL ROADS — chain of segment quads per polyline
@@ -495,14 +498,6 @@ const FOREST_LAMP_HEAD = "#ffd58a";
 const FOREST_LAMP_POOL = "#f0c074";
 const FOREST_LAMP_POLE = "#3a2b1c";
 
-// Three village-center crossings get a real point light each. Coords
-// match VILLAGE_LAMPS entries near the loop perimeter / centre.
-const VILLAGE_REAL_LIGHTS: ReadonlyArray<readonly [number, number, number]> = [
-  [  0, 5, 320], // village green centre
-  [ 60, 5, 330], // east loop crossing
-  [-55, 5, 325], // west loop crossing
-];
-
 function ForestLamps() {
   return (
     <group>
@@ -525,15 +520,199 @@ function ForestLamps() {
           </mesh>
         </group>
       ))}
-      {/* Three warm point lights at the village centre — small distance
-          + decay=2 keeps the per-frame cost contained. */}
+      {/* Real point lights for the village centre live in
+          JunctionRealLights so the entire scene's pointLight set is
+          declared in exactly one place. */}
+    </group>
+  );
+}
+
+// =============================================================
+// REGIONAL ROAD LAMPS — instanced fake lighting along every road
+// =============================================================
+//
+// REGIONAL_ROAD_LAMPS is a procedurally generated list of pole positions
+// along the shoulder of every regional road, one entry per pole. We
+// bucket the list by style and render three instanced meshes per style
+// (pole / emissive head / transparent ground pool). With ~200-300 lamps
+// total and 4 styles, that's ~12 InstancedMesh objects but only ~75
+// draw calls' worth of geometry — far cheaper than 600+ individual
+// meshes, and it deliberately uses zero real lights.
+
+type LampStyle = RegionalLampData["style"];
+interface LampStyleDef {
+  poleColor: string;
+  poleHeight: number;
+  poleRadius: number;
+  poleTopY: number;
+  headColor: string;
+  headSize: [number, number, number];
+  headY: number;
+  poolColor: string;
+  poolRadius: number;
+  poolOpacity: number;
+}
+
+const LAMP_STYLE_DEFS: Record<LampStyle, LampStyleDef> = {
+  urban: {
+    poleColor: "#444448", poleHeight: 6.0, poleRadius: 0.10, poleTopY: 3.0,
+    headColor: "#fff2c0", headSize: [0.7, 0.3, 0.7], headY: 5.95,
+    poolColor: "#ffe49a", poolRadius: 5.5, poolOpacity: 0.16,
+  },
+  bridge: {
+    poleColor: "#3a3a3e", poleHeight: 6.4, poleRadius: 0.11, poleTopY: 3.2,
+    headColor: "#fff0b0", headSize: [0.8, 0.35, 0.8], headY: 6.35,
+    poolColor: "#ffe0a0", poolRadius: 6.5, poolOpacity: 0.20,
+  },
+  rural: {
+    poleColor: "#3a2b1c", poleHeight: 4.6, poleRadius: 0.10, poleTopY: 2.3,
+    headColor: "#ffc880", headSize: [0.55, 0.5, 0.55], headY: 4.7,
+    poolColor: "#f0a060", poolRadius: 4.5, poolOpacity: 0.14,
+  },
+  mountain: {
+    poleColor: "#2c2c30", poleHeight: 3.0, poleRadius: 0.09, poleTopY: 1.5,
+    headColor: "#ffb070", headSize: [0.5, 0.3, 0.5], headY: 3.05,
+    poolColor: "#e09060", poolRadius: 3.5, poolOpacity: 0.16,
+  },
+};
+
+interface InstancedLampLayerProps {
+  lamps: RegionalLampData[];
+  style: LampStyleDef;
+}
+
+function PoleLayer({ lamps, style }: InstancedLampLayerProps) {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  useEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3(1, 1, 1);
+    for (let i = 0; i < lamps.length; i++) {
+      const l = lamps[i];
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), l.rotY);
+      m.compose(new THREE.Vector3(l.x, style.poleTopY, l.z), q, s);
+      mesh.setMatrixAt(i, m);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [lamps, style]);
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, lamps.length]} castShadow>
+      <cylinderGeometry args={[style.poleRadius * 0.85, style.poleRadius, style.poleHeight, 6]} />
+      <meshLambertMaterial color={style.poleColor} />
+    </instancedMesh>
+  );
+}
+
+function HeadLayer({ lamps, style }: InstancedLampLayerProps) {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  useEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const s = new THREE.Vector3(1, 1, 1);
+    for (let i = 0; i < lamps.length; i++) {
+      const l = lamps[i];
+      q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), l.rotY);
+      m.compose(new THREE.Vector3(l.x, style.headY, l.z), q, s);
+      mesh.setMatrixAt(i, m);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [lamps, style]);
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, lamps.length]}>
+      <boxGeometry args={style.headSize} />
+      <meshBasicMaterial color={style.headColor} />
+    </instancedMesh>
+  );
+}
+
+function PoolLayer({ lamps, style }: InstancedLampLayerProps) {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  useEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    const m = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    // Lay the disc flat on the ground (rotate around X by -PI/2).
+    const flat = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(-Math.PI / 2, 0, 0)
+    );
+    const s = new THREE.Vector3(1, 1, 1);
+    for (let i = 0; i < lamps.length; i++) {
+      const l = lamps[i];
+      q.copy(flat);
+      m.compose(new THREE.Vector3(l.x, 0.04, l.z), q, s);
+      mesh.setMatrixAt(i, m);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [lamps, style]);
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, lamps.length]}>
+      <circleGeometry args={[style.poolRadius, 14]} />
+      <meshBasicMaterial color={style.poolColor} transparent opacity={style.poolOpacity} />
+    </instancedMesh>
+  );
+}
+
+function RegionalRoadLamps() {
+  const buckets = useMemo(() => {
+    const grouped: Record<LampStyle, RegionalLampData[]> = {
+      urban: [], bridge: [], rural: [], mountain: [],
+    };
+    for (const lamp of REGIONAL_ROAD_LAMPS) grouped[lamp.style].push(lamp);
+    return grouped;
+  }, []);
+  const styles = Object.keys(buckets) as LampStyle[];
+  return (
+    <group>
+      {styles.map((style) => {
+        const lamps = buckets[style];
+        if (lamps.length === 0) return null;
+        const def = LAMP_STYLE_DEFS[style];
+        return (
+          <group key={style}>
+            <PoleLayer lamps={lamps} style={def} />
+            <HeadLayer lamps={lamps} style={def} />
+            <PoolLayer lamps={lamps} style={def} />
+          </group>
+        );
+      })}
+    </group>
+  );
+}
+
+// =============================================================
+// JUNCTION REAL LIGHTS — a fixed list of warm point lights at the
+// busiest road junctions. No shadows; modest distance + decay=2 keeps
+// the per-frame cost flat.
+// =============================================================
+
+function JunctionRealLights() {
+  return (
+    <group>
+      {JUNCTION_REAL_LIGHTS.map(([x, y, z], i) => (
+        <pointLight
+          key={`j-${i}`}
+          position={[x, y, z]}
+          color="#ffd0a0"
+          intensity={3.5}
+          distance={38}
+          decay={2}
+        />
+      ))}
       {VILLAGE_REAL_LIGHTS.map(([x, y, z], i) => (
         <pointLight
-          key={i}
+          key={`v-${i}`}
           position={[x, y, z]}
           color="#ffcb88"
-          intensity={5}
-          distance={26}
+          intensity={4.0}
+          distance={32}
           decay={2}
         />
       ))}
@@ -557,6 +736,8 @@ export default function BiomeRender() {
       <ForestRocks />
       <MountainRocks />
       <ForestLamps />
+      <RegionalRoadLamps />
+      <JunctionRealLights />
     </group>
   );
 }
