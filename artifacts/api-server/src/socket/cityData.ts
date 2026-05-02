@@ -4,6 +4,12 @@
 // and broadcasts state to all clients. The client reads `variant` for
 // purely visual rendering (sedan/van/taxi/compact body shape).
 
+// World bounds — must match client `shared/cityData.ts` so that
+// authoritative server-side clamps never disagree with client-side
+// movement clamps.
+export const WORLD_HALF = 500;
+export const WORLD_SIZE = 1000;
+
 export const INITIAL_VEHICLES = [
   // ===== City (14 cars) — original 200x200 hub =====
   { id: "car-0",  x:  22, y: 0.6, z: -22, rotY: 0,                  speed: 0, driverId: null, variant: "sedan",   color: "#e74c3c" },

@@ -63,7 +63,8 @@ function TrafficCar({ route, seed }: TrafficCarProps) {
 
 /**
  * Spawns one TrafficCar for each car-seed in TRAFFIC_ROUTES. Renders
- * 4 ambient cars total looping the outer perimeter. Client-only.
+ * the ambient cars (currently 10 across 4 routes — city loop, bridge-
+ * forest spine, mountain switchbacks, outer service ring). Client-only.
  */
 export default function AmbientTraffic() {
   return (

@@ -1,7 +1,13 @@
 import { Server, Socket } from "socket.io";
 import type { Server as HttpServer } from "http";
 import { logger } from "../lib/logger";
-import { INITIAL_VEHICLES, SPAWN_POINTS } from "./cityData";
+import { INITIAL_VEHICLES, SPAWN_POINTS, WORLD_HALF } from "./cityData";
+
+// Clamp a horizontal world coordinate so a hacked client cannot push a
+// player or vehicle outside the playable map. The margin keeps the
+// clamp tight enough that even a large vehicle body stays in-bounds.
+const clampWorld = (v: number, margin = 0): number =>
+  Math.min(WORLD_HALF - margin, Math.max(-WORLD_HALF + margin, v));
 
 interface PlayerState {
   id: string;
@@ -106,6 +112,13 @@ export function setupGameServer(httpServer: HttpServer) {
         data.x = player.x; data.y = player.y; data.z = player.z;
       }
 
+      // World-bounds clamp. Even if the per-tick delta passes the
+      // anti-teleport check above, any absolute coordinate is hard-
+      // clamped so a hacked client can never report being outside
+      // the 1000x1000 map.
+      if (typeof data.x === "number") data.x = clampWorld(data.x, 1);
+      if (typeof data.z === "number") data.z = clampWorld(data.z, 1);
+
       const updated: PlayerState = { ...player, ...data, id: socket.id };
       players.set(socket.id, updated);
       socket.broadcast.emit("playerMoved", updated);
@@ -133,6 +146,13 @@ export function setupGameServer(httpServer: HttpServer) {
       // clients when they look it up in VARIANT_DIMENSIONS.
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { variant: _v, color: _c, ...safe } = data;
+
+      // World-bounds clamp on incoming vehicle position. Driver-side
+      // clamps already enforce this on a fair client, but the server
+      // must not relay an out-of-map vehicle to other players.
+      if (typeof safe.x === "number") safe.x = clampWorld(safe.x, 7);
+      if (typeof safe.z === "number") safe.z = clampWorld(safe.z, 7);
+
       const updated: VehicleState = { ...vehicle, ...safe };
       vehicles.set(data.id, updated);
       socket.broadcast.emit("vehicleMoved", updated);
