@@ -6,12 +6,7 @@ export default function App() {
   const [username, setUsername] = useState<string | null>(null);
 
   if (!username) {
-    return (
-      <Lobby
-        onJoin={(name) => setUsername(name)}
-        playerCount={1}
-      />
-    );
+    return <Lobby onJoin={(name) => setUsername(name)} />;
   }
 
   return <Game username={username} />;

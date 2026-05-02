@@ -279,7 +279,7 @@ export default function HUD({
             {raceActive ? formatTime(raceTime) : "FINISHED!"}
           </div>
           <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>
-            {racePassed.length} / {CHECKPOINTS.length - 1} checkpoints
+            {racePassed.length} / {CHECKPOINTS.length} checkpoints
           </div>
         </div>
       )}

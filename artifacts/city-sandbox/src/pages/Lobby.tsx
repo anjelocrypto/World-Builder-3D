@@ -2,10 +2,9 @@ import { useState } from "react";
 
 interface LobbyProps {
   onJoin: (username: string) => void;
-  playerCount: number;
 }
 
-export default function Lobby({ onJoin, playerCount }: LobbyProps) {
+export default function Lobby({ onJoin }: LobbyProps) {
   const [username, setUsername] = useState("");
   const [error, setError] = useState("");
 
@@ -120,7 +119,7 @@ export default function Lobby({ onJoin, playerCount }: LobbyProps) {
         </button>
       </div>
 
-      {/* Player count */}
+      {/* Server status indicator (live player count is shown in-game after joining) */}
       <div
         style={{
           marginTop: 24,
@@ -130,7 +129,7 @@ export default function Lobby({ onJoin, playerCount }: LobbyProps) {
           alignItems: "center",
           gap: 8,
         }}
-        data-testid="text-playercount"
+        data-testid="text-server-status"
       >
         <div
           style={{
@@ -141,7 +140,7 @@ export default function Lobby({ onJoin, playerCount }: LobbyProps) {
             boxShadow: "0 0 8px #2ecc71",
           }}
         />
-        {playerCount} player{playerCount !== 1 ? "s" : ""} online
+        Server online — join to see other players
       </div>
 
       {/* Controls info */}
