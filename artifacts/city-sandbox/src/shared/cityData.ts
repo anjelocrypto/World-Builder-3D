@@ -114,7 +114,17 @@ export function checkBuildingCollision(px: number, pz: number): boolean {
 // Dev-only sanity check: if any spawn point lands inside a generated
 // building, the player would freeze in place. We log a loud warning in
 // development so the configuration can be fixed before it ships.
-if (import.meta.env.DEV) {
+//
+// Guarded for non-Vite consumers (Node test runners, ts-node, etc.):
+// `import.meta.env` only exists when this module is loaded through Vite's
+// bundler, so we feature-detect before reading `.DEV` to avoid a
+// `Cannot read properties of undefined` crash in plain Node.
+const isViteDev =
+  typeof import.meta !== "undefined" &&
+  typeof import.meta.env !== "undefined" &&
+  import.meta.env.DEV === true;
+
+if (isViteDev) {
   const bad = SPAWN_POINTS.filter(([x, , z]) => checkBuildingCollision(x, z));
   if (bad.length > 0) {
     // eslint-disable-next-line no-console
