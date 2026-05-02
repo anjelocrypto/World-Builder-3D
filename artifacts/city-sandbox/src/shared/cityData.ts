@@ -21,6 +21,7 @@ import type {
   RailPillar,
   TrainStationData,
   SkybridgeData,
+  PeriCityHomestead,
 } from "./types";
 import { distancePointToPolyline } from "./roadGeom";
 
@@ -1086,10 +1087,21 @@ export const REGIONAL_ROADS: RoadPath[] = [
   // utility, so the city-core grid + ring + four spokes are all one
   // connected component.
   { id: "inner-city-ring",
+    // The intermediate (non-cardinal) vertices below are COLLINEAR with
+    // the original 8 cardinal/corner vertices, so the rendered ring
+    // geometry is unchanged. They exist purely so each peri-city
+    // homestead driveway in `drv-hs-*` starts at an inner-city-ring
+    // graph node — without them every homestead driveway would show up
+    // as an "isolated road" component in the road-graph validator.
     points: [
-      [ 100, -100], [ 100,    0], [ 100,  100], [   0,  100],
-      [-100,  100], [-100,    0], [-100, -100], [   0, -100],
-      [ 100, -100],
+      [ 100, -100], [ 100,  -30], [ 100,    0],
+      [ 100,   45], [ 100,   75], [ 100,  100],
+      [  55,  100], [  25,  100], [   0,  100],
+      [ -45,  100], [-100,  100],
+      [-100,   75], [-100,   30], [-100,    0],
+      [-100,  -50], [-100, -100],
+      [ -55, -100], [ -25, -100], [   0, -100],
+      [  35, -100], [ 100, -100],
     ],
     width: 12, type: "asphalt" },
   // outer-loop: a closed regional ring at radius ~ ±460 (east/west) and
@@ -1148,7 +1160,164 @@ export const REGIONAL_ROADS: RoadPath[] = [
   { id: "drv-west-depot",
     points: [[-220, -20], [-220, 65]],
     width: 12, type: "dirt" }, // serves car-27 at (-220, 65)
+  // ---------------------------------------------------------------
+  // Peri-city homestead driveways. Each `points[0]` matches a vertex
+  // on `inner-city-ring` (see the intermediate vertices added above)
+  // so the road-graph validator treats the driveway as connected. The
+  // endpoint sits ~1m short of the yard gate centre so the asphalt /
+  // dirt strip does not visually pierce the fence opening. See
+  // PERI_CITY_HOMESTEADS for the matching house/yard/fence definitions.
+  // ---------------------------------------------------------------
+  // North cluster (gates face south toward ring north edge z=-100)
+  { id: "drv-hs-n1", points: [[-55, -100], [-55, -116]], width: 4, type: "dirt" },
+  { id: "drv-hs-n2", points: [[-25, -100], [-25, -120]], width: 4, type: "dirt" },
+  { id: "drv-hs-n3", points: [[ 35, -100], [ 35, -116]], width: 4, type: "dirt" },
+  // East cluster (gates face west toward ring east edge x=+100).
+  // Endpoints stop ~1m short of each gate centre so the dirt strip
+  // does not pierce the fence opening.
+  { id: "drv-hs-e1", points: [[100, -30], [119, -30]], width: 4, type: "dirt" },
+  { id: "drv-hs-e2", points: [[100,  45], [120,  45]], width: 4, type: "dirt" },
+  { id: "drv-hs-e3", points: [[100,  75], [122,  75]], width: 4, type: "dirt" },
+  // South cluster (gates face north toward ring south edge z=+100)
+  { id: "drv-hs-s1", points: [[-45, 100], [-45, 116]], width: 4, type: "dirt" },
+  { id: "drv-hs-s2", points: [[ 25, 100], [ 25, 120]], width: 4, type: "dirt" },
+  { id: "drv-hs-s3", points: [[ 55, 100], [ 55, 117]], width: 4, type: "dirt" },
+  // West cluster (gates face east toward ring west edge x=-100).
+  // Endpoints stop ~1m short of each gate centre.
+  { id: "drv-hs-w1", points: [[-100, -50], [-119, -50]], width: 4, type: "dirt" },
+  { id: "drv-hs-w2", points: [[-100,  30], [-122,  30]], width: 4, type: "dirt" },
+  { id: "drv-hs-w3", points: [[-100,  75], [-124,  75]], width: 4, type: "dirt" },
 ];
+
+// =============================================================
+// PERI-CITY HOMESTEAD BELT — wooden cottages around the central city
+// =============================================================
+//
+// 12 small wooden houses arranged in 4 clusters (N/S/E/W) just outside
+// the inner-city-ring carriageway. Each homestead has a fenced yard
+// (yardW × yardD) with the house centred inside, a 4m-wide gate on the
+// `gateSide` edge, and a short dirt driveway in REGIONAL_ROADS that
+// taps into a matching inner-city-ring vertex (see drv-hs-*).
+//
+// `style` is purely cosmetic; both styles share footprint maths.
+// `rotY` only rotates the rendered house (door faces the gate);
+// gameplay collision uses the axis-aligned `houseW × houseD` AABB
+// pushed into STATIC_OBSTACLES below.
+export const PERI_CITY_HOMESTEADS: ReadonlyArray<PeriCityHomestead> = [
+  // North woods cluster ----------------------------------------------
+  { id: "hs-n1", x: -55, z: -122, rotY:  0,           houseW: 7, houseD: 6, yardW: 16, yardD: 14,
+    style: "cottage",  gateSide: "south", driveStart: [-55, -100] },
+  { id: "hs-n2", x: -25, z: -128, rotY:  0,           houseW: 7, houseD: 6, yardW: 16, yardD: 18,
+    style: "barnette", gateSide: "south", driveStart: [-25, -100] },
+  { id: "hs-n3", x:  35, z: -122, rotY:  0,           houseW: 7, houseD: 6, yardW: 16, yardD: 14,
+    style: "cottage",  gateSide: "south", driveStart: [ 35, -100] },
+  // East woodland / suburban edge cluster ---------------------------
+  // Avoids TRAIN_STATION footprint (cx=110, cz=-65, w=8, d=20) and
+  // its staircase landing at (122, -65) — first house pushed north to
+  // z=-30 so its yard does not collide with the platform.
+  { id: "hs-e1", x: 128, z:  -30, rotY: -Math.PI / 2, houseW: 7, houseD: 6, yardW: 16, yardD: 14,
+    style: "cottage",  gateSide: "west",  driveStart: [100, -30] },
+  { id: "hs-e2", x: 130, z:   45, rotY: -Math.PI / 2, houseW: 7, houseD: 6, yardW: 18, yardD: 16,
+    style: "barnette", gateSide: "west",  driveStart: [100,  45] },
+  { id: "hs-e3", x: 132, z:   75, rotY: -Math.PI / 2, houseW: 7, houseD: 6, yardW: 18, yardD: 16,
+    style: "cottage",  gateSide: "west",  driveStart: [100,  75] },
+  // South bridge / forest gateway cluster ---------------------------
+  // Avoids the bridge approach corridor |x| < 30, z ∈ [100, 180].
+  // House x coordinates match the corresponding drv-hs-s* driveway so
+  // the driveway lands on the gate (validator enforces alignment).
+  { id: "hs-s1", x: -45, z:  122, rotY:  Math.PI,     houseW: 7, houseD: 6, yardW: 16, yardD: 14,
+    style: "cottage",  gateSide: "north", driveStart: [-45, 100] },
+  { id: "hs-s2", x:  25, z:  128, rotY:  Math.PI,     houseW: 7, houseD: 6, yardW: 16, yardD: 18,
+    style: "barnette", gateSide: "north", driveStart: [ 25, 100] },
+  { id: "hs-s3", x:  55, z:  124, rotY:  Math.PI,     houseW: 7, houseD: 6, yardW: 16, yardD: 16,
+    style: "cottage",  gateSide: "north", driveStart: [ 55, 100] },
+  // West fields / forest edge cluster -------------------------------
+  { id: "hs-w1", x: -128, z: -50, rotY:  Math.PI / 2, houseW: 7, houseD: 6, yardW: 16, yardD: 14,
+    style: "cottage",  gateSide: "east",  driveStart: [-100, -50] },
+  { id: "hs-w2", x: -132, z:  30, rotY:  Math.PI / 2, houseW: 7, houseD: 6, yardW: 18, yardD: 16,
+    style: "barnette", gateSide: "east",  driveStart: [-100,  30] },
+  { id: "hs-w3", x: -134, z:  75, rotY:  Math.PI / 2, houseW: 7, houseD: 6, yardW: 18, yardD: 16,
+    style: "cottage",  gateSide: "east",  driveStart: [-100,  75] },
+];
+
+const HOMESTEAD_FENCE_THICKNESS = 0.3;
+const HOMESTEAD_FENCE_GATE_HALF = 2.0;
+
+// Yard rectangles used by the tree-belt rejector and the validator's
+// "tree inside yard" coverage check. Returns the axis-aligned bounds.
+export function homesteadYardBounds(h: PeriCityHomestead): {
+  x0: number; x1: number; z0: number; z1: number;
+} {
+  return {
+    x0: h.x - h.yardW / 2,
+    x1: h.x + h.yardW / 2,
+    z0: h.z - h.yardD / 2,
+    z1: h.z + h.yardD / 2,
+  };
+}
+
+// Produce the 4 (or 6, when split by a gate) fence panels around a
+// homestead yard as collidable axis-aligned AABBs. Each side normally
+// renders as one long thin AABB; the side carrying the gate is split
+// into two shorter panels with a 2 × HOMESTEAD_FENCE_GATE_HALF gap
+// centred on that edge.
+export function homesteadFenceSegments(h: PeriCityHomestead): StaticObstacle[] {
+  const halfW = h.yardW / 2;
+  const halfD = h.yardD / 2;
+  const t = HOMESTEAD_FENCE_THICKNESS;
+  const g = HOMESTEAD_FENCE_GATE_HALF;
+  const out: StaticObstacle[] = [];
+  const pushHorizontal = (cx: number, cz: number, w: number) => {
+    if (w < 0.5) return;
+    out.push({ x: cx, z: cz, w, d: t, kind: "yard_fence" });
+  };
+  const pushVertical = (cx: number, cz: number, d: number) => {
+    if (d < 0.5) return;
+    out.push({ x: cx, z: cz, w: t, d, kind: "yard_fence" });
+  };
+  // North side (z = h.z - halfD) — runs along x.
+  if (h.gateSide === "north") {
+    const panelW = halfW - g;
+    pushHorizontal(h.x - (g + panelW / 2), h.z - halfD, panelW);
+    pushHorizontal(h.x + (g + panelW / 2), h.z - halfD, panelW);
+  } else {
+    pushHorizontal(h.x, h.z - halfD, h.yardW);
+  }
+  // South side (z = h.z + halfD).
+  if (h.gateSide === "south") {
+    const panelW = halfW - g;
+    pushHorizontal(h.x - (g + panelW / 2), h.z + halfD, panelW);
+    pushHorizontal(h.x + (g + panelW / 2), h.z + halfD, panelW);
+  } else {
+    pushHorizontal(h.x, h.z + halfD, h.yardW);
+  }
+  // West side (x = h.x - halfW) — runs along z.
+  if (h.gateSide === "west") {
+    const panelD = halfD - g;
+    pushVertical(h.x - halfW, h.z - (g + panelD / 2), panelD);
+    pushVertical(h.x - halfW, h.z + (g + panelD / 2), panelD);
+  } else {
+    pushVertical(h.x - halfW, h.z, h.yardD);
+  }
+  // East side (x = h.x + halfW).
+  if (h.gateSide === "east") {
+    const panelD = halfD - g;
+    pushVertical(h.x + halfW, h.z - (g + panelD / 2), panelD);
+    pushVertical(h.x + halfW, h.z + (g + panelD / 2), panelD);
+  } else {
+    pushVertical(h.x + halfW, h.z, h.yardD);
+  }
+  return out;
+}
+
+// Pre-computed AABBs pushed into STATIC_OBSTACLES so the existing
+// player/vehicle collision pipeline blocks the houses + fences.
+const HOMESTEAD_HOUSE_OBSTACLES: StaticObstacle[] =
+  PERI_CITY_HOMESTEADS.map((h) => ({
+    x: h.x, z: h.z, w: h.houseW, d: h.houseD, kind: "wooden_house",
+  }));
+const HOMESTEAD_FENCE_OBSTACLES: StaticObstacle[] =
+  PERI_CITY_HOMESTEADS.flatMap(homesteadFenceSegments);
 
 // =============================================================
 // STATIC OBSTACLES — collidable AABBs in non-city biomes
@@ -1229,6 +1398,11 @@ export const STATIC_OBSTACLES: StaticObstacle[] = [
   // West — depots
   { x: -250, z:   65, w: 26, d: 18, kind: "depot" },
   { x: -380, z:  -60, w: 22, d: 18, kind: "depot" },
+  // Peri-city homestead belt — appended last so the index order of the
+  // pre-existing entries above is unchanged. Houses are full collidable
+  // boxes; fence panels are thin AABBs that block walk/drive-through.
+  ...HOMESTEAD_HOUSE_OBSTACLES,
+  ...HOMESTEAD_FENCE_OBSTACLES,
 ];
 
 // =============================================================
@@ -1456,12 +1630,36 @@ function inCityCorePlusMargin(x: number, z: number): boolean {
   );
 }
 
+// Slack added around each homestead yard so the surrounding tree row
+// hugs the fence rather than landing on it.
+const CITY_EDGE_HOMESTEAD_YARD_SLACK = 1.5;
+
+function inAnyHomesteadYard(x: number, z: number): boolean {
+  for (const h of PERI_CITY_HOMESTEADS) {
+    const b = homesteadYardBounds(h);
+    if (
+      x >= b.x0 - CITY_EDGE_HOMESTEAD_YARD_SLACK &&
+      x <= b.x1 + CITY_EDGE_HOMESTEAD_YARD_SLACK &&
+      z >= b.z0 - CITY_EDGE_HOMESTEAD_YARD_SLACK &&
+      z <= b.z1 + CITY_EDGE_HOMESTEAD_YARD_SLACK
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
 function cityEdgeRejected(x: number, z: number): boolean {
   if (!inCityEdgeBelt(x, z)) return true;
   if (inCityCorePlusMargin(x, z)) return true;
   if (Math.abs(x) > WORLD_HALF - 2 || Math.abs(z) > WORLD_HALF - 2) return true;
   if (tooCloseToAnyRoad(x, z, CITY_EDGE_ROAD_CLEAR)) return true;
   if (checkBuildingCollision(x, z, CITY_EDGE_BUILDING_CLEAR)) return true;
+  // Reject inside any peri-city homestead yard (with slack). The
+  // homestead house + fence AABBs are already in STATIC_OBSTACLES so
+  // the obstacle-clearance check below catches direct overlaps; this
+  // rule additionally keeps the open yard ground itself tree-free.
+  if (inAnyHomesteadYard(x, z)) return true;
   for (const o of STATIC_OBSTACLES) {
     const dx = Math.max(0, Math.abs(x - o.x) - o.w / 2);
     const dz = Math.max(0, Math.abs(z - o.z) - o.d / 2);
@@ -2048,6 +2246,13 @@ if (isViteDev) {
   // narrow obstacles oriented along the road, which is the safe side.
   const ROAD_KIND_OBSTACLES = new Set<StaticObstacleKind>([
     "bridge_rail", "cliff_wall", "guardrail",
+    // Peri-city homestead pieces are deliberately placed adjacent to
+    // their own dirt driveway (gate side touches the driveway end), so
+    // the generic "obstacle vs every road carriageway" check would
+    // false-positive on every homestead. The dedicated periCityHomesteads
+    // validator block below already enforces clearance against every
+    // NON-driveway road; excluding these kinds here avoids double-counting.
+    "wooden_house", "yard_fence",
   ]);
   let obstaclesIntruding = 0;
   for (const o of STATIC_OBSTACLES) {
@@ -2541,6 +2746,282 @@ if (isViteDev) {
         `oob:${beltOobViolations},offBelt:${beltBeltMembershipViolations}]`
       : "");
 
+  // ---- Peri-city homestead belt validator -------------------------------
+  // Validates the planned wooden homestead clusters around the central
+  // city: every house has a yard / fence / driveway, no part of the
+  // homestead overlaps a road carriageway, no tree falls inside a
+  // yard, no house intrudes the city core margin, and at least one
+  // homestead exists on each cardinal side.
+  const HOMESTEAD_DRIVEWAY_PREFIX = "drv-hs-";
+  const HOMESTEAD_DRIVEWAYS = REGIONAL_ROADS.filter(
+    (r) => r.id.startsWith(HOMESTEAD_DRIVEWAY_PREFIX),
+  );
+  const HOMESTEAD_HOUSE_OBS = STATIC_OBSTACLES.filter(
+    (o) => o.kind === "wooden_house",
+  );
+  const HOMESTEAD_FENCE_OBS = STATIC_OBSTACLES.filter(
+    (o) => o.kind === "yard_fence",
+  );
+  const homesteadSides = { north: 0, east: 0, south: 0, west: 0 } as Record<
+    PeriCityHomestead["gateSide"],
+    number
+  >;
+  // Any road that is NOT a homestead driveway — used for "house must
+  // not overlap a road carriageway" check (driveways are expected to
+  // touch the gate, so we exclude them).
+  const NON_DRIVEWAY_ROADS = REGIONAL_ROADS.filter(
+    (r) => !r.id.startsWith(HOMESTEAD_DRIVEWAY_PREFIX),
+  );
+  const aabbVsRoad = (
+    cx: number, cz: number, hw: number, hd: number,
+    road: RoadPath,
+  ): boolean => {
+    // Sample the polyline densely and reject if any centerline point
+    // sits inside the (cx,cz) AABB expanded by road.width/2.
+    const rh = road.width / 2;
+    for (let i = 0; i < road.points.length - 1; i++) {
+      const [ax, az] = road.points[i];
+      const [bx, bz] = road.points[i + 1];
+      const dx = bx - ax;
+      const dz = bz - az;
+      const len = Math.hypot(dx, dz);
+      const steps = Math.max(2, Math.ceil(len / 2));
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const px = ax + t * dx;
+        const pz = az + t * dz;
+        if (
+          Math.abs(px - cx) < hw + rh &&
+          Math.abs(pz - cz) < hd + rh
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+  let homesteadHousesOK = 0;
+  let homesteadHousesRoadOK = 0;
+  let homesteadHousesObstacleOK = 0;
+  let homesteadDrivewaysConnected = 0;
+  // (1) Per-homestead structural checks.
+  for (const h of PERI_CITY_HOMESTEADS) {
+    homesteadSides[h.gateSide]++;
+    homesteadHousesOK++;
+    // House must sit fully outside the city core + margin.
+    const houseHalfW = h.houseW / 2;
+    const houseHalfD = h.houseD / 2;
+    const corners: [number, number][] = [
+      [h.x - houseHalfW, h.z - houseHalfD],
+      [h.x + houseHalfW, h.z - houseHalfD],
+      [h.x + houseHalfW, h.z + houseHalfD],
+      [h.x - houseHalfW, h.z + houseHalfD],
+    ];
+    let cornerInCore = false;
+    for (const [cx, cz] of corners) {
+      if (
+        Math.abs(cx) <= CITY_HALF + CITY_EDGE_CORE_MARGIN &&
+        Math.abs(cz) <= CITY_HALF + CITY_EDGE_CORE_MARGIN
+      ) {
+        cornerInCore = true;
+        break;
+      }
+    }
+    if (cornerInCore) {
+      issues.push(
+        `homestead ${h.id} house corner inside city core +${CITY_EDGE_CORE_MARGIN}m margin`,
+      );
+    }
+    // House + yard must not overlap any non-driveway road carriageway.
+    let onRoad = false;
+    for (const road of NON_DRIVEWAY_ROADS) {
+      if (
+        aabbVsRoad(h.x, h.z, h.houseW / 2, h.houseD / 2, road) ||
+        aabbVsRoad(h.x, h.z, h.yardW / 2, h.yardD / 2, road)
+      ) {
+        onRoad = true;
+        issues.push(
+          `homestead ${h.id} (${h.x},${h.z}) overlaps road carriageway ${road.id}`,
+        );
+        break;
+      }
+    }
+    if (!onRoad) homesteadHousesRoadOK++;
+    // House must not overlap any other static obstacle (excluding its
+    // own house AABB and the homestead's fence panels).
+    let obstacleHit = false;
+    for (const o of STATIC_OBSTACLES) {
+      if (o.kind === "wooden_house" && o.x === h.x && o.z === h.z) continue;
+      if (o.kind === "yard_fence") continue;
+      const hw = o.w / 2 + h.houseW / 2;
+      const hd = o.d / 2 + h.houseD / 2;
+      if (Math.abs(o.x - h.x) < hw && Math.abs(o.z - h.z) < hd) {
+        obstacleHit = true;
+        issues.push(
+          `homestead ${h.id} house overlaps existing obstacle ${o.kind} at (${o.x},${o.z})`,
+        );
+        break;
+      }
+    }
+    if (!obstacleHit) homesteadHousesObstacleOK++;
+    // House must not overlap any city building.
+    if (checkBuildingCollision(h.x, h.z, Math.max(h.houseW, h.houseD) / 2)) {
+      issues.push(
+        `homestead ${h.id} house overlaps a city building`,
+      );
+    }
+    // House must not overlap parked vehicles, checkpoints, or street
+    // lamps. Use a conservative radius from the house centre.
+    const houseR = Math.max(h.houseW, h.houseD) / 2 + 0.5;
+    for (const v of INITIAL_VEHICLES) {
+      const dx = v.x - h.x; const dz = v.z - h.z;
+      if (dx * dx + dz * dz < houseR * houseR) {
+        issues.push(`homestead ${h.id} house overlaps vehicle ${v.id}`);
+        break;
+      }
+    }
+    for (const cp of CHECKPOINTS) {
+      const dx = cp.x - h.x; const dz = cp.z - h.z;
+      if (dx * dx + dz * dz < houseR * houseR) {
+        issues.push(`homestead ${h.id} house overlaps checkpoint ${cp.id}`);
+        break;
+      }
+    }
+    for (const l of STREET_LIGHTS) {
+      const dx = l.x - h.x; const dz = l.z - h.z;
+      if (dx * dx + dz * dz < houseR * houseR) {
+        issues.push(`homestead ${h.id} house overlaps street lamp at (${l.x},${l.z})`);
+        break;
+      }
+    }
+    // House must not overlap the train station footprint.
+    {
+      const sHw = TRAIN_STATION.w / 2 + h.houseW / 2;
+      const sHd = TRAIN_STATION.d / 2 + h.houseD / 2;
+      if (
+        Math.abs(TRAIN_STATION.cx - h.x) < sHw &&
+        Math.abs(TRAIN_STATION.cz - h.z) < sHd
+      ) {
+        issues.push(`homestead ${h.id} house overlaps train station`);
+      }
+      const stairR = 4 + Math.max(h.houseW, h.houseD) / 2;
+      const sdx = TRAIN_STATION.stairX - h.x;
+      const sdz = TRAIN_STATION.stairZ - h.z;
+      if (sdx * sdx + sdz * sdz < stairR * stairR) {
+        issues.push(`homestead ${h.id} house too close to station stairs`);
+      }
+    }
+    // House must not overlap any rail pillar (1.2m square).
+    for (const p of getRailPillars()) {
+      const dx = p.x - h.x; const dz = p.z - h.z;
+      const limit = h.houseW / 2 + 1.0;
+      if (Math.abs(dx) < limit && Math.abs(dz) < h.houseD / 2 + 1.0) {
+        issues.push(`homestead ${h.id} house overlaps rail pillar at (${p.x.toFixed(0)},${p.z.toFixed(0)})`);
+        break;
+      }
+    }
+  }
+  // (2) Driveway connectivity — every drv-hs-* must start at a vertex
+  // that exists on inner-city-ring's polyline AND every homestead
+  // must have a matching `drv-hs-{suffix}` whose start equals
+  // `driveStart` and whose endpoint sits within 3m of the gate centre.
+  const ring = REGIONAL_ROADS.find((r) => r.id === "inner-city-ring");
+  const ringVerts = new Set<string>(
+    (ring?.points ?? []).map(([x, z]) => `${x}:${z}`),
+  );
+  for (const drv of HOMESTEAD_DRIVEWAYS) {
+    const [sx, sz] = drv.points[0];
+    if (ringVerts.has(`${sx}:${sz}`)) {
+      homesteadDrivewaysConnected++;
+    } else {
+      issues.push(
+        `homestead driveway ${drv.id} start (${sx},${sz}) is not an inner-city-ring vertex`,
+      );
+    }
+  }
+  // Per-homestead driveway alignment: each homestead `hs-{suffix}`
+  // expects exactly one driveway `drv-hs-{suffix}`. The driveway must
+  // start at h.driveStart and end within 3m of the computed gate
+  // centre on h.gateSide.
+  const driveByHsId = new Map<string, RoadPath>();
+  for (const drv of HOMESTEAD_DRIVEWAYS) {
+    driveByHsId.set(drv.id.replace(/^drv-/, ""), drv);
+  }
+  for (const h of PERI_CITY_HOMESTEADS) {
+    const drv = driveByHsId.get(h.id);
+    if (!drv) {
+      issues.push(`homestead ${h.id} has no matching driveway drv-${h.id}`);
+      continue;
+    }
+    const [sx, sz] = drv.points[0];
+    if (sx !== h.driveStart[0] || sz !== h.driveStart[1]) {
+      issues.push(
+        `homestead ${h.id} driveStart (${h.driveStart[0]},${h.driveStart[1]}) ` +
+          `does not match drv-${h.id} start (${sx},${sz})`,
+      );
+    }
+    const [ex, ez] = drv.points[drv.points.length - 1];
+    let gateX = h.x;
+    let gateZ = h.z;
+    switch (h.gateSide) {
+      case "north": gateZ = h.z - h.yardD / 2; break;
+      case "south": gateZ = h.z + h.yardD / 2; break;
+      case "west":  gateX = h.x - h.yardW / 2; break;
+      case "east":  gateX = h.x + h.yardW / 2; break;
+    }
+    const gateGap = Math.hypot(ex - gateX, ez - gateZ);
+    if (gateGap > 3.0) {
+      issues.push(
+        `homestead ${h.id} driveway end (${ex},${ez}) is ${gateGap.toFixed(1)}m ` +
+          `from gate centre (${gateX.toFixed(0)},${gateZ.toFixed(0)})`,
+      );
+    }
+  }
+  // Reverse direction: every drv-hs-* must correspond to an existing
+  // homestead — guards against orphaned driveways.
+  const hsIds = new Set(PERI_CITY_HOMESTEADS.map((h) => h.id));
+  for (const drv of HOMESTEAD_DRIVEWAYS) {
+    const sfx = drv.id.replace(/^drv-/, "");
+    if (!hsIds.has(sfx)) {
+      issues.push(`driveway ${drv.id} has no matching homestead ${sfx}`);
+    }
+  }
+  // (3) Tree-clear: count CITY_EDGE_TREES whose trunk does NOT fall
+  // inside any yard rectangle (no slack — strictly inside).
+  let treesInYards = 0;
+  for (const t of CITY_EDGE_TREES) {
+    for (const h of PERI_CITY_HOMESTEADS) {
+      const b = homesteadYardBounds(h);
+      if (t.x >= b.x0 && t.x <= b.x1 && t.z >= b.z0 && t.z <= b.z1) {
+        treesInYards++;
+        issues.push(
+          `tree at (${t.x.toFixed(0)},${t.z.toFixed(0)}) inside homestead ${h.id} yard`,
+        );
+        break;
+      }
+    }
+  }
+  const treesClearOfYards = CITY_EDGE_TREES.length - treesInYards;
+  // (4) Sides — at least one homestead per cardinal side. The side is
+  // taken from `gateSide`, which already encodes which direction the
+  // homestead opens onto the city ring.
+  for (const side of ["north", "east", "south", "west"] as const) {
+    if (homesteadSides[side] === 0) {
+      issues.push(`peri-city homestead belt missing ${side} cluster`);
+    }
+  }
+  const periCityHomesteadsLine =
+    `periCityHomesteads OK: houses=${HOMESTEAD_HOUSE_OBS.length}, ` +
+    `yards=${PERI_CITY_HOMESTEADS.length}, ` +
+    `fences=${HOMESTEAD_FENCE_OBS.length}, ` +
+    `driveways=${HOMESTEAD_DRIVEWAYS.length}, ` +
+    `treeClear=${treesClearOfYards}/${CITY_EDGE_TREES.length}, ` +
+    `roadClear=${homesteadHousesRoadOK}/${homesteadHousesOK}, ` +
+    `obstacleClear=${homesteadHousesObstacleOK}/${homesteadHousesOK}, ` +
+    `drivewayConnect=${homesteadDrivewaysConnected}/${HOMESTEAD_DRIVEWAYS.length}, ` +
+    `sides={north:${homesteadSides.north},east:${homesteadSides.east},` +
+    `south:${homesteadSides.south},west:${homesteadSides.west}}`;
+
   const polishLine =
     `road clearances: ${totalWp - (polish.waypointsOff ?? 0)}/${totalWp} ` +
     `traffic waypoints on-road, ${CHECKPOINTS.length - (polish.checkpointsOff ?? 0)}/` +
@@ -2796,6 +3277,8 @@ if (isViteDev) {
     // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${cityForestBeltLine}`);
     // eslint-disable-next-line no-console
+    console.warn(`[city-sandbox] ${periCityHomesteadsLine}`);
+    // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${centerCityLine}`);
   } else {
     // eslint-disable-next-line no-console
@@ -2821,6 +3304,8 @@ if (isViteDev) {
     console.info(`[city-sandbox] ${lightingLine}`);
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${cityForestBeltLine}`);
+    // eslint-disable-next-line no-console
+    console.info(`[city-sandbox] ${periCityHomesteadsLine}`);
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${centerCityLine}`);
   }

@@ -197,7 +197,9 @@ export type StaticObstacleKind =
   | "depot"
   | "gas_stop"
   | "observatory"
-  | "guardrail";
+  | "guardrail"
+  | "wooden_house"
+  | "yard_fence";
 
 export interface StaticObstacle {
   x: number;
@@ -219,6 +221,45 @@ export interface RockInstance {
   z: number;
   scale: number;
   rotY: number;
+}
+
+// =============================================================
+// Peri-city wooden homestead belt
+// =============================================================
+//
+// A planned ring of small forest cottages around the central city,
+// sitting OUTSIDE the inner-city-ring carriageway (|coord|=100) but
+// INSIDE the city-edge tree belt (max(|x|,|z|) ∈ [125,230]). Each
+// homestead is an axis-aligned yard rectangle with one wooden house
+// inside, a perimeter fence broken by a single gate facing the road,
+// and a short dirt driveway from the gate back to a tap-in vertex on
+// the inner-city-ring. Houses + fences are pushed into STATIC_OBSTACLES
+// so the existing player/vehicle collision pipeline blocks them; yards
+// themselves are non-collidable cosmetic ground patches.
+export interface PeriCityHomestead {
+  id: string;
+  // House centre (also yard centre — yard is centred on the house).
+  x: number;
+  z: number;
+  // House facing in radians. Used by the renderer so the door/porch
+  // points toward the gate; gameplay collision is axis-aligned via the
+  // house's STATIC_OBSTACLES AABB.
+  rotY: number;
+  // Wooden-house footprint (axis-aligned AABB stored in STATIC_OBSTACLES).
+  houseW: number;
+  houseD: number;
+  // Yard footprint enclosing the house (axis-aligned). Fence runs the
+  // perimeter; one side has a 4m gate centred on it.
+  yardW: number;
+  yardD: number;
+  // Visual variant. Both styles share the same collision footprint.
+  style: "cottage" | "barnette";
+  // Which yard edge has the gate. Driveway connects this edge to
+  // `driveStart` on the inner-city-ring.
+  gateSide: "north" | "south" | "east" | "west";
+  // Tap-in vertex on inner-city-ring (must already exist on the ring
+  // polyline so the road-graph validator sees the driveway as connected).
+  driveStart: [number, number];
 }
 
 // Lamp poles placed along the edges of regional roads. Style controls the

@@ -12,8 +12,12 @@ import {
   VILLAGE_REAL_LIGHTS,
   JUNCTION_REAL_LIGHTS,
   CITY_EDGE_TREES,
+  PERI_CITY_HOMESTEADS,
 } from "../shared/cityData";
-import type { RoadPath, StaticObstacle, RegionalLampData, TreeInstance } from "../shared/types";
+import type {
+  RoadPath, StaticObstacle, RegionalLampData, TreeInstance,
+  PeriCityHomestead,
+} from "../shared/types";
 
 // =============================================================
 // REGIONAL ROADS — chain of segment quads per polyline
@@ -327,7 +331,178 @@ function ObstacleMesh({ o }: { o: StaticObstacle }) {
           <meshLambertMaterial color="#a8a8a0" />
         </mesh>
       );
+    case "wooden_house":
+      // Cosmetic body only — the per-homestead renderer below adds the
+      // pitched roof, porch, and warm window light around this same
+      // (o.x, o.z). Keeping the body here means the obstacle list still
+      // renders something even if PERI_CITY_HOMESTEADS shrinks.
+      return (
+        <group position={[o.x, 0, o.z]}>
+          <mesh position={[0, 1.4, 0]} castShadow receiveShadow>
+            <boxGeometry args={[o.w, 2.8, o.d]} />
+            <meshLambertMaterial color="#7a4a2a" />
+          </mesh>
+        </group>
+      );
+    case "yard_fence":
+      // Low wooden plank fence panel. Posts are faked at the ends with
+      // two slightly taller boxes so the fence reads as planks-on-posts
+      // rather than a single slab.
+      return (
+        <group position={[o.x, 0, o.z]}>
+          <mesh position={[0, 0.55, 0]} castShadow>
+            <boxGeometry args={[o.w, 1.1, o.d]} />
+            <meshLambertMaterial color="#6b4a30" />
+          </mesh>
+          {o.w >= o.d ? (
+            <>
+              <mesh position={[-o.w / 2, 0.7, 0]} castShadow>
+                <boxGeometry args={[0.25, 1.4, Math.max(o.d, 0.4)]} />
+                <meshLambertMaterial color="#4a3220" />
+              </mesh>
+              <mesh position={[ o.w / 2, 0.7, 0]} castShadow>
+                <boxGeometry args={[0.25, 1.4, Math.max(o.d, 0.4)]} />
+                <meshLambertMaterial color="#4a3220" />
+              </mesh>
+            </>
+          ) : (
+            <>
+              <mesh position={[0, 0.7, -o.d / 2]} castShadow>
+                <boxGeometry args={[Math.max(o.w, 0.4), 1.4, 0.25]} />
+                <meshLambertMaterial color="#4a3220" />
+              </mesh>
+              <mesh position={[0, 0.7,  o.d / 2]} castShadow>
+                <boxGeometry args={[Math.max(o.w, 0.4), 1.4, 0.25]} />
+                <meshLambertMaterial color="#4a3220" />
+              </mesh>
+            </>
+          )}
+        </group>
+      );
   }
+}
+
+// =============================================================
+// PERI-CITY HOMESTEADS — yard ground patch + pitched roof, porch,
+// window light. The collidable house body and fence panels live in
+// STATIC_OBSTACLES (kind "wooden_house" / "yard_fence") and render
+// via ObstacleMesh; this component layers the cosmetic extras on top.
+// =============================================================
+
+const HOMESTEAD_YARD_COLOR_BY_STYLE: Record<PeriCityHomestead["style"], string> = {
+  cottage:  "#5a6a3a",
+  barnette: "#6a6240",
+};
+const HOMESTEAD_BODY_COLOR_BY_STYLE: Record<PeriCityHomestead["style"], string> = {
+  cottage:  "#7a4a2a",
+  barnette: "#5e3e26",
+};
+const HOMESTEAD_ROOF_COLOR_BY_STYLE: Record<PeriCityHomestead["style"], string> = {
+  cottage:  "#3a2018",
+  barnette: "#2a1c12",
+};
+
+function HomesteadHouse({ h }: { h: PeriCityHomestead }) {
+  // Door faces the gate; rotY maps each gateSide to the right Y rotation
+  // so the porch sits on the gate-facing edge.
+  const roofH = 1.6;
+  const bodyH = 2.8;
+  const porchD = 1.2;
+  const yardColor = HOMESTEAD_YARD_COLOR_BY_STYLE[h.style];
+  const bodyColor = HOMESTEAD_BODY_COLOR_BY_STYLE[h.style];
+  const roofColor = HOMESTEAD_ROOF_COLOR_BY_STYLE[h.style];
+  return (
+    <group position={[h.x, 0, h.z]}>
+      {/* Yard ground patch — sits a hair above the biome ground tint
+          so it overpaints the rectangular footprint of this homestead.
+          Not collidable; collision is handled by the fence panels. */}
+      <mesh
+        position={[0, 0.012, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        receiveShadow
+      >
+        <planeGeometry args={[h.yardW, h.yardD]} />
+        <meshLambertMaterial color={yardColor} />
+      </mesh>
+      {/* Door-facing rotation — the body itself is axis-aligned (matches
+          the AABB), but porch / pitched roof children read better when
+          the assembly is rotated so the door points toward the gate. */}
+      <group rotation={[0, h.rotY, 0]}>
+        {/* Roof — long ridge along local +X, sloping down to ±Z. */}
+        <mesh position={[0, bodyH + roofH / 2, 0]} castShadow>
+          <boxGeometry args={[h.houseW * 1.05, roofH, h.houseD * 1.1]} />
+          <meshLambertMaterial color={roofColor} />
+        </mesh>
+        {/* Roof ridge cap */}
+        <mesh position={[0, bodyH + roofH + 0.12, 0]} castShadow>
+          <boxGeometry args={[h.houseW * 1.08, 0.25, 0.4]} />
+          <meshLambertMaterial color="#1f140d" />
+        </mesh>
+        {/* Porch slab on the +Z (door) side */}
+        <mesh
+          position={[0, 0.08, h.houseD / 2 + porchD / 2]}
+          receiveShadow
+        >
+          <boxGeometry args={[h.houseW * 0.85, 0.16, porchD]} />
+          <meshLambertMaterial color="#5a4028" />
+        </mesh>
+        {/* Door panel */}
+        <mesh position={[0, 0.95, h.houseD / 2 + 0.03]}>
+          <planeGeometry args={[1.0, 1.9]} />
+          <meshBasicMaterial color="#1a1208" />
+        </mesh>
+        {/* Two warm window light panels flanking the door */}
+        <mesh position={[-h.houseW * 0.3, 1.6, h.houseD / 2 + 0.04]}>
+          <planeGeometry args={[0.9, 0.7]} />
+          <meshBasicMaterial color="#ffd384" />
+        </mesh>
+        <mesh position={[ h.houseW * 0.3, 1.6, h.houseD / 2 + 0.04]}>
+          <planeGeometry args={[0.9, 0.7]} />
+          <meshBasicMaterial color="#ffd384" />
+        </mesh>
+        {/* Side window (gable end) — small square of warm light */}
+        <mesh
+          position={[h.houseW / 2 + 0.04, 1.7, 0]}
+          rotation={[0, Math.PI / 2, 0]}
+        >
+          <planeGeometry args={[0.6, 0.6]} />
+          <meshBasicMaterial color="#ffd384" />
+        </mesh>
+        {/* Suggest a chimney for cottages so they read as homes, not sheds */}
+        {h.style === "cottage" && (
+          <mesh position={[h.houseW * 0.3, bodyH + roofH + 0.5, -h.houseD * 0.15]} castShadow>
+            <boxGeometry args={[0.5, 1.2, 0.5]} />
+            <meshLambertMaterial color="#3a2418" />
+          </mesh>
+        )}
+      </group>
+      {/* Bodies are also drawn by the obstacle pipeline; we deliberately
+          re-draw a slightly smaller painted body here so the obstacle
+          box is hidden under a more readable façade with vertical plank
+          shading. The 0.02m inset prevents z-fighting. */}
+      <group rotation={[0, h.rotY, 0]}>
+        <mesh position={[0, bodyH / 2, 0]} castShadow receiveShadow>
+          <boxGeometry args={[h.houseW - 0.02, bodyH, h.houseD - 0.02]} />
+          <meshLambertMaterial color={bodyColor} />
+        </mesh>
+        {/* Foundation — a thin lighter strip under the body */}
+        <mesh position={[0, 0.18, 0]} receiveShadow>
+          <boxGeometry args={[h.houseW + 0.2, 0.36, h.houseD + 0.2]} />
+          <meshLambertMaterial color="#3a2a1c" />
+        </mesh>
+      </group>
+    </group>
+  );
+}
+
+function PeriCityHomesteads() {
+  return (
+    <group>
+      {PERI_CITY_HOMESTEADS.map((h) => (
+        <HomesteadHouse key={h.id} h={h} />
+      ))}
+    </group>
+  );
 }
 
 function StaticObstacles() {
@@ -740,6 +915,7 @@ export default function BiomeRender() {
       <BridgeLaneStripes />
       <VillageParkingPads />
       <StaticObstacles />
+      <PeriCityHomesteads />
       <ForestTrees />
       <ForestRocks />
       <MountainRocks />
