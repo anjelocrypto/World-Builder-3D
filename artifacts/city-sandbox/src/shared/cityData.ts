@@ -35,7 +35,10 @@ const blockDefs: BlockDef[] = [
   { cx: 0, cz: -65, bw: 30, bd: 30, count: 4 },
   { cx: 65, cz: -65, bw: 30, bd: 30, count: 4 },
   { cx: -65, cz: 0, bw: 30, bd: 30, count: 4 },
-  { cx: 0, cz: 0, bw: 24, bd: 24, count: 2 }, // center block - smaller for spawn area
+  // Center block (cx=0, cz=0) is intentionally omitted. The road grid runs
+  // through this area (N-S road at x=0, E-W road at z=0), so any building
+  // placed here would clip the road AND the spawn plaza. Keeping it empty
+  // guarantees every spawn point in SPAWN_POINTS lands on clear ground.
   { cx: 65, cz: 0, bw: 30, bd: 30, count: 4 },
   { cx: -65, cz: 65, bw: 30, bd: 30, count: 4 },
   { cx: 0, cz: 65, bw: 30, bd: 30, count: 4 },
@@ -66,11 +69,20 @@ export const INITIAL_VEHICLES: VehicleState[] = [
   { id: "car-3", x: -55, y: 0.6, z: -8,  rotY: -Math.PI / 2, speed: 0, driverId: null, color: "#f39c12" },
 ];
 
+// Spawn points placed inside the central plaza (cx=0, cz=0 block is empty
+// — see blockDefs above). The four cardinal positions sit on the sidewalk
+// edge of the central road cross, and the four diagonals sit in the
+// guaranteed-empty quadrants. Distance from origin is at least 12u, which
+// is well clear of the road carriageway (roads span ±10 around x=0/z=0).
 export const SPAWN_POINTS: [number, number, number][] = [
-  [4, 1, 4],
-  [-4, 1, 4],
-  [4, 1, -4],
-  [-4, 1, -4],
+  [0,   1, -12],
+  [12,  1,  0 ],
+  [-12, 1,  0 ],
+  [0,   1,  12],
+  [15,  1,  15],
+  [-15, 1,  15],
+  [15,  1, -15],
+  [-15, 1, -15],
 ];
 
 export const CHECKPOINTS: CheckpointData[] = [
@@ -97,4 +109,20 @@ export function checkBuildingCollision(px: number, pz: number): boolean {
     }
   }
   return false;
+}
+
+// Dev-only sanity check: if any spawn point lands inside a generated
+// building, the player would freeze in place. We log a loud warning in
+// development so the configuration can be fixed before it ships.
+if (import.meta.env.DEV) {
+  const bad = SPAWN_POINTS.filter(([x, , z]) => checkBuildingCollision(x, z));
+  if (bad.length > 0) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[city-sandbox] ${bad.length} of ${SPAWN_POINTS.length} spawn ` +
+        `point(s) overlap a generated building. Move them or adjust ` +
+        `blockDefs in cityData.ts. Offending points:`,
+      bad
+    );
+  }
 }

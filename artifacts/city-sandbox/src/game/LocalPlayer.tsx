@@ -50,6 +50,9 @@ interface LocalPlayerProps {
     pz: number;
   }) => void;
   playerPosRef: React.MutableRefObject<THREE.Vector3>;
+  // Authoritative spawn from the server's gameState. Falls back to a
+  // deterministic local pick when not provided (e.g. server-disconnected).
+  initialSpawn?: [number, number, number];
 }
 
 function checkBuildingAABB(px: number, pz: number): boolean {
@@ -70,11 +73,16 @@ export default function LocalPlayer({
   emitVehicleUpdate,
   onUIUpdate,
   playerPosRef,
+  initialSpawn,
 }: LocalPlayerProps) {
   const { camera, gl } = useThree();
   const [, getKeys] = useKeyboardControls<Controls>();
 
-  const spawn = SPAWN_POINTS[Math.abs(myId.charCodeAt(0) % SPAWN_POINTS.length)] ?? SPAWN_POINTS[0];
+  // Prefer the authoritative server spawn (from gameState.players[myId]).
+  // Fall back to a deterministic offline pick if the server didn't send one.
+  const fallbackSpawn =
+    SPAWN_POINTS[myId.charCodeAt(0) % SPAWN_POINTS.length] ?? SPAWN_POINTS[0];
+  const spawn = initialSpawn ?? fallbackSpawn;
 
   const pos = useRef(new THREE.Vector3(spawn[0], spawn[1], spawn[2]));
   const vel = useRef(new THREE.Vector3());

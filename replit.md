@@ -35,6 +35,13 @@ Browser-based 3D multiplayer open-world city sandbox game.
 - HUD: health bar, minimap, speedometer, interaction prompt, player count
 - Simple lobby: username input + join world
 
+**Spawn handling (important):**
+- The central plaza around (0, 0) is intentionally building-free (the `cx=0,cz=0` block is omitted from `blockDefs`).
+- `SPAWN_POINTS` in `src/shared/cityData.ts` and `artifacts/api-server/src/socket/cityData.ts` MUST stay in sync — the server picks one for each joining player and sends it back in the `gameState` payload.
+- `LocalPlayer` uses the server's authoritative position (`initialSpawn` prop derived from `gameState.players[myId]`) as its initial spawn. The deterministic `charCodeAt` fallback is only used if the server didn't supply one.
+- A dev-only assertion in `cityData.ts` warns to the console if any spawn point overlaps a generated building. Running the city-sandbox dev server is enough to surface this.
+- `GameScene` wraps the canvas in a `tabIndex=0` div and focuses the wrapper + window on mount/click so the Replit preview iframe reliably receives keyboard events (drei's `useKeyboardControls` listens on `window`).
+
 ### API Server (`artifacts/api-server`) — Preview path: `/api`
 Express 5 REST API + Socket.io game server.
 

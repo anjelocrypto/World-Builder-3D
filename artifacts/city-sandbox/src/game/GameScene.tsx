@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect, useMemo } from "react";
 import { Canvas } from "@react-three/fiber";
 import { KeyboardControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -55,6 +55,66 @@ export default function GameScene({
   });
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
+  const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // Authoritative spawn position from the server's gameState. Computed once
+  // on first mount of LocalPlayer (initialSpawn is only read in useRef
+  // initializer), so this doesn't need to react to subsequent updates.
+  const initialSpawn = useMemo<[number, number, number] | undefined>(() => {
+    const me = gameState.players[myId];
+    if (!me) {
+      if (import.meta.env.DEV) {
+        // eslint-disable-next-line no-console
+        console.warn(
+          `[city-sandbox] GameScene mounted with no server player record ` +
+            `for myId=${myId}. Falling back to deterministic local spawn. ` +
+            `This usually means the join order changed in useSocket.`
+        );
+      }
+      return undefined;
+    }
+    return [me.x, me.y, me.z];
+    // We intentionally only depend on myId — gameState.players changes
+    // every frame and we only want the server's first authoritative spawn.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [myId]);
+
+  // Make sure keyboard input reaches the iframe / window. Replit's preview
+  // pane is an iframe, and key events only fire when that iframe's window
+  // has focus. We focus the wrapper on mount and on every click so WASD
+  // works after the user clicks the game once.
+  useEffect(() => {
+    wrapperRef.current?.focus();
+    try {
+      window.focus();
+    } catch {
+      // Some embedding contexts disallow programmatic window.focus(); ignore.
+    }
+  }, []);
+
+  const handleWrapperPointerDown = useCallback((e: React.PointerEvent) => {
+    // Don't steal focus from input fields, textareas, or contenteditable
+    // elements — future overlays (chat, settings) need to receive typed
+    // text without us yanking focus back to the wrapper.
+    const target = e.target as HTMLElement | null;
+    if (target) {
+      const tag = target.tagName;
+      if (
+        tag === "INPUT" ||
+        tag === "TEXTAREA" ||
+        tag === "SELECT" ||
+        target.isContentEditable
+      ) {
+        return;
+      }
+    }
+    wrapperRef.current?.focus();
+    try {
+      window.focus();
+    } catch {
+      // Ignore — see above.
+    }
+  }, []);
 
   const handleVehicleUpdate = useCallback((id: string, patch: Partial<VehicleState>) => {
     setGameState(prev => ({
@@ -75,7 +135,18 @@ export default function GameScene({
     : undefined;
 
   return (
-    <div style={{ width: "100vw", height: "100vh", position: "relative", background: "#0a0a1a" }}>
+    <div
+      ref={wrapperRef}
+      tabIndex={0}
+      onPointerDown={handleWrapperPointerDown}
+      style={{
+        width: "100vw",
+        height: "100vh",
+        position: "relative",
+        background: "#0a0a1a",
+        outline: "none",
+      }}
+    >
       <KeyboardControls map={KEY_MAP}>
         <Canvas
           shadows
@@ -131,6 +202,7 @@ export default function GameScene({
             emitVehicleUpdate={emitVehicleUpdate}
             onUIUpdate={setUIState}
             playerPosRef={playerPosRef}
+            initialSpawn={initialSpawn}
           />
         </Canvas>
       </KeyboardControls>
