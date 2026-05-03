@@ -116,6 +116,16 @@ Express 5 REST API + Socket.io game server.
 - HUD renders a `HH:MM` clock + phase chip (DAWN / DAY / SUNSET / NIGHT), updated 1Hz.
 - First frame logs: `dayNight OK: cycleMs=..., clock=..., phase=..., sunY=..., moonY=..., nightFactor=..., activePointLights<=8`.
 
+## Character Animations
+
+- 5 GLB clips drive every player: `standing` (idle), `walking`, `running`, `fight1`, `fight2` — files live in `artifacts/city-sandbox/public/models/`.
+- `AnimatedCharacter.tsx` loads each GLB once via drei `useGLTF` (cached + preloaded), clones the standing rig per instance with `SkeletonUtils.clone`, and re-binds every clip onto that mixer so a single skinned mesh plays all five animations.
+- Locomotion clips cross-fade based on `runtime.animState` (`idle` ↔ `walk` ↔ `run`).
+- Fight clips trigger one-shot on `runtime.attackSeq` strict-increment; `attackKind` ("light"/"heavy") chooses fight1 vs fight2.
+- **Fight combo (left-click / F):** first click plays `fight1`. A second click during fight1 queues `fight2` to fire automatically the instant fight1's window closes (handled in `LocalPlayer.tryFightCombo` + the `fightQueuedRef` release in `useFrame`). Clicks during fight2 are ignored — the combo is two-deep by spec.
+- Right-click / R still triggers `fight2` directly (cooldown-gated, no combo).
+- `PlaceholderCharacter` is kept as the Suspense fallback so a slow GLB fetch never leaves a player invisible.
+
 ## Game Controls
 
 - **WASD** — Move / Drive

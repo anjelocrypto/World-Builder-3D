@@ -1,13 +1,15 @@
+import { Suspense } from "react";
 import { Html } from "@react-three/drei";
 import PlaceholderCharacter from "./PlaceholderCharacter";
+import AnimatedCharacter from "./AnimatedCharacter";
 import type { PlayerAnimState } from "./characterState";
 
 /**
  * Per-frame mutable state read by the visual character renderer.
  * The owning component (LocalPlayer or RemotePlayer) updates these
- * fields each frame; CharacterAvatar / PlaceholderCharacter never
- * mutate them. This keeps animation reactive without forcing React
- * re-renders 60 times per second.
+ * fields each frame; CharacterAvatar / AnimatedCharacter never mutate
+ * them. This keeps animation reactive without forcing React re-renders
+ * 60 times per second.
  */
 export interface CharacterRuntime {
   animState: PlayerAnimState;
@@ -17,8 +19,8 @@ export interface CharacterRuntime {
   attackSeq: number;
   /**
    * Which attack kind the most recent seq increment represents.
-   * PlaceholderCharacter uses this (not animState) to choose the
-   * punch duration, so a heavy swing replays as heavy even if the
+   * AnimatedCharacter uses this (not animState) to choose which fight
+   * clip to play — a heavy/fight2 swing replays as fight2 even if the
    * animState packet that carried "attack_heavy" arrived late.
    */
   attackKind: "light" | "heavy" | null;
@@ -35,33 +37,12 @@ interface CharacterAvatarProps {
 }
 
 // =============================================================
-// CharacterAvatar — visual wrapper around PlaceholderCharacter.
+// CharacterAvatar — visual wrapper around the active character
+// renderer.
 // -------------------------------------------------------------
-// Rendering and per-frame pose updates live in PlaceholderCharacter.
-// CharacterAvatar's responsibility is to (a) own the swap point
-// for placeholder vs GLB-driven character, and (b) attach the
-// in-world name label for remote players.
-//
-// === Future GLB integration plan ===
-// When /characters/player.glb (and animation clips) are added to
-// the project's public/ folder, this component should grow:
-//
-//   import { useGLTF, useAnimations } from "@react-three/drei";
-//   const USE_GLB = true; // toggle once /characters/player.glb exists
-//   if (USE_GLB) {
-//     const { scene, animations } = useGLTF("/characters/player.glb");
-//     const { actions } = useAnimations(animations, scene);
-//     // Clip name → PlayerAnimState mapping (configure to match your rig):
-//     //   idle, walk, run, jump, fall, attack_light, attack_heavy, driving
-//     // useFrame: crossfade actions[runtimeRef.current.animState] in,
-//     //   fade previous out over ~0.15s. Trigger one-shot replays of
-//     //   attack_* clips when runtimeRef.current.attackSeq changes.
-//     return <primitive object={scene} />;
-//   }
-//
-// We intentionally do NOT import useGLTF until a GLB exists — calling
-// useGLTF on a missing path throws during render. The placeholder must
-// run by itself today.
+// Today we render AnimatedCharacter (GLB-driven idle/walk/run +
+// fight1/fight2). PlaceholderCharacter is kept as the Suspense
+// fallback so a slow GLB fetch never leaves the player invisible.
 // =============================================================
 export default function CharacterAvatar({
   runtimeRef,
@@ -70,7 +51,13 @@ export default function CharacterAvatar({
 }: CharacterAvatarProps) {
   return (
     <group>
-      <PlaceholderCharacter runtimeRef={runtimeRef} isLocal={isLocal} />
+      <Suspense
+        fallback={
+          <PlaceholderCharacter runtimeRef={runtimeRef} isLocal={isLocal} />
+        }
+      >
+        <AnimatedCharacter runtimeRef={runtimeRef} isLocal={isLocal} />
+      </Suspense>
       {username && !isLocal && (
         <Html position={[0, 1.85, 0]} center distanceFactor={10}>
           <div

@@ -40,6 +40,8 @@ import {
   resolveAnimState,
   ATTACK_LIGHT_COOLDOWN_MS,
   ATTACK_HEAVY_COOLDOWN_MS,
+  ATTACK_LIGHT_DURATION_MS,
+  ATTACK_HEAVY_DURATION_MS,
 } from "./character/characterState";
 
 export enum Controls {
@@ -152,6 +154,12 @@ export default function LocalPlayer({
   const lastHeavyAtRef = useRef(0);
   const prevAttackLightKey = useRef(false);
   const prevAttackHeavyKey = useRef(false);
+  // Fight combo: clicking "fight" while fight1 (light) is in progress
+  // queues fight2 (heavy) to fire the moment fight1's window closes.
+  // A second queued click during fight1 is a no-op (only one chained
+  // follow-up; matches the spec — "click again fast → second fight
+  // animation after he finishes first one").
+  const fightQueuedRef = useRef(false);
 
   // Vehicle state
   const inVehicle = useRef(false);
@@ -219,7 +227,10 @@ export default function LocalPlayer({
     // closes over refs only, so the listener captured at mount stays
     // valid for the life of the component.
     const onMouseDown = (e: MouseEvent) => {
-      if (e.button === 0) tryAttack("light");
+      // Left click = fight (combo): first click plays fight1, second
+      // click during fight1 queues fight2 to play right after.
+      // Right click = direct fight2 (advanced / no combo).
+      if (e.button === 0) tryFightCombo();
       else if (e.button === 2) tryAttack("heavy");
     };
     const onContextMenu = (e: MouseEvent) => {
@@ -251,10 +262,28 @@ export default function LocalPlayer({
     // and the per-kind cooldown.
     const wantLight = keys.attackLight;
     const wantHeavy = keys.attackHeavy;
-    if (wantLight && !prevAttackLightKey.current) tryAttack("light");
+    if (wantLight && !prevAttackLightKey.current) tryFightCombo();
     if (wantHeavy && !prevAttackHeavyKey.current) tryAttack("heavy");
     prevAttackLightKey.current = wantLight;
     prevAttackHeavyKey.current = wantHeavy;
+
+    // Release the queued fight2 the moment fight1's window closes.
+    if (
+      fightQueuedRef.current &&
+      attackStartedAtRef.current !== null &&
+      attackKindRef.current === "light"
+    ) {
+      const elapsed = now - attackStartedAtRef.current;
+      if (elapsed >= ATTACK_LIGHT_DURATION_MS) {
+        fightQueuedRef.current = false;
+        // Bypass the heavy cooldown — this is the queued combo follow-up
+        // the player explicitly asked for, not a fresh standalone heavy.
+        attackSeqRef.current += 1;
+        attackStartedAtRef.current = now;
+        attackKindRef.current = "heavy";
+        lastHeavyAtRef.current = now;
+      }
+    }
 
     if (inVehicle.current && drivingVehicleId.current) {
       updateVehicle(dt, keys, now);
@@ -403,6 +432,30 @@ export default function LocalPlayer({
     attackSeqRef.current += 1;
     attackStartedAtRef.current = tNow;
     attackKindRef.current = kind;
+  }
+
+  // Combo entry point. Called from left-click and the F key.
+  //   - Idle / no current attack → start fight1 (light).
+  //   - Currently in fight1's window → queue fight2 (heavy) for after.
+  //   - Currently in fight2 → ignore (combo is two-deep by spec).
+  function tryFightCombo() {
+    if (inVehicle.current) return;
+    const tNow = Date.now();
+    const startedAt = attackStartedAtRef.current;
+    if (startedAt !== null && attackKindRef.current !== null) {
+      const dur =
+        attackKindRef.current === "heavy"
+          ? ATTACK_HEAVY_DURATION_MS
+          : ATTACK_LIGHT_DURATION_MS;
+      const elapsed = tNow - startedAt;
+      if (elapsed < dur) {
+        if (attackKindRef.current === "light") {
+          fightQueuedRef.current = true;
+        }
+        return;
+      }
+    }
+    tryAttack("light");
   }
 
   function updatePlayer(
