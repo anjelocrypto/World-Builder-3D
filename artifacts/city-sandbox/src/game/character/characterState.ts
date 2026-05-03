@@ -14,16 +14,18 @@ export type { PlayerAnimState };
 export const WALK_THRESH = 0.5;
 export const RUN_THRESH = 7.0;
 
-// Attack timing windows (ms). The duration drives both the
-// placeholder punch animation length and the state-machine window
-// during which animState is "attack_light" / "attack_heavy". The
-// cooldown gates how soon a new attack of the same kind may start;
-// it equals duration for light (no attack-cancel) and is slightly
-// longer for heavy.
-export const ATTACK_LIGHT_DURATION_MS = 450;
-export const ATTACK_LIGHT_COOLDOWN_MS = 450;
-export const ATTACK_HEAVY_DURATION_MS = 750;
-export const ATTACK_HEAVY_COOLDOWN_MS = 800;
+// Attack timing windows (ms). Must match the actual GLB clip
+// durations so the combo lock/release fires when each fight
+// animation truly ends — not before (cuts off the swing) and not
+// after (lets the next click slip in mid-swing).
+//   fight1.glb = 2.50s  → ATTACK_LIGHT_DURATION_MS = 2500
+//   fight2.glb = 6.87s  → ATTACK_HEAVY_DURATION_MS = 6870
+// Cooldowns equal duration so a new attack of the same kind cannot
+// start until the previous one has fully finished playing.
+export const ATTACK_LIGHT_DURATION_MS = 2500;
+export const ATTACK_LIGHT_COOLDOWN_MS = 2500;
+export const ATTACK_HEAVY_DURATION_MS = 6870;
+export const ATTACK_HEAVY_COOLDOWN_MS = 6870;
 
 export interface AnimResolveInput {
   inVehicle: boolean;
