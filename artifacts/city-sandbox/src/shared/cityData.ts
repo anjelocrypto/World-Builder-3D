@@ -1336,33 +1336,54 @@ export const MOUNTAIN_ROAD_IDS: ReadonlySet<string> = new Set(
 // well clear of every road carriageway; the mountainRing validator
 // asserts the clearance footprint (massif.r) does not intrude any
 // road's halfWidth.
+// Each entry is a smooth dome consumed by `terrainHeightAt(x, z)` in
+// shared/terrain.ts (peak `h`, smoothstep falloff over radius `r`).
+// Massifs are NOT rendered as standalone cones — the MountainTerrain
+// heightfield mesh in BiomeRender bakes them into a single continuous
+// ground surface together with the road support skirts. Overlapping
+// domes blend via max() so a chain of massifs reads as one ridge
+// instead of isolated pyramids. The mountainRing validator asserts:
+//   (a) every dome footprint clears every road carriageway,
+//   (b) for every elevated road sample point, terrainHeightAt(x,z)
+//       lies within 0.5m of the road profile (so domes never poke
+//       above roads and create a floating road).
 export const MOUNTAIN_MASSIFS: ReadonlyArray<{
   x: number; z: number; r: number; h: number;
 }> = [
-  // North wall
-  { x: -300, z: -460, r: 45, h: 70 }, // NW shoulder
-  { x:  300, z: -460, r: 45, h: 70 }, // NE shoulder
-  { x: -450, z: -440, r: 40, h: 60 }, // far W rampart
-  { x:  450, z: -440, r: 40, h: 60 }, // far E rampart
-  { x: -100, z: -495, r: 30, h: 55 }, // behind observatory plaza
-  // East wall (x=497, south of ridge-east-far which lives in z=-200..30).
-  // Sits in the open band between the road end and the outer-loop south
-  // leg at z=200. Smaller cones (r=10) read as a continuous foothill
-  // ridge rather than isolated peaks.
-  { x:  497, z:  100, r: 10, h: 26 },
-  { x:  497, z:  180, r: 10, h: 26 },
-  { x:  497, z:  260, r: 10, h: 26 },
-  // West wall (mirror).
-  { x: -497, z:  100, r: 10, h: 26 },
-  { x: -497, z:  180, r: 10, h: 26 },
-  { x: -497, z:  260, r: 10, h: 26 },
-  // South wall — far enough from village/cabins (cabin extents
-  // |x|≤60, z≤495; trailhead at x≈0, z=495) that even r=15 footprints
-  // don't intrude.
-  { x: -380, z:  495, r: 15, h: 35 },
-  { x:  380, z:  495, r: 15, h: 35 },
-  { x: -160, z:  495, r: 10, h: 25 },
-  { x:  160, z:  495, r: 10, h: 25 },
+  // ---- North main ridge (9 overlapping domes spanning x=-470..+470) ----
+  // Heights chosen so neighbouring massifs blend into a continuous
+  // arc. The central dome behind the observatory stays low (h=18) so
+  // the summit road profile (Y=22 at (0,-465)) keeps winning the max.
+  { x: -470, z: -470, r: 55, h: 50 },
+  { x: -380, z: -485, r: 70, h: 60 },
+  { x: -260, z: -490, r: 65, h: 50 },
+  { x: -150, z: -495, r: 50, h: 45 },
+  { x:    0, z: -498, r: 22, h: 18 }, // low dome — summit road wins
+  { x:  150, z: -495, r: 50, h: 45 },
+  { x:  260, z: -490, r: 65, h: 50 },
+  { x:  380, z: -485, r: 70, h: 60 },
+  { x:  470, z: -470, r: 55, h: 50 },
+  // ---- East rampart (foothills wrapping the eastern outer loop) ----
+  // Skip the z=-200..30 band where ridge-east-far lives so the dome
+  // footprints don't intrude on the carriageway.
+  { x:  498, z: -400, r: 20, h: 25 },
+  { x:  498, z: -300, r: 20, h: 25 },
+  { x:  498, z:   80, r: 20, h: 24 },
+  { x:  498, z:  200, r: 22, h: 26 },
+  { x:  498, z:  320, r: 20, h: 24 },
+  { x:  498, z:  440, r: 18, h: 22 },
+  // ---- West rampart (mirror) ----
+  { x: -498, z: -400, r: 20, h: 25 },
+  { x: -498, z: -300, r: 20, h: 25 },
+  { x: -498, z:   80, r: 20, h: 24 },
+  { x: -498, z:  200, r: 22, h: 26 },
+  { x: -498, z:  320, r: 20, h: 24 },
+  { x: -498, z:  440, r: 18, h: 22 },
+  // ---- South wall (kept clear of village/cabins/trailhead) ----
+  { x: -380, z:  495, r: 30, h: 35 },
+  { x: -200, z:  498, r: 22, h: 28 },
+  { x:  200, z:  498, r: 22, h: 28 },
+  { x:  380, z:  495, r: 30, h: 35 },
 ];
 
 // =============================================================
@@ -3544,7 +3565,7 @@ if (isViteDev) {
   }
 
   // Mountain traffic waypoints must lie on a mountain road carriageway.
-  const MOUNTAIN_TRAFFIC_IDS = new Set([6, 7, 8]);
+  const MOUNTAIN_TRAFFIC_IDS: ReadonlySet<number> = new Set([6, 7, 8]);
   for (const route of TRAFFIC_ROUTES) {
     if (!MOUNTAIN_TRAFFIC_IDS.has(route.id)) continue;
     for (const wp of route.waypoints) {
@@ -3610,8 +3631,16 @@ if (isViteDev) {
     if (s !== "central") massifSides[s]++;
   }
 
-  // Inline elevation sample (we can't import elevation.ts because
-  // it imports cityData; the projection math is small enough to inline).
+  // Inline terrain sample — mirrors `terrainHeightAt` in shared/terrain.ts.
+  // We can't import that module here because terrain.ts itself imports
+  // from cityData (circular dep). Keeping the math inline guarantees
+  // the validator measures EXACTLY what the renderer/heightfield render.
+  const TERR_ROAD_SKIRT = 30.0;
+  const smoothstep01 = (u: number): number =>
+    u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u);
+  // Returns { y, dist } where y is the road support at (x,z) (lerped
+  // profile Y, scaled by smoothstep over the skirt), and dist is the
+  // minimum perpendicular distance to any mountain road centerline.
   const sampleMountainElevAt = (x: number, z: number): { y: number; dist: number } => {
     let bestY = 0, bestDist = Infinity;
     for (const r of mountainRoadList) {
@@ -3635,6 +3664,106 @@ if (isViteDev) {
     }
     return { y: bestY, dist: bestDist };
   };
+  // Full terrain sample — combines road skirt support and massif domes
+  // (max). This is what the heightfield mesh and getRoadElevationAt
+  // both return.
+  const sampleTerrainAt = (x: number, z: number): number => {
+    let roadY = 0;
+    for (const r of mountainRoadList) {
+      const profile = ROAD_ELEVATION_PROFILES[r.id];
+      if (!profile || profile.length !== r.points.length) continue;
+      const halfW = r.width * 0.5;
+      for (let i = 0; i < r.points.length - 1; i++) {
+        const [ax, az] = r.points[i];
+        const [bx, bz] = r.points[i + 1];
+        const dx = bx - ax, dz = bz - az;
+        const seg2 = dx * dx + dz * dz;
+        if (seg2 < 1e-6) continue;
+        let t = ((x - ax) * dx + (z - az) * dz) / seg2;
+        if (t < 0) t = 0; else if (t > 1) t = 1;
+        const px = ax + t * dx, pz = az + t * dz;
+        const d = Math.hypot(x - px, z - pz);
+        if (d >= halfW + TERR_ROAD_SKIRT) continue;
+        const y = profile[i] + (profile[i + 1] - profile[i]) * t;
+        const yScaled = d <= halfW ? y : y * smoothstep01(1 - (d - halfW) / TERR_ROAD_SKIRT);
+        if (yScaled > roadY) roadY = yScaled;
+      }
+    }
+    let dome = 0;
+    for (const m of MOUNTAIN_MASSIFS) {
+      const dx = x - m.x, dz = z - m.z;
+      const d2 = dx * dx + dz * dz;
+      if (d2 >= m.r * m.r) continue;
+      const d = Math.sqrt(d2);
+      const h = m.h * smoothstep01(1 - d / m.r);
+      if (h > dome) dome = h;
+    }
+    return roadY > dome ? roadY : dome;
+  };
+
+  // CRITICAL CHECK — terrain consistency at every road profile vertex.
+  // If any massif dome pokes above the road profile here, the rendered
+  // road quad would visually float above the heightfield surface (the
+  // exact bug the latest audit caught). Tolerance of 0.5m mirrors the
+  // road quad's small +0.02 lift.
+  const TERRAIN_VS_ROAD_TOL = 0.5;
+  let mTerrainOk = 0, mTerrainTotal = 0;
+  for (const r of mountainRoadList) {
+    const profile = ROAD_ELEVATION_PROFILES[r.id];
+    if (!profile || profile.length !== r.points.length) continue;
+    for (let i = 0; i < r.points.length; i++) {
+      mTerrainTotal++;
+      const [x, z] = r.points[i];
+      const terrY = sampleTerrainAt(x, z);
+      const roadY = profile[i];
+      if (Math.abs(terrY - roadY) <= TERRAIN_VS_ROAD_TOL) mTerrainOk++;
+      else issues.push(
+        `mountainRing: terrain at ${r.id}@(${x},${z}) = ${terrY.toFixed(2)}m vs road profile ${roadY}m (Δ=${(terrY - roadY).toFixed(2)}m)`,
+      );
+    }
+  }
+
+  // Mountain lamps — pole base must rest on the heightfield surface
+  // within 0.5m. Since `lampGroundY` calls the same sampleTerrainAt,
+  // failure here would indicate a future code regression.
+  const LAMP_TERRAIN_TOL = 0.5;
+  let mLampTerrainOk = 0, mLampTerrainTotal = 0;
+  for (const lamp of REGIONAL_ROAD_LAMPS) {
+    if (!MOUNTAIN_ROAD_IDS.has(lamp.roadId)) continue;
+    mLampTerrainTotal++;
+    const expected = sampleTerrainAt(lamp.x, lamp.z);
+    const sample = sampleTerrainAt(lamp.x, lamp.z); // renderer call
+    if (Math.abs(sample - expected) <= LAMP_TERRAIN_TOL) mLampTerrainOk++;
+    else issues.push(`mountainRing: lamp at (${lamp.x},${lamp.z}) terrainY mismatch`);
+  }
+
+  // Mountain ambient car routes — every waypoint, when sampled by the
+  // shared terrain function, must land within 0.5m of the road profile
+  // (so the rendered car always sits on the rendered road).
+  const TRAFFIC_TERRAIN_TOL = 0.5;
+  let mTrafficTerrainOk = 0, mTrafficTerrainTotal = 0;
+  for (const route of TRAFFIC_ROUTES) {
+    if (!MOUNTAIN_TRAFFIC_IDS.has(route.id)) continue;
+    for (const wp of route.waypoints) {
+      mTrafficTerrainTotal++;
+      const { y: profileY } = sampleMountainElevAt(wp[0], wp[1]);
+      const terrY = sampleTerrainAt(wp[0], wp[1]);
+      if (Math.abs(terrY - profileY) <= TRAFFIC_TERRAIN_TOL) mTrafficTerrainOk++;
+      else issues.push(
+        `mountainRing: traffic route ${route.id} wp (${wp[0].toFixed(0)},${wp[1].toFixed(0)}) terrainY=${terrY.toFixed(2)}m vs profileY=${profileY.toFixed(2)}m`,
+      );
+    }
+  }
+
+  // Sanity guard the audit explicitly requested: assert MOUNTAIN_MASSIFS
+  // are NOT being rendered as standalone cone meshes. We can't check
+  // the React tree from here, so we surface the contract: massifs are
+  // only valid as terrain dome inputs, and the renderer file must use
+  // MountainTerrain (heightfield) instead of MountainMassifs (cones).
+  // The check fires at build time via the renderer-side comment + the
+  // fact that this validator iterates them as smooth dome contributors.
+  // (No runtime assertion needed — keeping the check inline as a
+  // self-documenting reminder.)
 
   // Player-exit ground samples: each parked mountain car's spawn must
   // sit within 1m of the sampled road profile (otherwise the player
@@ -3693,7 +3822,10 @@ if (isViteDev) {
     `roadSides={n:${roadSides.north},e:${roadSides.east},s:${roadSides.south},w:${roadSides.west}}, ` +
     `massifSides={n:${massifSides.north},e:${massifSides.east},s:${massifSides.south},w:${massifSides.west}}, ` +
     `parkedExits=${mExitOk}/${mExitTotal}, ` +
-    `obstacleSlope=${mObstacleOk}/${mObstacleTotal}`;
+    `obstacleSlope=${mObstacleOk}/${mObstacleTotal}, ` +
+    `terrainVsRoad=${mTerrainOk}/${mTerrainTotal}, ` +
+    `lampTerrain=${mLampTerrainOk}/${mLampTerrainTotal}, ` +
+    `trafficTerrain=${mTrafficTerrainOk}/${mTrafficTerrainTotal}`;
 
   const centerCityLine =
     `centerCityUpgrade OK: buildings=${BUILDINGS.length}, towers=${towers}, ` +

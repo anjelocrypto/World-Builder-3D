@@ -12,13 +12,13 @@ import {
   VILLAGE_REAL_LIGHTS,
   JUNCTION_REAL_LIGHTS,
   MOUNTAIN_REAL_LIGHTS,
-  MOUNTAIN_MASSIFS,
   ROAD_ELEVATION_PROFILES,
   MOUNTAIN_ROAD_IDS,
   CITY_EDGE_TREES,
   PERI_CITY_HOMESTEADS,
 } from "../shared/cityData";
-import { getRoadElevationAt, isMountainRoadId } from "../shared/elevation";
+import { getRoadElevationAt } from "../shared/elevation";
+import { terrainHeightAt } from "../shared/terrain";
 import type {
   RoadPath, StaticObstacle, RegionalLampData, TreeInstance,
   PeriCityHomestead,
@@ -128,18 +128,47 @@ function RegionalRoads() {
 }
 
 // =============================================================
-// MOUNTAIN MASSIFS — large background cones for ridge silhouette
+// MOUNTAIN TERRAIN — single heightfield mesh covering the world
 // =============================================================
-function MountainMassifs() {
+//
+// One PlaneGeometry covering [-500,500]² with 200×200 segments
+// (~5m horizontal resolution, ~40k vertices) is displaced by
+// `terrainHeightAt(x, z)` so the same function drives the road quads,
+// every car/lamp/obstacle Y, and this visible ground surface. The
+// mesh sits 0.02m below the flat BiomeGround tiles so flat parts of
+// the heightfield (where terrainHeightAt returns 0) hide beneath the
+// city/forest/east/west tints, and only mountain regions poke above.
+//
+// MOUNTAIN_MASSIFS are NOT drawn as separate cone meshes — they are
+// already baked into this surface as smooth domes by terrainHeightAt.
+// Replacing the previous 6-sided coneGeometry pyramids removes the
+// "decorative pyramid" look the audit flagged.
+function MountainTerrain() {
+  const geom = useMemo(() => {
+    const SEG = 200;
+    const SIZE = 1000;
+    const g = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
+    // PlaneGeometry sits in XY with normal +Z. Rotate so it lies in
+    // XZ with normal +Y; vertex.y now stores ground height.
+    g.rotateX(-Math.PI / 2);
+    const arr = g.attributes.position.array as Float32Array;
+    // Stride is 3 floats per vertex (x, y, z).
+    for (let i = 0; i < arr.length; i += 3) {
+      const x = arr[i];
+      const z = arr[i + 2];
+      arr[i + 1] = terrainHeightAt(x, z);
+    }
+    g.attributes.position.needsUpdate = true;
+    g.computeVertexNormals();
+    return g;
+  }, []);
   return (
-    <group>
-      {MOUNTAIN_MASSIFS.map((m, i) => (
-        <mesh key={i} position={[m.x, m.h / 2, m.z]} castShadow receiveShadow>
-          <coneGeometry args={[m.r, m.h, 6]} />
-          <meshLambertMaterial color="#3a3530" flatShading />
-        </mesh>
-      ))}
-    </group>
+    // Slight downward bias so the heightfield's flat baseline (y=0)
+    // hides beneath the BiomeGround tiles and only the elevated parts
+    // are visible. flatShading reads as rugged rock facets.
+    <mesh geometry={geom} position={[0, -0.02, 0]} receiveShadow>
+      <meshLambertMaterial color="#3f3a33" flatShading />
+    </mesh>
   );
 }
 
@@ -155,11 +184,8 @@ function BiomeGround() {
   // intermediate colour so the eye reads it as a softer transition.
   return (
     <group>
-      {/* Mountain (north) */}
-      <mesh position={[0, 0.001, -300]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[1000, 400]} />
-        <meshLambertMaterial color="#3a3530" />
-      </mesh>
+      {/* North mountain region: handled by MountainTerrain heightfield
+          (no flat tile here — would z-fight with the rising terrain). */}
       {/* Forest (south) */}
       <mesh position={[0, 0.001, 340]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[1000, 320]} />
@@ -180,26 +206,11 @@ function BiomeGround() {
         <planeGeometry args={[400, 400]} />
         <meshLambertMaterial color="#5a5238" />
       </mesh>
-      {/* East foothill mountain strip — darker tint outside outer-loop
-          east leg (x=460), painted on top of the suburban tile so the
-          ridge-east-far road and the eastern MOUNTAIN_MASSIFS read as a
-          continuous mountain wall. */}
-      <mesh position={[480, 0.0012, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[40, 1000]} />
-        <meshLambertMaterial color="#3a3530" />
-      </mesh>
-      {/* West foothill mountain strip — mirror. */}
-      <mesh position={[-480, 0.0012, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[40, 1000]} />
-        <meshLambertMaterial color="#3a3530" />
-      </mesh>
-      {/* South foothill mountain strip — narrow band at z≈490 just
-          past the trailhead/cabins so the south MOUNTAIN_MASSIFS feel
-          rooted in mountain ground. */}
-      <mesh position={[0, 0.0012, 488]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
-        <planeGeometry args={[1000, 24]} />
-        <meshLambertMaterial color="#3a3530" />
-      </mesh>
+      {/* The east/west/south foothill mountain strips are now part of
+          the MountainTerrain heightfield (their height comes from the
+          rampart MOUNTAIN_MASSIFS at x=±498 and z=495, and terrain
+          stays at y=0 in the flat suburban areas — covered by the
+          tints above). */}
 
       {/* Transition strips at biome→city seams (y=0.0015 sits just
           above the base biome tints to overpaint the rectangular edge). */}
@@ -248,11 +259,15 @@ function BridgeLaneStripes() {
 // =============================================================
 
 function ObstacleMesh({ o }: { o: StaticObstacle }) {
-  // Mountain-area obstacles (cliff_wall, guardrail) sit beside elevated
-  // roads. Sample the road profile at the obstacle centre so they ride
-  // up the slope with the carriageway instead of clipping below it.
-  // Threshold mirrors the elevation helper's early bail (z > -150).
-  const slopeY = o.z < -150 ? getRoadElevationAt(o.x, o.z) : 0;
+  // Mountain-area obstacles (cliff_wall, guardrail) sit beside the
+  // elevated terrain. Sample the SHARED ground source at the obstacle
+  // centre so they ride up the slope with the surrounding heightfield
+  // instead of clipping below it. terrainHeightAt returns 0 outside
+  // mountain country, so the cost is the same as the previous gated
+  // call but it now correctly handles the east/west foothill ridges
+  // (which sit south of z=-150).
+  const slopeY = (o.kind === "cliff_wall" || o.kind === "guardrail")
+    ? getRoadElevationAt(o.x, o.z) : 0;
   switch (o.kind) {
     case "bridge_rail":
       return (
@@ -840,11 +855,13 @@ interface InstancedLampLayerProps {
   style: LampStyleDef;
 }
 
-// Lamps on mountain roads need their pole/head/pool elevated to the
-// road surface — without this they'd float at y=0 while the road is at
-// y=8..22m up the slope.
+// Lamp Y is sampled from the SHARED ground source so a lamp on a
+// mountain shoulder always agrees with the road quad and the
+// surrounding heightfield mesh. terrainHeightAt returns 0 outside
+// mountain country — the previous isMountainRoadId() gate is no
+// longer needed and would have hidden any future road-id renames.
 function lampGroundY(l: RegionalLampData): number {
-  return isMountainRoadId(l.roadId) ? getRoadElevationAt(l.x, l.z) : 0;
+  return getRoadElevationAt(l.x, l.z);
 }
 
 function PoleLayer({ lamps, style }: InstancedLampLayerProps) {
@@ -1012,7 +1029,7 @@ export default function BiomeRender() {
       <ForestTrees />
       <ForestRocks />
       <MountainRocks />
-      <MountainMassifs />
+      <MountainTerrain />
       <ForestLamps />
       <RegionalRoadLamps />
       <JunctionRealLights />
