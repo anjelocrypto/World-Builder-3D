@@ -126,6 +126,16 @@ Express 5 REST API + Socket.io game server.
 - Right-click / R still triggers `fight2` directly (cooldown-gated, no combo).
 - `PlaceholderCharacter` is kept as the Suspense fallback so a slow GLB fetch never leaves a player invisible.
 
+## Procedural Vehicle Renderer
+
+- `CarVisual` in `artifacts/city-sandbox/src/game/VehicleObject.tsx` is the single shared car renderer for parked / remote / locally-driven / ambient AI cars.
+- Variants (sedan, van, taxi, compact) keep their original `VARIANT_DIMENSIONS` (collision OBBs unchanged) and now layer rounded body + bevelled top + hood + trunk + cabin + roof bevel + bumpers + grille bars + wheel arches + front/side/rear glass + tires + rims + hubs + side mirrors + door handles + door / hood seams + headlights + turn signals + taillights + brake strip + reverse pads + front/rear plates.
+- Materials are MeshStandardMaterial (paint + glass + tire + rim + plastic + headlight emissive + taillight emissive + plate + taxi black/yellow), all module-level singletons. Paint and trim materials are cached **per color string**, so all e.g. red sedans share one paint material instance.
+- Variant geometries (body shells, hood, trunk, cabin, bumpers, arches) are also cached per variant the first time they appear, so per-frame rendering only references those shared geometries.
+- Variant flair: taxi adds a black/yellow rooftop sign with checker stripes + black side trim; van adds a tall rear cargo box, side sliding-door seam, and rear double-door split seam.
+- Vehicle facing convention preserved: front = local **−Z** (headlights / grille / front plate); rear = local **+Z** (taillights / rear plate). Cabin offset stays toward +Z. `LocalPlayer`'s driving headlight stays aligned.
+- `AmbientTraffic` continues to pass `castShadow={false}`; only the body / cabin / hood / cargo box opt into shadows even on shadow-casting cars to keep shadow draw count reasonable.
+
 ## Game Controls
 
 - **WASD** — Move / Drive
