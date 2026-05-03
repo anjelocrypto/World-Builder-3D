@@ -1,5 +1,6 @@
 import * as THREE from "three";
 import { useMemo, useRef, useEffect } from "react";
+import { useFrame, useThree } from "@react-three/fiber";
 import {
   REGIONAL_ROADS,
   STATIC_OBSTACLES,
@@ -145,7 +146,11 @@ function RegionalRoads() {
 // "decorative pyramid" look the audit flagged.
 function MountainTerrain() {
   const geom = useMemo(() => {
-    const SEG = 200;
+    // 200×200 (~40k verts) was overkill for the amount of detail the
+    // heightfield actually shows; 128×128 (~16k verts) is visually
+    // identical because terrainHeightAt is smooth and removes ~24k
+    // vertices from a single shadow-receiving mesh.
+    const SEG = 128;
     const SIZE = 1000;
     const g = new THREE.PlaneGeometry(SIZE, SIZE, SEG, SEG);
     // PlaneGeometry sits in XY with normal +Z. Rotate so it lies in
@@ -651,13 +656,16 @@ function TreeInstances({ data }: { data: ReadonlyArray<TreeInstance> }) {
   }, [data, count]);
 
   if (count === 0) return null;
+  // Trees no longer cast shadows — they're forest-belt scenery far
+  // from the player, and dropping them removes hundreds of triangles
+  // from the shadow pass. Buildings + the player still cast shadows.
   return (
     <group>
-      <instancedMesh ref={trunkRef} args={[undefined, undefined, count]} castShadow>
+      <instancedMesh ref={trunkRef} args={[undefined, undefined, count]}>
         <cylinderGeometry args={[0.35, 0.45, 4, 6]} />
         <meshLambertMaterial color="#4a3424" />
       </instancedMesh>
-      <instancedMesh ref={canopyRef} args={[undefined, undefined, count]} castShadow>
+      <instancedMesh ref={canopyRef} args={[undefined, undefined, count]}>
         <coneGeometry args={[1.6, 5, 8]} />
         <meshLambertMaterial color="#2c5a2a" />
       </instancedMesh>
@@ -699,7 +707,7 @@ function ForestRocks() {
   }, [count]);
   if (count === 0) return null;
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, count]} castShadow>
+    <instancedMesh ref={ref} args={[undefined, undefined, count]}>
       <dodecahedronGeometry args={[0.9, 0]} />
       <meshLambertMaterial color="#6c655a" flatShading />
     </instancedMesh>
@@ -731,7 +739,7 @@ function MountainRocks() {
   }, [count]);
   if (count === 0) return null;
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, count]} castShadow>
+    <instancedMesh ref={ref} args={[undefined, undefined, count]}>
       <dodecahedronGeometry args={[1.1, 0]} />
       <meshLambertMaterial color="#5a5248" flatShading />
     </instancedMesh>
@@ -777,8 +785,8 @@ function ForestLamps() {
     <group>
       {VILLAGE_LAMPS.map((lamp, i) => (
         <group key={i} position={[lamp.x, 0, lamp.z]}>
-          {/* Wooden pole */}
-          <mesh position={[0, 2.4, 0]} castShadow>
+          {/* Wooden pole — no shadow (small + far from camera). */}
+          <mesh position={[0, 2.4, 0]}>
             <cylinderGeometry args={[0.09, 0.11, 4.8, 6]} />
             <meshLambertMaterial color={FOREST_LAMP_POLE} />
           </mesh>
@@ -882,7 +890,7 @@ function PoleLayer({ lamps, style }: InstancedLampLayerProps) {
     mesh.computeBoundingSphere();
   }, [lamps, style]);
   return (
-    <instancedMesh ref={ref} args={[undefined, undefined, lamps.length]} castShadow>
+    <instancedMesh ref={ref} args={[undefined, undefined, lamps.length]}>
       <cylinderGeometry args={[style.poleRadius * 0.85, style.poleRadius, style.poleHeight, 6]} />
       <meshLambertMaterial color={style.poleColor} />
     </instancedMesh>
@@ -971,41 +979,107 @@ function RegionalRoadLamps() {
 }
 
 // =============================================================
-// JUNCTION REAL LIGHTS — a fixed list of warm point lights at the
-// busiest road junctions. No shadows; modest distance + decay=2 keeps
-// the per-frame cost flat.
+// DYNAMIC POINT LIGHTS — keeps at most N real lights live at once,
+// always picking the N nearest to the camera each frame. The previous
+// JunctionRealLights mounted EVERY junction/village/mountain light
+// (~25 pointLights), each costing a per-fragment lighting term. Most
+// fragment shaders branch out at distance>=light.distance, but the
+// uniform/structure cost is still real. Capping to the 7 closest plus
+// the driver headlight (declared in LocalPlayer) keeps us at the
+// audit's ≤8 active pointLights budget without losing any visible
+// glow — far lights weren't reaching the eye anyway.
 // =============================================================
 
-function JunctionRealLights() {
+interface RealLightSource {
+  x: number; y: number; z: number;
+  color: string;
+  intensity: number;
+  distance: number;
+}
+
+// Plaza (was 4 hard-coded pointLights in CityMap), JUNCTION, VILLAGE,
+// MOUNTAIN — consolidated into one source list so we have a single
+// place to nearest-N filter. Driver headlight stays in LocalPlayer.
+const PLAZA_LIGHT_COORDS: ReadonlyArray<readonly [number, number, number]> = [
+  [ 15, 6,  15],
+  [-15, 6,  15],
+  [ 15, 6, -15],
+  [-15, 6, -15],
+];
+
+const ALL_REAL_LIGHTS: RealLightSource[] = [
+  ...PLAZA_LIGHT_COORDS.map(([x, y, z]) => ({
+    x, y, z, color: "#ffd9a0", intensity: 6, distance: 28,
+  })),
+  ...JUNCTION_REAL_LIGHTS.map(([x, y, z]) => ({
+    x, y, z, color: "#ffd0a0", intensity: 3.5, distance: 38,
+  })),
+  ...VILLAGE_REAL_LIGHTS.map(([x, y, z]) => ({
+    x, y, z, color: "#ffcb88", intensity: 4.0, distance: 32,
+  })),
+  ...MOUNTAIN_REAL_LIGHTS.map(([x, y, z]) => ({
+    x, y, z, color: "#ffd0a0", intensity: 3.5, distance: 40,
+  })),
+];
+
+const MAX_ACTIVE_LIGHTS = 7; // + 1 driver headlight = 8 total budget.
+
+function DynamicPointLights() {
+  const { camera } = useThree();
+  const refs = useRef<Array<THREE.PointLight | null>>([]);
+  // Pre-parse every source's color into a THREE.Color so the per-frame
+  // loop only does cheap copy() calls.
+  const sources = useMemo(
+    () => ALL_REAL_LIGHTS.map((s) => ({ ...s, _color: new THREE.Color(s.color) })),
+    [],
+  );
+  // Reused selection buffer so we don't allocate every frame.
+  const distBuf = useRef<{ i: number; d: number }[]>(
+    sources.map((_, i) => ({ i, d: 0 })),
+  );
+
+  useFrame(() => {
+    const cx = camera.position.x;
+    const cy = camera.position.y;
+    const cz = camera.position.z;
+    const buf = distBuf.current;
+    for (let i = 0; i < sources.length; i++) {
+      const s = sources[i];
+      const dx = s.x - cx;
+      const dy = s.y - cy;
+      const dz = s.z - cz;
+      buf[i].i = i;
+      buf[i].d = dx * dx + dy * dy + dz * dz;
+    }
+    // Small N (~25): a full sort each frame is fine.
+    buf.sort((a, b) => a.d - b.d);
+    for (let k = 0; k < MAX_ACTIVE_LIGHTS; k++) {
+      const ref = refs.current[k];
+      if (!ref) continue;
+      const sel = buf[k];
+      if (!sel) {
+        ref.intensity = 0;
+        continue;
+      }
+      const s = sources[sel.i];
+      ref.position.set(s.x, s.y, s.z);
+      ref.color.copy(s._color);
+      ref.intensity = s.intensity;
+      ref.distance = s.distance;
+      ref.decay = 2;
+    }
+  });
+
   return (
     <group>
-      {JUNCTION_REAL_LIGHTS.map(([x, y, z], i) => (
+      {Array.from({ length: MAX_ACTIVE_LIGHTS }, (_, i) => (
         <pointLight
-          key={`j-${i}`}
-          position={[x, y, z]}
-          color="#ffd0a0"
-          intensity={3.5}
-          distance={38}
-          decay={2}
-        />
-      ))}
-      {VILLAGE_REAL_LIGHTS.map(([x, y, z], i) => (
-        <pointLight
-          key={`v-${i}`}
-          position={[x, y, z]}
-          color="#ffcb88"
-          intensity={4.0}
-          distance={32}
-          decay={2}
-        />
-      ))}
-      {MOUNTAIN_REAL_LIGHTS.map(([x, y, z], i) => (
-        <pointLight
-          key={`m-${i}`}
-          position={[x, y, z]}
-          color="#ffd0a0"
-          intensity={3.5}
-          distance={40}
+          key={i}
+          ref={(r) => {
+            refs.current[i] = r;
+          }}
+          intensity={0}
+          distance={1}
           decay={2}
         />
       ))}
@@ -1032,7 +1106,7 @@ export default function BiomeRender() {
       <MountainTerrain />
       <ForestLamps />
       <RegionalRoadLamps />
-      <JunctionRealLights />
+      <DynamicPointLights />
     </group>
   );
 }

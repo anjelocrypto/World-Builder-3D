@@ -13,6 +13,7 @@ import HUD from "./HUD";
 import NPCs from "./NPCs";
 import AmbientTraffic from "./AmbientTraffic";
 import BiomeRender from "./BiomeRender";
+import { PerfMonitor, PerfOverlay } from "./PerfHUD";
 
 const KEY_MAP = [
   { name: Controls.forward,  keys: ["ArrowUp",    "KeyW"] },
@@ -159,6 +160,8 @@ export default function GameScene({
       <KeyboardControls map={KEY_MAP}>
         <Canvas
           shadows
+          dpr={[1, 1.5]}
+          gl={{ powerPreference: "high-performance", antialias: false, stencil: false }}
           camera={{ fov: 75, near: 0.1, far: 1500, position: [0, 8, 15] }}
           style={{ width: "100%", height: "100%" }}
         >
@@ -234,8 +237,12 @@ export default function GameScene({
             playerPosRef={playerPosRef}
             initialSpawn={initialSpawn}
           />
+
+          <PerfMonitor />
         </Canvas>
       </KeyboardControls>
+
+      <PerfOverlay />
 
       <HUD
         health={uiState.health}

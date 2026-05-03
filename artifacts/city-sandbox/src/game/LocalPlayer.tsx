@@ -44,6 +44,10 @@ export enum Controls {
   interact = "interact",
 }
 
+// Module-level scratch reused by updateCamera every frame. Avoids a
+// fresh Vector3 allocation 60 times per second.
+const _camTarget = new THREE.Vector3();
+
 const WALK_SPEED = 5;
 const RUN_SPEED = 10;
 const GRAVITY = -18;
@@ -137,6 +141,9 @@ export default function LocalPlayer({
 
   // Emit timing
   const lastEmit = useRef(0);
+  // Last time we pushed a HUD/UI update upstream — throttled to ~10Hz
+  // for non-state-change fields (px/pz/speed/raceTime).
+  const lastUIEmit = useRef(0);
 
   // UI state cache (avoid re-render spam)
   const uiCache = useRef({
@@ -246,8 +253,31 @@ export default function LocalPlayer({
       pz: curPos.z,
     };
 
-    if (JSON.stringify(newUI) !== JSON.stringify(uiCache.current)) {
+    // Throttled per-field UI diff. JSON.stringify on a 10-key object
+    // every frame at 60fps was a ~5% main-thread cost in the audit;
+    // primitive comparisons + a 100ms throttle keeps the HUD responsive
+    // (10Hz minimap / speedometer is more than enough for the eye)
+    // without re-stringifying the world.
+    const cache = uiCache.current;
+    const movedEnough =
+      Math.abs(newUI.px - cache.px) > 0.05 ||
+      Math.abs(newUI.pz - cache.pz) > 0.05;
+    const speedDelta = Math.abs(newUI.speed - cache.speed) > 0.1;
+    const stateChanged =
+      newUI.health !== cache.health ||
+      newUI.inVehicle !== cache.inVehicle ||
+      newUI.showInteract !== cache.showInteract ||
+      newUI.vehicleLabel !== cache.vehicleLabel ||
+      newUI.raceActive !== cache.raceActive ||
+      newUI.racePassed !== cache.racePassed;
+    const timeChanged = Math.abs(newUI.raceTime - cache.raceTime) > 100;
+    const sinceLast = now - lastUIEmit.current;
+    if (
+      stateChanged ||
+      ((movedEnough || speedDelta || timeChanged) && sinceLast > 100)
+    ) {
       uiCache.current = newUI;
+      lastUIEmit.current = now;
       onUIUpdate(newUI);
     }
   });
@@ -866,7 +896,10 @@ export default function LocalPlayer({
     const camY = target.y + Math.sin(pitch) * CAM_DIST + 1.8;
     const camZ = target.z + Math.cos(yaw) * CAM_DIST * Math.cos(pitch);
 
-    camera.position.lerp(new THREE.Vector3(camX, camY, camZ), 0.12);
+    // Reuse a module-scoped Vector3 instead of allocating one per
+    // frame (was 60+ allocs/sec just for the camera lerp).
+    _camTarget.set(camX, camY, camZ);
+    camera.position.lerp(_camTarget, 0.12);
     camera.lookAt(target.x, target.y + 1, target.z);
   }
 

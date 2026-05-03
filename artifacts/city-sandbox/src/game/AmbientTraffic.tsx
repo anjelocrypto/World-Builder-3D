@@ -1,9 +1,9 @@
 import * as THREE from "three";
-import { useRef } from "react";
+import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { TRAFFIC_ROUTES } from "../shared/cityData";
 import { getVehicleGroundY } from "../shared/elevation";
-import type { TrafficCarSeed, TrafficRoute, VehicleVariant } from "../shared/types";
+import type { TrafficCarSeed, TrafficRoute } from "../shared/types";
 import { CarVisual } from "./VehicleObject";
 
 /**
@@ -17,69 +17,74 @@ function shortestAngleDelta(a: number, b: number): number {
   return diff;
 }
 
-interface TrafficCarProps {
+interface CarEntry {
   route: TrafficRoute;
   seed: TrafficCarSeed;
+  group: THREE.Group | null;
 }
 
 /**
- * A single AI car looping a TrafficRoute. Position is fully deterministic
- * from `Date.now()` + seed.phase, so all clients see roughly the same
- * traffic without any network sync. Non-enterable, no collision — purely
- * cosmetic life.
- */
-function TrafficCar({ route, seed }: TrafficCarProps) {
-  const groupRef = useRef<THREE.Group>(null!);
-
-  useFrame(() => {
-    if (!groupRef.current) return;
-    const tMs = Date.now();
-    const progress = ((tMs / 1000) / route.cycleSeconds + seed.phase) % 1;
-    const segCount = route.waypoints.length;
-    const segProgress = progress * segCount;
-    const segIdx = Math.floor(segProgress) % segCount;
-    const segT = segProgress - Math.floor(segProgress);
-
-    const a = route.waypoints[segIdx];
-    const b = route.waypoints[(segIdx + 1) % segCount];
-    const x = a[0] + (b[0] - a[0]) * segT;
-    const z = a[1] + (b[1] - a[1]) * segT;
-
-    const rotA = a[2];
-    const rotB = b[2];
-    const rotY = rotA + shortestAngleDelta(rotA, rotB) * segT;
-
-    // Mountain roads sample real elevation; flat-land roads return 0
-    // and the car sits at its previous y=0.6.
-    groupRef.current.position.set(x, 0.6 + getVehicleGroundY(x, z), z);
-    groupRef.current.rotation.y = rotY;
-  });
-
-  const variant: VehicleVariant = seed.variant;
-
-  return (
-    <group ref={groupRef}>
-      <CarVisual variant={variant} color={seed.color} />
-    </group>
-  );
-}
-
-/**
- * Spawns one TrafficCar for each car-seed in TRAFFIC_ROUTES. Renders
- * the ambient cars (currently 22 across 9 routes — city loop, bridge-
- * forest spine, mountain switchbacks, east service road, inner-city
- * ring, outer regional loop, ridge-east-high, ridge-west, summit-pass).
- * The mountain routes climb because the per-frame position read sample
- * elevation via getVehicleGroundY. Client-only.
+ * One useFrame for ALL ambient cars (was one-per-car, ~22 R3F frame
+ * subscriptions). Position and heading are still derived from
+ * Date.now() + seed.phase per car, so visuals are unchanged; we just
+ * pay the scheduler overhead once per frame.
+ *
+ * Cars also opt OUT of shadow casting via CarVisual castShadow={false}
+ * — they're cosmetic and the directional light only renders one
+ * shadow map, so removing 22 cars from the caster set is a noticeable
+ * win.
  */
 export default function AmbientTraffic() {
+  const data = useMemo(() => {
+    const out: { route: TrafficRoute; seed: TrafficCarSeed }[] = [];
+    for (const route of TRAFFIC_ROUTES) {
+      for (const seed of route.cars) out.push({ route, seed });
+    }
+    return out;
+  }, []);
+  const refs = useRef<CarEntry[]>(data.map((d) => ({ ...d, group: null })));
+
+  useFrame(() => {
+    const tMs = Date.now();
+    const arr = refs.current;
+    for (let i = 0; i < arr.length; i++) {
+      const e = arr[i];
+      const g = e.group;
+      if (!g) continue;
+      const route = e.route;
+      const seed = e.seed;
+      const progress = ((tMs / 1000) / route.cycleSeconds + seed.phase) % 1;
+      const segCount = route.waypoints.length;
+      const segProgress = progress * segCount;
+      const segIdx = Math.floor(segProgress) % segCount;
+      const segT = segProgress - Math.floor(segProgress);
+      const a = route.waypoints[segIdx];
+      const b = route.waypoints[(segIdx + 1) % segCount];
+      const x = a[0] + (b[0] - a[0]) * segT;
+      const z = a[1] + (b[1] - a[1]) * segT;
+      const rotY = a[2] + shortestAngleDelta(a[2], b[2]) * segT;
+      g.position.set(x, 0.6 + getVehicleGroundY(x, z), z);
+      g.rotation.y = rotY;
+    }
+  });
+
   return (
     <group>
-      {TRAFFIC_ROUTES.flatMap((route) =>
-        route.cars.map((seed) => (
-          <TrafficCar key={seed.id} route={route} seed={seed} />
-        ))
-      )}
+      {data.map((d, i) => (
+        <group
+          key={d.seed.id}
+          ref={(g) => {
+            const e = refs.current[i];
+            if (e) e.group = g;
+          }}
+        >
+          <CarVisual
+            variant={d.seed.variant}
+            color={d.seed.color}
+            castShadow={false}
+          />
+        </group>
+      ))}
     </group>
   );
 }

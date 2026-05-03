@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import {
   BUILDINGS,
   RAMPS,
@@ -227,30 +227,11 @@ function BuildingExtras({ b }: { b: Building }) {
 }
 
 function BuildingMesh({ b }: BuildingMeshProps) {
-  // Floor count varies by height. Each floor renders one emissive strip
-  // per side of the building → 4 strips per floor. windowSeed-derived
-  // opacity gives every building a different "lit/unlit" feel.
-  const floors = Math.max(1, Math.floor(b.h / 3.5));
-  const floorSpacing = b.h / (floors + 1);
-
-  // Deterministic per-floor opacity so different floors look different
-  // (some "lit", some "dim") but every client sees the same pattern.
-  const litFloors = useMemo(() => {
-    const out: number[] = [];
-    let s = b.windowSeed | 0;
-    for (let i = 0; i < floors; i++) {
-      s = Math.imul(s, 1664525) + 1013904223;
-      out.push(((s >>> 0) / 0x100000000) > 0.25 ? 1 : 0.25);
-    }
-    return out;
-  }, [b.windowSeed, floors]);
-
-  // Window-strip color: warmer for residential, cooler for downtown.
-  const windowColor =
-    b.district === "residential" ? "#ffd99a" :
-    b.district === "downtown"    ? "#cfe6ff" :
-                                   "#ffe9b0";
-
+  // Body, door, rooftop box, antenna, podium/crown extras. The window
+  // strips that USED to live here (4 planes per floor × all 65
+  // buildings ≈ 520 individual meshes) now live in the shared
+  // <BuildingWindowsInstanced/> below, which collapses them into a
+  // small fixed set of InstancedMesh draw calls.
   return (
     <group position={[b.x, 0, b.z]}>
       {/* Body */}
@@ -258,36 +239,6 @@ function BuildingMesh({ b }: BuildingMeshProps) {
         <boxGeometry args={[b.w, b.h, b.d]} />
         <meshLambertMaterial color={b.color} />
       </mesh>
-
-      {/* Window strips on all 4 sides */}
-      {Array.from({ length: floors }, (_, f) => {
-        const y = (f + 1) * floorSpacing;
-        const opacity = 0.85 * litFloors[f];
-        return (
-          <group key={f}>
-            {/* +Z face */}
-            <mesh position={[0, y, b.d / 2 + 0.02]}>
-              <planeGeometry args={[b.w * 0.7, 1.0]} />
-              <meshBasicMaterial color={windowColor} transparent opacity={opacity} />
-            </mesh>
-            {/* -Z face */}
-            <mesh position={[0, y, -b.d / 2 - 0.02]} rotation={[0, Math.PI, 0]}>
-              <planeGeometry args={[b.w * 0.7, 1.0]} />
-              <meshBasicMaterial color={windowColor} transparent opacity={opacity} />
-            </mesh>
-            {/* +X face */}
-            <mesh position={[b.w / 2 + 0.02, y, 0]} rotation={[0, Math.PI / 2, 0]}>
-              <planeGeometry args={[b.d * 0.7, 1.0]} />
-              <meshBasicMaterial color={windowColor} transparent opacity={opacity} />
-            </mesh>
-            {/* -X face */}
-            <mesh position={[-b.w / 2 - 0.02, y, 0]} rotation={[0, -Math.PI / 2, 0]}>
-              <planeGeometry args={[b.d * 0.7, 1.0]} />
-              <meshBasicMaterial color={windowColor} transparent opacity={opacity} />
-            </mesh>
-          </group>
-        );
-      })}
 
       {/* Door (front +Z face) */}
       <mesh position={[0, 1.0, b.d / 2 + 0.025]}>
@@ -324,12 +275,112 @@ function BuildingMesh({ b }: BuildingMeshProps) {
   );
 }
 
+// Bucket every building's window strips by (color, lit/dim) so we can
+// emit one InstancedMesh per bucket. With ~65 buildings × ~5 floors ×
+// 4 faces ≈ 1300 strips, this turns ~520 individual meshes into 6
+// instanced draw calls. Each instance is a unit-plane scaled to the
+// face width via its matrix.
+function BuildingWindowsInstanced() {
+  const buckets = useMemo(() => {
+    interface Bucket {
+      color: string;
+      opacity: number;
+      matrices: THREE.Matrix4[];
+    }
+    const map = new Map<string, Bucket>();
+    const tmpQ = new THREE.Quaternion();
+    const tmpE = new THREE.Euler();
+    const tmpP = new THREE.Vector3();
+    const tmpS = new THREE.Vector3();
+    for (const b of BUILDINGS) {
+      const floors = Math.max(1, Math.floor(b.h / 3.5));
+      const floorSpacing = b.h / (floors + 1);
+      const windowColor =
+        b.district === "residential" ? "#ffd99a" :
+        b.district === "downtown"    ? "#cfe6ff" :
+                                       "#ffe9b0";
+      let s = b.windowSeed | 0;
+      for (let f = 0; f < floors; f++) {
+        s = Math.imul(s, 1664525) + 1013904223;
+        const lit = ((s >>> 0) / 0x100000000) > 0.25 ? 1 : 0.25;
+        const opacity = 0.85 * lit;
+        const key = `${windowColor}|${lit === 1 ? "lit" : "dim"}`;
+        let bucket = map.get(key);
+        if (!bucket) {
+          bucket = { color: windowColor, opacity, matrices: [] };
+          map.set(key, bucket);
+        }
+        const y = (f + 1) * floorSpacing;
+        // +Z face
+        tmpE.set(0, 0, 0);
+        tmpQ.setFromEuler(tmpE);
+        tmpS.set(b.w * 0.7, 1.0, 1);
+        tmpP.set(b.x, y, b.z + b.d / 2 + 0.02);
+        bucket.matrices.push(new THREE.Matrix4().compose(tmpP, tmpQ, tmpS));
+        // -Z face
+        tmpE.set(0, Math.PI, 0);
+        tmpQ.setFromEuler(tmpE);
+        tmpP.set(b.x, y, b.z - b.d / 2 - 0.02);
+        bucket.matrices.push(new THREE.Matrix4().compose(tmpP, tmpQ, tmpS));
+        // +X face
+        tmpE.set(0, Math.PI / 2, 0);
+        tmpQ.setFromEuler(tmpE);
+        tmpS.set(b.d * 0.7, 1.0, 1);
+        tmpP.set(b.x + b.w / 2 + 0.02, y, b.z);
+        bucket.matrices.push(new THREE.Matrix4().compose(tmpP, tmpQ, tmpS));
+        // -X face
+        tmpE.set(0, -Math.PI / 2, 0);
+        tmpQ.setFromEuler(tmpE);
+        tmpP.set(b.x - b.w / 2 - 0.02, y, b.z);
+        bucket.matrices.push(new THREE.Matrix4().compose(tmpP, tmpQ, tmpS));
+      }
+    }
+    return Array.from(map.entries()).map(([key, v]) => ({ key, ...v }));
+  }, []);
+
+  return (
+    <group>
+      {buckets.map((b) => (
+        <WindowBucket
+          key={b.key}
+          color={b.color}
+          opacity={b.opacity}
+          matrices={b.matrices}
+        />
+      ))}
+    </group>
+  );
+}
+
+function WindowBucket({
+  color, opacity, matrices,
+}: { color: string; opacity: number; matrices: THREE.Matrix4[] }) {
+  const ref = useRef<THREE.InstancedMesh>(null);
+  useEffect(() => {
+    const mesh = ref.current;
+    if (!mesh) return;
+    for (let i = 0; i < matrices.length; i++) {
+      mesh.setMatrixAt(i, matrices[i]);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.computeBoundingSphere();
+  }, [matrices]);
+  if (matrices.length === 0) return null;
+  return (
+    <instancedMesh ref={ref} args={[undefined, undefined, matrices.length]}>
+      <planeGeometry args={[1, 1]} />
+      <meshBasicMaterial color={color} transparent opacity={opacity} />
+    </instancedMesh>
+  );
+}
+
 function Buildings() {
   return (
     <group>
       {BUILDINGS.map((b, i) => (
         <BuildingMesh key={i} b={b} />
       ))}
+      <BuildingWindowsInstanced />
     </group>
   );
 }
@@ -342,32 +393,59 @@ const LAMP_HEAD_COLOR = "#fff2c0";
 const LAMP_POOL_COLOR = "#ffe49a";
 
 function StreetLamps() {
+  // Was: 90 lamps × 4 child meshes = 360 individual meshes. Now: 4
+  // InstancedMesh objects (pole / arm / head / pool) regardless of
+  // count — and the pole no longer casts shadows since the lamps are
+  // thin and far from gameplay focus.
+  const count = STREET_LIGHTS.length;
+  const poleRef = useRef<THREE.InstancedMesh>(null);
+  const armRef = useRef<THREE.InstancedMesh>(null);
+  const headRef = useRef<THREE.InstancedMesh>(null);
+  const poolRef = useRef<THREE.InstancedMesh>(null);
+  useEffect(() => {
+    const m = new THREE.Matrix4();
+    const idQ = new THREE.Quaternion();
+    const flatQ = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(-Math.PI / 2, 0, 0),
+    );
+    const s = new THREE.Vector3(1, 1, 1);
+    for (let i = 0; i < count; i++) {
+      const lamp = STREET_LIGHTS[i];
+      m.compose(new THREE.Vector3(lamp.x, 3, lamp.z), idQ, s);
+      poleRef.current?.setMatrixAt(i, m);
+      m.compose(new THREE.Vector3(lamp.x, 6, lamp.z), idQ, s);
+      armRef.current?.setMatrixAt(i, m);
+      m.compose(new THREE.Vector3(lamp.x, 5.95, lamp.z), idQ, s);
+      headRef.current?.setMatrixAt(i, m);
+      m.compose(new THREE.Vector3(lamp.x, 0.04, lamp.z), flatQ, s);
+      poolRef.current?.setMatrixAt(i, m);
+    }
+    for (const r of [poleRef, armRef, headRef, poolRef]) {
+      if (r.current) {
+        r.current.instanceMatrix.needsUpdate = true;
+        r.current.computeBoundingSphere();
+      }
+    }
+  }, [count]);
+  if (count === 0) return null;
   return (
     <group>
-      {STREET_LIGHTS.map((lamp, i) => (
-        <group key={i} position={[lamp.x, 0, lamp.z]}>
-          {/* Pole */}
-          <mesh position={[0, 3, 0]} castShadow>
-            <cylinderGeometry args={[0.08, 0.1, 6, 6]} />
-            <meshLambertMaterial color="#444448" />
-          </mesh>
-          {/* Lamp arm */}
-          <mesh position={[0, 6, 0]}>
-            <boxGeometry args={[0.12, 0.12, 0.6]} />
-            <meshLambertMaterial color="#444448" />
-          </mesh>
-          {/* Emissive head */}
-          <mesh position={[0, 5.95, 0]}>
-            <boxGeometry args={[0.7, 0.3, 0.7]} />
-            <meshBasicMaterial color={LAMP_HEAD_COLOR} />
-          </mesh>
-          {/* Fake light pool on ground (transparent disc) */}
-          <mesh position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-            <circleGeometry args={[5, 16]} />
-            <meshBasicMaterial color={LAMP_POOL_COLOR} transparent opacity={0.18} />
-          </mesh>
-        </group>
-      ))}
+      <instancedMesh ref={poleRef} args={[undefined, undefined, count]}>
+        <cylinderGeometry args={[0.08, 0.1, 6, 6]} />
+        <meshLambertMaterial color="#444448" />
+      </instancedMesh>
+      <instancedMesh ref={armRef} args={[undefined, undefined, count]}>
+        <boxGeometry args={[0.12, 0.12, 0.6]} />
+        <meshLambertMaterial color="#444448" />
+      </instancedMesh>
+      <instancedMesh ref={headRef} args={[undefined, undefined, count]}>
+        <boxGeometry args={[0.7, 0.3, 0.7]} />
+        <meshBasicMaterial color={LAMP_HEAD_COLOR} />
+      </instancedMesh>
+      <instancedMesh ref={poolRef} args={[undefined, undefined, count]}>
+        <circleGeometry args={[5, 16]} />
+        <meshBasicMaterial color={LAMP_POOL_COLOR} transparent opacity={0.18} />
+      </instancedMesh>
     </group>
   );
 }
@@ -377,48 +455,80 @@ function StreetLamps() {
 // =============================================================
 
 function TrafficLights() {
+  // Was: ~36 traffic lights × 6 child meshes = ~216 individual meshes.
+  // Now: 6 InstancedMesh objects, with each instance carrying its
+  // own rotY via the matrix (positions of the arm / box / bulbs are
+  // all expressed in the local frame, then transformed by the matrix
+  // built from tl.x/tl.z + tl.rotY).
+  const count = TRAFFIC_LIGHTS.length;
+  const poleRef = useRef<THREE.InstancedMesh>(null);
+  const armRef = useRef<THREE.InstancedMesh>(null);
+  const boxRef = useRef<THREE.InstancedMesh>(null);
+  const redRef = useRef<THREE.InstancedMesh>(null);
+  const yellowRef = useRef<THREE.InstancedMesh>(null);
+  const greenRef = useRef<THREE.InstancedMesh>(null);
+  useEffect(() => {
+    const m = new THREE.Matrix4();
+    const local = new THREE.Matrix4();
+    const root = new THREE.Matrix4();
+    const q = new THREE.Quaternion();
+    const e = new THREE.Euler();
+    const s = new THREE.Vector3(1, 1, 1);
+    const writeAll = (
+      ref: React.MutableRefObject<THREE.InstancedMesh | null>,
+      lx: number, ly: number, lz: number,
+      i: number,
+    ) => {
+      local.makeTranslation(lx, ly, lz);
+      m.multiplyMatrices(root, local);
+      ref.current?.setMatrixAt(i, m);
+    };
+    for (let i = 0; i < count; i++) {
+      const tl = TRAFFIC_LIGHTS[i];
+      e.set(0, tl.rotY, 0);
+      q.setFromEuler(e);
+      root.compose(new THREE.Vector3(tl.x, 0, tl.z), q, s);
+      writeAll(poleRef, 0, 2.5, 0, i);
+      writeAll(armRef, 0, 4.8, 0.4, i);
+      writeAll(boxRef, 0, 4.4, 0.85, i);
+      writeAll(redRef, 0, 4.4 + 0.4, 0.85 + 0.16, i);
+      writeAll(yellowRef, 0, 4.4, 0.85 + 0.16, i);
+      writeAll(greenRef, 0, 4.4 - 0.4, 0.85 + 0.16, i);
+    }
+    for (const r of [poleRef, armRef, boxRef, redRef, yellowRef, greenRef]) {
+      if (r.current) {
+        r.current.instanceMatrix.needsUpdate = true;
+        r.current.computeBoundingSphere();
+      }
+    }
+  }, [count]);
+  if (count === 0) return null;
   return (
     <group>
-      {TRAFFIC_LIGHTS.map((tl, i) => (
-        <group
-          key={i}
-          position={[tl.x, 0, tl.z]}
-          rotation={[0, tl.rotY, 0]}
-        >
-          {/* Pole */}
-          <mesh position={[0, 2.5, 0]}>
-            <cylinderGeometry args={[0.08, 0.1, 5, 6]} />
-            <meshLambertMaterial color="#2c2c30" />
-          </mesh>
-          {/* Arm */}
-          <mesh position={[0, 4.8, 0.4]}>
-            <boxGeometry args={[0.1, 0.1, 0.8]} />
-            <meshLambertMaterial color="#2c2c30" />
-          </mesh>
-          {/* Light box */}
-          <group position={[0, 4.4, 0.85]}>
-            <mesh>
-              <boxGeometry args={[0.5, 1.2, 0.3]} />
-              <meshLambertMaterial color="#1a1a1f" />
-            </mesh>
-            {/* Red */}
-            <mesh position={[0, 0.4, 0.16]}>
-              <sphereGeometry args={[0.12, 8, 8]} />
-              <meshBasicMaterial color="#e74c3c" />
-            </mesh>
-            {/* Yellow (dim) */}
-            <mesh position={[0, 0, 0.16]}>
-              <sphereGeometry args={[0.12, 8, 8]} />
-              <meshBasicMaterial color="#5a5028" />
-            </mesh>
-            {/* Green (dim) */}
-            <mesh position={[0, -0.4, 0.16]}>
-              <sphereGeometry args={[0.12, 8, 8]} />
-              <meshBasicMaterial color="#2a4a32" />
-            </mesh>
-          </group>
-        </group>
-      ))}
+      <instancedMesh ref={poleRef} args={[undefined, undefined, count]}>
+        <cylinderGeometry args={[0.08, 0.1, 5, 6]} />
+        <meshLambertMaterial color="#2c2c30" />
+      </instancedMesh>
+      <instancedMesh ref={armRef} args={[undefined, undefined, count]}>
+        <boxGeometry args={[0.1, 0.1, 0.8]} />
+        <meshLambertMaterial color="#2c2c30" />
+      </instancedMesh>
+      <instancedMesh ref={boxRef} args={[undefined, undefined, count]}>
+        <boxGeometry args={[0.5, 1.2, 0.3]} />
+        <meshLambertMaterial color="#1a1a1f" />
+      </instancedMesh>
+      <instancedMesh ref={redRef} args={[undefined, undefined, count]}>
+        <sphereGeometry args={[0.12, 8, 8]} />
+        <meshBasicMaterial color="#e74c3c" />
+      </instancedMesh>
+      <instancedMesh ref={yellowRef} args={[undefined, undefined, count]}>
+        <sphereGeometry args={[0.12, 8, 8]} />
+        <meshBasicMaterial color="#5a5028" />
+      </instancedMesh>
+      <instancedMesh ref={greenRef} args={[undefined, undefined, count]}>
+        <sphereGeometry args={[0.12, 8, 8]} />
+        <meshBasicMaterial color="#2a4a32" />
+      </instancedMesh>
     </group>
   );
 }
@@ -449,23 +559,27 @@ function ParkingMarkings() {
 // =============================================================
 
 function Prop({ p }: { p: PropData }) {
+  // Sidewalk props are small and clutter the shadow caster set
+  // (~hundred extra entries). Their shadow contribution at the
+  // distance/angle the sun lands is barely visible, so castShadow is
+  // dropped across the board here.
   switch (p.type) {
     case "bench":
       return (
         <group position={[p.x, 0, p.z]} rotation={[0, p.rotY, 0]}>
-          <mesh position={[0, 0.45, 0]} castShadow>
+          <mesh position={[0, 0.45, 0]}>
             <boxGeometry args={[1.6, 0.1, 0.45]} />
             <meshLambertMaterial color="#6b4a2a" />
           </mesh>
-          <mesh position={[0, 0.7, -0.18]} castShadow>
+          <mesh position={[0, 0.7, -0.18]}>
             <boxGeometry args={[1.6, 0.4, 0.08]} />
             <meshLambertMaterial color="#6b4a2a" />
           </mesh>
-          <mesh position={[-0.7, 0.2, 0]} castShadow>
+          <mesh position={[-0.7, 0.2, 0]}>
             <boxGeometry args={[0.1, 0.4, 0.45]} />
             <meshLambertMaterial color="#3a3a3a" />
           </mesh>
-          <mesh position={[0.7, 0.2, 0]} castShadow>
+          <mesh position={[0.7, 0.2, 0]}>
             <boxGeometry args={[0.1, 0.4, 0.45]} />
             <meshLambertMaterial color="#3a3a3a" />
           </mesh>
@@ -474,11 +588,11 @@ function Prop({ p }: { p: PropData }) {
     case "planter":
       return (
         <group position={[p.x, 0, p.z]} rotation={[0, p.rotY, 0]}>
-          <mesh position={[0, 0.4, 0]} castShadow>
+          <mesh position={[0, 0.4, 0]}>
             <boxGeometry args={[1.0, 0.8, 1.0]} />
             <meshLambertMaterial color="#5a4a3a" />
           </mesh>
-          <mesh position={[0, 1.1, 0]} castShadow>
+          <mesh position={[0, 1.1, 0]}>
             <sphereGeometry args={[0.55, 10, 10]} />
             <meshLambertMaterial color="#3a6c4a" />
           </mesh>
@@ -487,7 +601,7 @@ function Prop({ p }: { p: PropData }) {
     case "trashcan":
       return (
         <group position={[p.x, 0, p.z]} rotation={[0, p.rotY, 0]}>
-          <mesh position={[0, 0.45, 0]} castShadow>
+          <mesh position={[0, 0.45, 0]}>
             <cylinderGeometry args={[0.3, 0.28, 0.9, 10]} />
             <meshLambertMaterial color="#2a2a2a" />
           </mesh>
@@ -500,11 +614,11 @@ function Prop({ p }: { p: PropData }) {
     case "hydrant":
       return (
         <group position={[p.x, 0, p.z]} rotation={[0, p.rotY, 0]}>
-          <mesh position={[0, 0.35, 0]} castShadow>
+          <mesh position={[0, 0.35, 0]}>
             <cylinderGeometry args={[0.18, 0.22, 0.7, 8]} />
             <meshLambertMaterial color="#c0392b" />
           </mesh>
-          <mesh position={[0, 0.78, 0]} castShadow>
+          <mesh position={[0, 0.78, 0]}>
             <sphereGeometry args={[0.22, 8, 8]} />
             <meshLambertMaterial color="#c0392b" />
           </mesh>
@@ -571,23 +685,10 @@ export default function CityMap() {
       <Ramps />
       <CentralRail />
 
-      {/* Four real point lights at the central plaza corners.
-          Decay=2 + small distance keeps cost contained. */}
-      {[
-        [ 15, 6,  15],
-        [-15, 6,  15],
-        [ 15, 6, -15],
-        [-15, 6, -15],
-      ].map(([x, y, z], i) => (
-        <pointLight
-          key={i}
-          position={[x, y, z]}
-          color="#ffd9a0"
-          intensity={6}
-          distance={28}
-          decay={2}
-        />
-      ))}
+      {/* Plaza point lights have moved into BiomeRender's
+          DynamicPointLights, where they're nearest-N filtered with
+          junction / village / mountain lights so the scene stays
+          inside the audit's ≤8 active pointLight budget. */}
 
       {/* Atmospheric fog — extended for the 1000-unit world. Was
           ["#1a2440", 90, 260]. Far end is set just inside the camera

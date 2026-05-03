@@ -9,14 +9,19 @@ interface VehicleObjectProps {
   isLocalDriverVehicle: boolean;
 }
 
+// Module-level scratch — one Vector3 reused across every remote
+// vehicle's per-frame lerp instead of allocating a new instance every
+// frame for every car (was ~20 allocs/frame with 20 remotes).
+const _lerpTarget = new THREE.Vector3();
+
 export default function VehicleObject({ state, isLocalDriverVehicle }: VehicleObjectProps) {
   const groupRef = useRef<THREE.Group>(null!);
 
   useFrame(() => {
     if (!groupRef.current || isLocalDriverVehicle) return;
     // Interpolate to server state for remote vehicles
-    const target = new THREE.Vector3(state.x, state.y, state.z);
-    groupRef.current.position.lerp(target, 0.15);
+    _lerpTarget.set(state.x, state.y, state.z);
+    groupRef.current.position.lerp(_lerpTarget, 0.15);
     groupRef.current.rotation.y += (state.rotY - groupRef.current.rotation.y) * 0.15;
   });
 
@@ -32,6 +37,10 @@ interface CarVisualProps {
   // the network can't crash rendering. We narrow defensively below.
   variant: string | undefined;
   color: string;
+  // Whether this car body / cabin should cast shadows. Drivable + remote
+  // player cars stay true; cosmetic ambient traffic passes false to drop
+  // ~22 shadow casters from the scene without changing what the player sees.
+  castShadow?: boolean;
 }
 
 /**
@@ -52,7 +61,7 @@ interface CarVisualProps {
  * "sedan" if it's unknown rather than crashing on
  * `VARIANT_DIMENSIONS[undefined]`.
  */
-export function CarVisual({ variant, color }: CarVisualProps) {
+export function CarVisual({ variant, color, castShadow = true }: CarVisualProps) {
   const safeVariant: VehicleVariant =
     variant && Object.hasOwn(VARIANT_DIMENSIONS, variant)
       ? (variant as VehicleVariant)
@@ -64,14 +73,14 @@ export function CarVisual({ variant, color }: CarVisualProps) {
   return (
     <group>
       {/* Body */}
-      <mesh position={[0, dim.bodyH / 2, 0]} castShadow>
+      <mesh position={[0, dim.bodyH / 2, 0]} castShadow={castShadow}>
         <boxGeometry args={[dim.bodyW, dim.bodyH, dim.bodyD]} />
         <meshLambertMaterial color={color} />
       </mesh>
       {/* Cabin (sits slightly toward rear / +Z) */}
       <mesh
         position={[0, dim.bodyH + dim.cabinH / 2, dim.cabinOffsetZ]}
-        castShadow
+        castShadow={castShadow}
       >
         <boxGeometry args={[dim.cabinW, dim.cabinH, dim.cabinD]} />
         <meshLambertMaterial color={color} />
