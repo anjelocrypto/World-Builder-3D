@@ -377,10 +377,13 @@ export const INITIAL_VEHICLES: VehicleState[] = [
   { id: "car-12", x:  41, y: 0.6, z: -70, rotY: 0,                  speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
   { id: "car-13", x: -41, y: 0.6, z:  70, rotY: Math.PI,            speed: 0, driverId: null, variant: "compact", color: "#27ae60" },
   // ===== Mountain biome (4 cars) — switchbacks + lookout + observatory =====
-  { id: "car-14", x:  90, y: 0.6, z: -250, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#5d6d7e" },
-  { id: "car-15", x: -75, y: 0.6, z: -290, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#7d6e58" },
-  { id: "car-16", x:  75, y: 0.6, z: -340, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#a04060" },
-  { id: "car-17", x: -10, y: 0.6, z: -465, rotY: 0,                 speed: 0, driverId: null, variant: "taxi",    color: "#e8a02a" },
+  // Y values come from ROAD_ELEVATION_PROFILES at each car's road
+  // projection (see shared/elevation.ts). Must stay in sync with the
+  // server-side INITIAL_VEHICLES in artifacts/api-server/src/socket/cityData.ts.
+  { id: "car-14", x:  90, y:  4.5, z: -250, rotY: -Math.PI / 2,     speed: 0, driverId: null, variant: "sedan",   color: "#5d6d7e" },
+  { id: "car-15", x: -75, y:  7.9, z: -290, rotY: 0,                speed: 0, driverId: null, variant: "van",     color: "#7d6e58" },
+  { id: "car-16", x:  75, y: 11.9, z: -340, rotY: Math.PI,          speed: 0, driverId: null, variant: "compact", color: "#a04060" },
+  { id: "car-17", x:  -3, y: 22.0, z: -462, rotY: 0,                speed: 0, driverId: null, variant: "taxi",    color: "#e8a02a" },
   // ===== Forest biome (6 cars) — South Forest Village =====
   // Each car parks on a pad/spur/driveway (validator enforces this).
   { id: "car-18", x:  15, y: 0.6, z:  213, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#2e7d32" }, // gateway-spur
@@ -639,6 +642,32 @@ const MOUNTAIN_LOOP: [number, number, number][] = forwardReverseRoute(
   MOUNTAIN_SWITCHBACK_POLY,
 );
 
+// Mountain ring expansion — see REGIONAL_ROADS for the matching
+// `ridge-east-high`, `ridge-west`, `summit-pass` road definitions and
+// ROAD_ELEVATION_PROFILES for their Y values. Each polyline is fed to
+// forwardReverseRoute so the ambient cars climb up, U-turn, and come
+// back down. Endpoints are shared with existing graph nodes (outer
+// loop / mountain switchbacks / ridge-east) so the road-graph BFS
+// still sees one component.
+const RIDGE_EAST_HIGH_POLY: ReadonlyArray<readonly [number, number]> = [
+  [280, -310], [340, -360], [420, -390], [460, -300], [460, -200],
+];
+const RIDGE_EAST_HIGH_LOOP: [number, number, number][] = forwardReverseRoute(
+  RIDGE_EAST_HIGH_POLY,
+);
+const RIDGE_WEST_POLY: ReadonlyArray<readonly [number, number]> = [
+  [-80, -290], [-180, -280], [-280, -260], [-380, -220], [-460, -200],
+];
+const RIDGE_WEST_LOOP: [number, number, number][] = forwardReverseRoute(
+  RIDGE_WEST_POLY,
+);
+const SUMMIT_PASS_POLY: ReadonlyArray<readonly [number, number]> = [
+  [-80, -390], [-160, -410], [-220, -405], [-260, -380],
+];
+const SUMMIT_PASS_LOOP: [number, number, number][] = forwardReverseRoute(
+  SUMMIT_PASS_POLY,
+);
+
 // Bridge / forest round-trip — follows spine-south (0,100→0,130),
 // bridge (0,130→0,180), and the curved forest-main polyline up to its
 // north endpoint. All coordinates match REGIONAL_ROADS centerlines.
@@ -756,6 +785,36 @@ export const TRAFFIC_ROUTES: TrafficRoute[] = [
       { id: "ai-14", color: "#5a4030", variant: "van",     phase: 0.25 },
       { id: "ai-15", color: "#3a2a1a", variant: "compact", phase: 0.5  },
       { id: "ai-16", color: "#404848", variant: "taxi",    phase: 0.75 },
+    ],
+  },
+  // Mountain ring traffic — cars on these routes climb because
+  // AmbientTraffic samples elevation at the interpolated x,z via
+  // getVehicleGroundY(). Validator confirms every waypoint sits on a
+  // mountain road carriageway.
+  {
+    id: 6,
+    waypoints: RIDGE_EAST_HIGH_LOOP,
+    cycleSeconds: 100,
+    cars: [
+      { id: "ai-17", color: "#6e5a44", variant: "sedan", phase: 0.0 },
+      { id: "ai-18", color: "#3a4a3a", variant: "van",   phase: 0.5 },
+    ],
+  },
+  {
+    id: 7,
+    waypoints: RIDGE_WEST_LOOP,
+    cycleSeconds: 90,
+    cars: [
+      { id: "ai-19", color: "#5a4030", variant: "compact", phase: 0.0 },
+      { id: "ai-20", color: "#4a3a2a", variant: "taxi",    phase: 0.5 },
+    ],
+  },
+  {
+    id: 8,
+    waypoints: SUMMIT_PASS_LOOP,
+    cycleSeconds: 70,
+    cars: [
+      { id: "ai-21", color: "#7a4030", variant: "sedan", phase: 0.0 },
     ],
   },
 ];
@@ -1126,6 +1185,29 @@ export const REGIONAL_ROADS: RoadPath[] = [
   { id: "ridge-east",
     points: [[80, -340], [180, -330], [280, -310], [380, -290], [460, -200]],
     width: 10, type: "mountain" },
+  // ===== Mountain ring expansion =====================================
+  // ridge-east-high: alpine detour off ridge-east climbing to ~22m
+  // before descending to the outer-loop NE corner. With ridge-east this
+  // forms a high/low loop so players can pick a route. Start (280,-310)
+  // shares a graph node with ridge-east; end (460,-200) with outer-loop.
+  { id: "ridge-east-high",
+    points: [[280, -310], [340, -360], [420, -390], [460, -300], [460, -200]],
+    width: 10, type: "mountain" },
+  // ridge-west: mountain back-road from the (-80,-290) switchback
+  // corner west through the foothills, terminating on the outer-loop
+  // NW corner at (-460,-200). Mirror of ridge-east. Start shares a node
+  // with mountain-switchbacks; end with outer-loop.
+  { id: "ridge-west",
+    points: [[-80, -290], [-180, -280], [-280, -260], [-380, -220], [-460, -200]],
+    width: 10, type: "mountain" },
+  // summit-pass: short steep pass from the upper switchback corner
+  // (-80,-390) down to the outer-loop NW corner (-260,-380). Provides a
+  // shortcut from the summit area back to the outer ring without
+  // driving the full switchback chain. Both endpoints sit on existing
+  // graph nodes (mountain-switchbacks and outer-loop respectively).
+  { id: "summit-pass",
+    points: [[-80, -390], [-160, -410], [-220, -405], [-260, -380]],
+    width: 10, type: "mountain" },
   // forest-{east,west}-connector: dirt collectors that drop south from
   // the village-loop frontage into the outer-loop south leg, giving the
   // forest village two extra exits (east via (220,200) and west via
@@ -1187,6 +1269,61 @@ export const REGIONAL_ROADS: RoadPath[] = [
   { id: "drv-hs-w1", points: [[-100, -50], [-119, -50]], width: 4, type: "dirt" },
   { id: "drv-hs-w2", points: [[-100,  30], [-122,  30]], width: 4, type: "dirt" },
   { id: "drv-hs-w3", points: [[-100,  75], [-124,  75]], width: 4, type: "dirt" },
+];
+
+// =============================================================
+// ROAD ELEVATION PROFILES — per-vertex Y for mountain roads
+// =============================================================
+//
+// Keyed by RoadPath.id; the array length MUST equal the matching
+// road's `points.length` (validator enforces this). Y values are
+// metres above the world ground plane (y=0). Roads not listed here
+// render flat at y=0.005 like before and contribute zero elevation
+// from getRoadElevationAt() (see shared/elevation.ts).
+//
+// Endpoint Y values must agree at shared road-graph nodes (e.g. the
+// (80,-340) corner shared by mountain-switchbacks and ridge-east is
+// y=12 in BOTH profiles, so the carriageway joins seamlessly). The
+// validator's mountainRing block diffs every shared endpoint and
+// flags any mismatch ≥ 0.5 m as an elevation discontinuity.
+//
+// Max grade target: ≤ 0.18 (≈10°). Steeper drops are broken with
+// switchback geometry. The validator prints maxGrade as a percent.
+export const ROAD_ELEVATION_PROFILES: Record<string, number[]> = {
+  "mountain-switchbacks": [0, 4, 8, 12, 16, 20, 22],
+  "mountain-lookout":     [4, 6],
+  "ridge-east":           [12, 9, 6, 3, 0],
+  "ridge-east-high":      [6, 14, 22, 12, 0],
+  "ridge-west":           [8, 6, 4, 2, 0],
+  "summit-pass":          [16, 14, 6, 0],
+};
+
+// Mountain road IDs — single source of truth used by the renderer
+// (decides which segments draw at midY instead of y=0.005), the
+// elevation helpers in shared/elevation.ts, and the mountainRing
+// validator. Derived from ROAD_ELEVATION_PROFILES so adding a new
+// mountain road profile above is enough — no second list to update.
+export const MOUNTAIN_ROAD_IDS: ReadonlySet<string> = new Set(
+  Object.keys(ROAD_ELEVATION_PROFILES),
+);
+
+// =============================================================
+// MOUNTAIN MASSIFS — large background cones suggesting peaks
+// =============================================================
+//
+// Purely cosmetic — rendered as solid cones by BiomeRender's
+// MountainMassifs component. Positioned in the high country (z<-380)
+// well clear of every road carriageway; the mountainRing validator
+// asserts the clearance footprint (massif.r) does not intrude any
+// road's halfWidth.
+export const MOUNTAIN_MASSIFS: ReadonlyArray<{
+  x: number; z: number; r: number; h: number;
+}> = [
+  { x: -300, z: -460, r: 45, h: 70 }, // NW shoulder
+  { x:  300, z: -460, r: 45, h: 70 }, // NE shoulder
+  { x: -450, z: -440, r: 40, h: 60 }, // far W rampart
+  { x:  450, z: -440, r: 40, h: 60 }, // far E rampart
+  { x: -100, z: -495, r: 30, h: 55 }, // behind observatory plaza
 ];
 
 // =============================================================
@@ -1356,6 +1493,20 @@ export const STATIC_OBSTACLES: StaticObstacle[] = [
   { x:   95, z: -430, w: 12, d: 1.2, kind: "guardrail" },
   // Mountain — observatory at the summit
   { x:    0, z: -485, w: 16, d: 10, kind: "observatory" },
+  // Mountain ring expansion — extra cliff walls on the outer (drop-off)
+  // side of the new ridge roads, plus guardrails on the steep corners.
+  // ridge-east-high outer wall (climbing east from 280,-310 to peak)
+  { x:  390, z: -420, w: 24, d: 8,  kind: "cliff_wall" },
+  // ridge-west outer wall (mid-foothills)
+  { x: -340, z: -200, w: 24, d: 8,  kind: "cliff_wall" },
+  // summit-pass cliff above the (-160,-410) switchback corner
+  { x: -180, z: -440, w: 20, d: 8,  kind: "cliff_wall" },
+  // ridge-east-high guardrails at the steepest descent
+  { x:  445, z: -300, w: 1.2, d: 12, kind: "guardrail" },
+  // ridge-west guardrail at the (-280,-260) midpoint
+  { x: -280, z: -245, w: 12, d: 1.2, kind: "guardrail" },
+  // summit-pass guardrail at the steep (-220,-405) corner
+  { x: -222, z: -390, w: 1.2, d: 12, kind: "guardrail" },
   // ---- South Forest Village -----------------------------------------
   // Gateway (z≈215..235) — gas stop anchors the village entry. Moved
   // north from z=205 to z=225 so the outer-loop south leg (centerline
@@ -1813,10 +1964,32 @@ export const JUNCTION_REAL_LIGHTS: ReadonlyArray<readonly [number, number, numbe
   [ 460, 6,   30],
   // West-utility / outer-loop junction
   [-460, 6,    0],
-  // Ridge-east / mountain switchback junction
-  [  80, 6, -340],
+  // Ridge-east / mountain switchback junction (sits at switchback
+  // profile y=12, so the lamp pole top is +6m above the road surface).
+  [  80, 18, -340],
   // Outer-loop major corners
   [ 260, 6, -380], [-260, 6, -380], [ 460, 6, -200],
+];
+
+// Mountain ring real point lights — switchback summit, ridge peaks,
+// summit pass, ridge-west summit-side junction. Y values include a +6m
+// pole offset above the road profile elevation so each lamp's bulb
+// sits at the lamp head height (not embedded in the slope). Validator
+// counts these and confirms TOTAL_REAL_LIGHTS includes them.
+export const MOUNTAIN_REAL_LIGHTS: ReadonlyArray<readonly [number, number, number]> = [
+  // Observatory plaza (summit, profile y=22)
+  [   0, 28, -485],
+  // Ridge-east-high peak (profile y=22)
+  [ 420, 28, -390],
+  // Ridge-east-high south corner (profile y=12)
+  [ 460, 18, -300],
+  // Summit-pass mid switchback (profile y=14)
+  [-160, 20, -410],
+  // Ridge-west summit-side junction (profile y=8)
+  [ -80, 14, -290],
+  // Mountain switchback foot (profile y=0, but visually marks the
+  // entrance from the spine-north)
+  [   0,  6, -200],
 ];
 
 const LAMP_DEDUP_RADIUS = 8.0;
@@ -1972,7 +2145,9 @@ function generateRegionalRoadLamps(): RegionalLampData[] {
 
 export const REGIONAL_ROAD_LAMPS: RegionalLampData[] = generateRegionalRoadLamps();
 export const TOTAL_REAL_LIGHTS =
-  VILLAGE_REAL_LIGHTS.length + JUNCTION_REAL_LIGHTS.length;
+  VILLAGE_REAL_LIGHTS.length +
+  JUNCTION_REAL_LIGHTS.length +
+  MOUNTAIN_REAL_LIGHTS.length;
 
 // =============================================================
 // COLLISION & VALIDATION HELPERS
@@ -3250,6 +3425,141 @@ if (isViteDev) {
     if (ok) skybridgeClear++;
   }
 
+  // -------------------------------------------------------------------
+  // mountainRing — elevation profiles, grade limits, endpoint continuity,
+  // mountain traffic on-road, mountain lamps, massif clearance.
+  // -------------------------------------------------------------------
+  const mountainRoadList = REGIONAL_ROADS.filter((r) => MOUNTAIN_ROAD_IDS.has(r.id));
+  let mProfiledVerts = 0;
+  let mMaxGrade = 0;
+  let mGradeViolations = 0;
+  let mEndpointMaxGap = 0;
+  let mEndpointViolations = 0;
+  let mSummitY = 0;
+  let mTrafficOnRoad = 0;
+  let mTrafficTotal = 0;
+  let mMassifsClear = 0;
+  const MOUNTAIN_MAX_GRADE = 0.18;
+  const ENDPOINT_SNAP_R2 = 4.0; // (snap radius 2.0)^2
+  const ENDPOINT_TOL = 0.5;
+
+  const elevAtVertex = (rid: string, idx: number): number => {
+    const p = ROAD_ELEVATION_PROFILES[rid];
+    return p ? (p[idx] ?? 0) : 0;
+  };
+
+  for (const r of mountainRoadList) {
+    const profile = ROAD_ELEVATION_PROFILES[r.id];
+    if (!profile) {
+      issues.push(`mountainRing: ${r.id} missing elevation profile`);
+      continue;
+    }
+    if (profile.length !== r.points.length) {
+      issues.push(
+        `mountainRing: ${r.id} profile length ${profile.length} != points length ${r.points.length}`,
+      );
+      continue;
+    }
+    mProfiledVerts += profile.length;
+    for (const y of profile) if (y > mSummitY) mSummitY = y;
+    for (let i = 0; i < r.points.length - 1; i++) {
+      const [ax, az] = r.points[i];
+      const [bx, bz] = r.points[i + 1];
+      const dh = Math.hypot(bx - ax, bz - az);
+      if (dh < 1e-3) continue;
+      const grade = Math.abs(profile[i + 1] - profile[i]) / dh;
+      if (grade > mMaxGrade) mMaxGrade = grade;
+      if (grade > MOUNTAIN_MAX_GRADE) {
+        mGradeViolations++;
+        issues.push(
+          `mountainRing: ${r.id} seg ${i} grade ${(grade * 100).toFixed(1)}% > ${(MOUNTAIN_MAX_GRADE * 100).toFixed(0)}%`,
+        );
+      }
+    }
+  }
+
+  // Endpoint Y continuity at shared graph nodes.
+  for (const ra of mountainRoadList) {
+    for (let ia = 0; ia < ra.points.length; ia++) {
+      const [ax, az] = ra.points[ia];
+      const ya = elevAtVertex(ra.id, ia);
+      for (const rb of REGIONAL_ROADS) {
+        if (rb.id === ra.id) continue;
+        for (let ib = 0; ib < rb.points.length; ib++) {
+          const [bx, bz] = rb.points[ib];
+          const d2 = (ax - bx) * (ax - bx) + (az - bz) * (az - bz);
+          if (d2 < ENDPOINT_SNAP_R2) {
+            const yb = MOUNTAIN_ROAD_IDS.has(rb.id) ? elevAtVertex(rb.id, ib) : 0;
+            const gap = Math.abs(ya - yb);
+            if (gap > mEndpointMaxGap) mEndpointMaxGap = gap;
+            if (gap > ENDPOINT_TOL) {
+              mEndpointViolations++;
+              issues.push(
+                `mountainRing: elev gap ${ra.id}@(${ax},${az})=${ya}m vs ${rb.id}=${yb}m`,
+              );
+            }
+          }
+        }
+      }
+    }
+  }
+
+  // Mountain traffic waypoints must lie on a mountain road carriageway.
+  const MOUNTAIN_TRAFFIC_IDS = new Set([6, 7, 8]);
+  for (const route of TRAFFIC_ROUTES) {
+    if (!MOUNTAIN_TRAFFIC_IDS.has(route.id)) continue;
+    for (const wp of route.waypoints) {
+      mTrafficTotal++;
+      let onMountainRoad = false;
+      for (const r of mountainRoadList) {
+        const d = distancePointToPolyline(wp[0], wp[1], r.points);
+        if (d <= r.width / 2 + 0.5) { onMountainRoad = true; break; }
+      }
+      if (onMountainRoad) mTrafficOnRoad++;
+      else issues.push(
+        `mountainRing: traffic ${route.id} wp (${wp[0].toFixed(0)},${wp[1].toFixed(0)}) off mountain road`,
+      );
+    }
+  }
+
+  // Lamp count on mountain roads (procedurally generated, but worth
+  // surfacing so a future renderer change that drops mountain styling
+  // is caught).
+  let mLamps = 0;
+  for (const lamp of REGIONAL_ROAD_LAMPS) {
+    if (MOUNTAIN_ROAD_IDS.has(lamp.roadId)) mLamps++;
+  }
+
+  // Massif clearance — each cone footprint (radius m.r) must clear
+  // every road's halfWidth.
+  for (const m of MOUNTAIN_MASSIFS) {
+    let ok = true;
+    for (const r of REGIONAL_ROADS) {
+      const d = distancePointToPolyline(m.x, m.z, r.points);
+      if (d < r.width / 2 + m.r) {
+        ok = false;
+        issues.push(
+          `mountainRing: massif (${m.x},${m.z}) r=${m.r} intrudes ${r.id} (d=${d.toFixed(1)}m, need ≥${(r.width/2 + m.r).toFixed(1)}m)`,
+        );
+        break;
+      }
+    }
+    if (ok) mMassifsClear++;
+  }
+
+  const mountainRingLine =
+    `mountainRing OK: roads=${mountainRoadList.length}, ` +
+    `profiledVerts=${mProfiledVerts}, ` +
+    `maxGrade=${(mMaxGrade * 100).toFixed(1)}%, ` +
+    `summitY=${mSummitY.toFixed(0)}m, ` +
+    `endpointMaxGap=${mEndpointMaxGap.toFixed(2)}m, ` +
+    `gradeViolations=${mGradeViolations}, ` +
+    `endpointViolations=${mEndpointViolations}, ` +
+    `traffic=${mTrafficOnRoad}/${mTrafficTotal}, ` +
+    `lamps=${mLamps}, ` +
+    `realLights=${MOUNTAIN_REAL_LIGHTS.length}, ` +
+    `massifsClear=${mMassifsClear}/${MOUNTAIN_MASSIFS.length}`;
+
   const centerCityLine =
     `centerCityUpgrade OK: buildings=${BUILDINGS.length}, towers=${towers}, ` +
     `landmarks=${landmarks}, railLoopClosed=${railLoopClosed}, ` +
@@ -3279,6 +3589,8 @@ if (isViteDev) {
     // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${periCityHomesteadsLine}`);
     // eslint-disable-next-line no-console
+    console.warn(`[city-sandbox] ${mountainRingLine}`);
+    // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${centerCityLine}`);
   } else {
     // eslint-disable-next-line no-console
@@ -3306,6 +3618,8 @@ if (isViteDev) {
     console.info(`[city-sandbox] ${cityForestBeltLine}`);
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${periCityHomesteadsLine}`);
+    // eslint-disable-next-line no-console
+    console.info(`[city-sandbox] ${mountainRingLine}`);
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${centerCityLine}`);
   }

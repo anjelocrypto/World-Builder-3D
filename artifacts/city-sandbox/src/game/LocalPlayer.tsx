@@ -10,6 +10,7 @@ import {
   TRAFFIC_ROUTES,
   WORLD_HALF,
 } from "../shared/cityData";
+import { getVehicleGroundY } from "../shared/elevation";
 import {
   PLAYER_BODY_RADIUS,
   NPC_BODY_RADIUS,
@@ -619,7 +620,10 @@ export default function LocalPlayer({
 
     vehiclePos.current.x = nx;
     vehiclePos.current.z = nz;
-    vehiclePos.current.y = 0.6; // keep on ground
+    // Sample the mountain road elevation system (returns 0 outside the
+    // mountain country) so the player car climbs ridges/switchbacks
+    // instead of clipping through the slope at y=0.6.
+    vehiclePos.current.y = 0.6 + getVehicleGroundY(nx, nz);
 
     // ===== NPC stumble (driven car hitting pedestrians) =====
     if (Math.abs(vehicleSpeed.current) > VEHICLE_HIT_NPC_MIN_SPEED) {

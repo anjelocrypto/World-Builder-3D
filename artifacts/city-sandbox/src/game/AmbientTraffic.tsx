@@ -2,6 +2,7 @@ import * as THREE from "three";
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { TRAFFIC_ROUTES } from "../shared/cityData";
+import { getVehicleGroundY } from "../shared/elevation";
 import type { TrafficCarSeed, TrafficRoute, VehicleVariant } from "../shared/types";
 import { CarVisual } from "./VehicleObject";
 
@@ -48,7 +49,9 @@ function TrafficCar({ route, seed }: TrafficCarProps) {
     const rotB = b[2];
     const rotY = rotA + shortestAngleDelta(rotA, rotB) * segT;
 
-    groupRef.current.position.set(x, 0.6, z);
+    // Mountain roads sample real elevation; flat-land roads return 0
+    // and the car sits at its previous y=0.6.
+    groupRef.current.position.set(x, 0.6 + getVehicleGroundY(x, z), z);
     groupRef.current.rotation.y = rotY;
   });
 

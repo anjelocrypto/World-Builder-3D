@@ -11,9 +11,14 @@ import {
   REGIONAL_ROAD_LAMPS,
   VILLAGE_REAL_LIGHTS,
   JUNCTION_REAL_LIGHTS,
+  MOUNTAIN_REAL_LIGHTS,
+  MOUNTAIN_MASSIFS,
+  ROAD_ELEVATION_PROFILES,
+  MOUNTAIN_ROAD_IDS,
   CITY_EDGE_TREES,
   PERI_CITY_HOMESTEADS,
 } from "../shared/cityData";
+import { getRoadElevationAt, isMountainRoadId } from "../shared/elevation";
 import type {
   RoadPath, StaticObstacle, RegionalLampData, TreeInstance,
   PeriCityHomestead,
@@ -38,23 +43,49 @@ const ROAD_COLOR_BY_TYPE: Record<RoadPath["type"], string> = {
 
 interface SegmentSpec {
   key: string;
-  ax: number; az: number;
-  bx: number; bz: number;
+  ax: number; ay: number; az: number;
+  bx: number; by: number; bz: number;
   width: number;
   color: string;
 }
 
-function RegionalRoadSegment({ ax, az, bx, bz, width, color }: Omit<SegmentSpec, "key">) {
-  const cx = (ax + bx) / 2;
-  const cz = (az + bz) / 2;
-  const dx = bx - ax;
-  const dz = bz - az;
-  const len = Math.hypot(dx, dz);
-  // Local +Z aligned with segment; rotation around world +Y.
-  const rotY = Math.atan2(dx, dz);
+// Elevation-aware road segment quad. Builds an explicit Matrix4 with a
+// (right, forward, up) basis so the plane is centred at the segment
+// midpoint, oriented along its 3D tangent (slope-aware), and faces
+// upward. For flat segments (ay = by = 0) this collapses to the
+// previous behaviour: the basis becomes (right, fwdHorizontal, +Y) and
+// the quad sits at y=0.02 rotated around +Y by the heading.
+function RegionalRoadSegment({
+  ax, ay, az, bx, by, bz, width, color,
+}: Omit<SegmentSpec, "key">) {
+  const meshRef = useRef<THREE.Mesh>(null);
+  const { matrix, lenS } = useMemo(() => {
+    const dx = bx - ax;
+    const dy = by - ay;
+    const dz = bz - az;
+    const lenH = Math.hypot(dx, dz);
+    const lenSv = Math.hypot(lenH, dy);
+    const m = new THREE.Matrix4();
+    if (lenH < 1e-3) return { matrix: m, lenS: lenSv };
+    const right = new THREE.Vector3(-dz / lenH, 0, dx / lenH);
+    const fwd = new THREE.Vector3(dx / lenSv, dy / lenSv, dz / lenSv);
+    const up = new THREE.Vector3().crossVectors(right, fwd);
+    // planeGeometry default: width along local +X, height along local +Y,
+    // normal +Z. So (right, fwd, up) is exactly the basis we want.
+    m.makeBasis(right, fwd, up);
+    m.setPosition((ax + bx) / 2, (ay + by) / 2 + 0.02, (az + bz) / 2);
+    return { matrix: m, lenS: lenSv };
+  }, [ax, ay, az, bx, by, bz]);
+  useEffect(() => {
+    const mesh = meshRef.current;
+    if (!mesh) return;
+    mesh.matrixAutoUpdate = false;
+    mesh.matrix.copy(matrix);
+    mesh.matrixWorldNeedsUpdate = true;
+  }, [matrix]);
   return (
-    <mesh position={[cx, 0.005, cz]} rotation={[-Math.PI / 2, 0, -rotY]} receiveShadow>
-      <planeGeometry args={[width, len]} />
+    <mesh ref={meshRef} receiveShadow>
+      <planeGeometry args={[width, lenS]} />
       <meshLambertMaterial color={color} />
     </mesh>
   );
@@ -65,13 +96,16 @@ function RegionalRoads() {
     const out: SegmentSpec[] = [];
     for (const r of REGIONAL_ROADS) {
       const color = ROAD_COLOR_BY_TYPE[r.type];
+      const profile = ROAD_ELEVATION_PROFILES[r.id]; // may be undefined
       for (let i = 0; i < r.points.length - 1; i++) {
         const a = r.points[i];
         const b = r.points[i + 1];
+        const ay = profile ? (profile[i] ?? 0) : 0;
+        const by = profile ? (profile[i + 1] ?? 0) : 0;
         out.push({
           key: `${r.id}-${i}`,
-          ax: a[0], az: a[1],
-          bx: b[0], bz: b[1],
+          ax: a[0], ay, az: a[1],
+          bx: b[0], by, bz: b[1],
           width: r.width,
           color,
         });
@@ -84,9 +118,26 @@ function RegionalRoads() {
       {segments.map((s) => (
         <RegionalRoadSegment
           key={s.key}
-          ax={s.ax} az={s.az} bx={s.bx} bz={s.bz}
+          ax={s.ax} ay={s.ay} az={s.az}
+          bx={s.bx} by={s.by} bz={s.bz}
           width={s.width} color={s.color}
         />
+      ))}
+    </group>
+  );
+}
+
+// =============================================================
+// MOUNTAIN MASSIFS — large background cones for ridge silhouette
+// =============================================================
+function MountainMassifs() {
+  return (
+    <group>
+      {MOUNTAIN_MASSIFS.map((m, i) => (
+        <mesh key={i} position={[m.x, m.h / 2, m.z]} castShadow receiveShadow>
+          <coneGeometry args={[m.r, m.h, 6]} />
+          <meshLambertMaterial color="#3a3530" flatShading />
+        </mesh>
       ))}
     </group>
   );
@@ -764,6 +815,13 @@ interface InstancedLampLayerProps {
   style: LampStyleDef;
 }
 
+// Lamps on mountain roads need their pole/head/pool elevated to the
+// road surface — without this they'd float at y=0 while the road is at
+// y=8..22m up the slope.
+function lampGroundY(l: RegionalLampData): number {
+  return isMountainRoadId(l.roadId) ? getRoadElevationAt(l.x, l.z) : 0;
+}
+
 function PoleLayer({ lamps, style }: InstancedLampLayerProps) {
   const ref = useRef<THREE.InstancedMesh>(null);
   useEffect(() => {
@@ -775,7 +833,7 @@ function PoleLayer({ lamps, style }: InstancedLampLayerProps) {
     for (let i = 0; i < lamps.length; i++) {
       const l = lamps[i];
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), l.rotY);
-      m.compose(new THREE.Vector3(l.x, style.poleTopY, l.z), q, s);
+      m.compose(new THREE.Vector3(l.x, style.poleTopY + lampGroundY(l), l.z), q, s);
       mesh.setMatrixAt(i, m);
     }
     mesh.instanceMatrix.needsUpdate = true;
@@ -800,7 +858,7 @@ function HeadLayer({ lamps, style }: InstancedLampLayerProps) {
     for (let i = 0; i < lamps.length; i++) {
       const l = lamps[i];
       q.setFromAxisAngle(new THREE.Vector3(0, 1, 0), l.rotY);
-      m.compose(new THREE.Vector3(l.x, style.headY, l.z), q, s);
+      m.compose(new THREE.Vector3(l.x, style.headY + lampGroundY(l), l.z), q, s);
       mesh.setMatrixAt(i, m);
     }
     mesh.instanceMatrix.needsUpdate = true;
@@ -829,7 +887,7 @@ function PoolLayer({ lamps, style }: InstancedLampLayerProps) {
     for (let i = 0; i < lamps.length; i++) {
       const l = lamps[i];
       q.copy(flat);
-      m.compose(new THREE.Vector3(l.x, 0.04, l.z), q, s);
+      m.compose(new THREE.Vector3(l.x, 0.04 + lampGroundY(l), l.z), q, s);
       mesh.setMatrixAt(i, m);
     }
     mesh.instanceMatrix.needsUpdate = true;
@@ -899,6 +957,16 @@ function JunctionRealLights() {
           decay={2}
         />
       ))}
+      {MOUNTAIN_REAL_LIGHTS.map(([x, y, z], i) => (
+        <pointLight
+          key={`m-${i}`}
+          position={[x, y, z]}
+          color="#ffd0a0"
+          intensity={3.5}
+          distance={40}
+          decay={2}
+        />
+      ))}
     </group>
   );
 }
@@ -919,6 +987,7 @@ export default function BiomeRender() {
       <ForestTrees />
       <ForestRocks />
       <MountainRocks />
+      <MountainMassifs />
       <ForestLamps />
       <RegionalRoadLamps />
       <JunctionRealLights />

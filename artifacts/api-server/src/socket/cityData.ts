@@ -27,10 +27,12 @@ export const INITIAL_VEHICLES = [
   { id: "car-12", x:  41, y: 0.6, z: -70, rotY: 0,                  speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
   { id: "car-13", x: -41, y: 0.6, z:  70, rotY: Math.PI,            speed: 0, driverId: null, variant: "compact", color: "#27ae60" },
   // ===== Mountain biome (4 cars) =====
-  { id: "car-14", x:  90, y: 0.6, z: -250, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#5d6d7e" },
-  { id: "car-15", x: -75, y: 0.6, z: -290, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#7d6e58" },
-  { id: "car-16", x:  75, y: 0.6, z: -340, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#a04060" },
-  { id: "car-17", x: -10, y: 0.6, z: -465, rotY: 0,                 speed: 0, driverId: null, variant: "taxi",    color: "#e8a02a" },
+  // Mountain biome — y values match the client-side mountain road
+  // elevation profiles (see ROAD_ELEVATION_PROFILES in client cityData).
+  { id: "car-14", x:  90, y:  4.5, z: -250, rotY: -Math.PI / 2,     speed: 0, driverId: null, variant: "sedan",   color: "#5d6d7e" },
+  { id: "car-15", x: -75, y:  7.9, z: -290, rotY: 0,                speed: 0, driverId: null, variant: "van",     color: "#7d6e58" },
+  { id: "car-16", x:  75, y: 11.9, z: -340, rotY: Math.PI,          speed: 0, driverId: null, variant: "compact", color: "#a04060" },
+  { id: "car-17", x:  -3, y: 22.0, z: -462, rotY: 0,                speed: 0, driverId: null, variant: "taxi",    color: "#e8a02a" },
   // ===== Forest biome (6 cars) — South Forest Village =====
   // Each car parks on a pad/spur/driveway (validator enforces this).
   { id: "car-18", x:  15, y: 0.6, z:  213, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#2e7d32" }, // gateway-spur
