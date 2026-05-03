@@ -58,7 +58,7 @@ const SKY_DIST = 700;
 const DIR_LIGHT_DIST = 100;
 
 export default function DayNightController() {
-  const { scene } = useThree();
+  const { scene, camera } = useThree();
 
   // --- One-time scene wiring: scene.background + scene.fog ---
   // We own these for the lifetime of the controller. CityMap used
@@ -166,13 +166,19 @@ export default function DayNightController() {
     }
 
     // Sun + moon visible meshes. Each rides the sky dome at SKY_DIST
-    // and is hidden when below the horizon (no need to render a sphere
-    // we can't see).
+    // ANCHORED TO THE CAMERA so they always read as infinite sky bodies
+    // no matter where the player is on the 1000x1000 map. The shadow-
+    // casting directional light above is intentionally NOT camera-
+    // relative — it stays in world space so the shadow camera frustum
+    // and shadow direction remain stable.
+    const cx = camera.position.x;
+    const cy = camera.position.y;
+    const cz = camera.position.z;
     if (sunGroupRef.current) {
       sunGroupRef.current.position.set(
-        Math.cos(t.sunAngle) * SKY_DIST,
-        t.sunY * SKY_DIST,
-        0.3 * SKY_DIST,
+        cx + Math.cos(t.sunAngle) * SKY_DIST,
+        cy + t.sunY * SKY_DIST,
+        cz + 0.3 * SKY_DIST,
       );
     }
     if (sunMeshRef.current) {
@@ -180,9 +186,9 @@ export default function DayNightController() {
     }
     if (moonGroupRef.current) {
       moonGroupRef.current.position.set(
-        Math.cos(t.moonAngle) * SKY_DIST,
-        t.moonY * SKY_DIST,
-        0.3 * SKY_DIST,
+        cx + Math.cos(t.moonAngle) * SKY_DIST,
+        cy + t.moonY * SKY_DIST,
+        cz + 0.3 * SKY_DIST,
       );
     }
     if (moonMeshRef.current) {
@@ -245,15 +251,25 @@ export default function DayNightController() {
       {/* Visible sun + moon meshes. toneMapped:false keeps them
           punchy against the bright daytime sky. */}
       <group ref={sunGroupRef}>
-        <mesh ref={sunMeshRef}>
+        <mesh ref={sunMeshRef} renderOrder={-1000}>
           <sphereGeometry args={[28, 16, 16]} />
-          <meshBasicMaterial color={SUN_MESH_COLOR} toneMapped={false} />
+          <meshBasicMaterial
+            color={SUN_MESH_COLOR}
+            toneMapped={false}
+            depthWrite={false}
+            depthTest={false}
+          />
         </mesh>
       </group>
       <group ref={moonGroupRef}>
-        <mesh ref={moonMeshRef}>
+        <mesh ref={moonMeshRef} renderOrder={-1000}>
           <sphereGeometry args={[20, 16, 16]} />
-          <meshBasicMaterial color={MOON_MESH_COLOR} toneMapped={false} />
+          <meshBasicMaterial
+            color={MOON_MESH_COLOR}
+            toneMapped={false}
+            depthWrite={false}
+            depthTest={false}
+          />
         </mesh>
       </group>
     </group>
