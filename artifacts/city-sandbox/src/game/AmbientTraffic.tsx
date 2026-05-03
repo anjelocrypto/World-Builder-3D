@@ -1,10 +1,12 @@
 import * as THREE from "three";
 import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
-import { TRAFFIC_ROUTES } from "../shared/cityData";
-import { getVehicleGroundY } from "../shared/elevation";
+import { TRAFFIC_ROUTES, VARIANT_DIMENSIONS } from "../shared/cityData";
+import { getVehicleGroundFrame } from "../shared/elevation";
 import type { TrafficCarSeed, TrafficRoute } from "../shared/types";
 import { CarVisual } from "./VehicleObject";
+
+const VEHICLE_BODY_LIFT = 0.6;
 
 /**
  * Smallest signed angle from a → b on a circle. Used to interpolate
@@ -21,6 +23,8 @@ interface CarEntry {
   route: TrafficRoute;
   seed: TrafficCarSeed;
   group: THREE.Group | null;
+  pitch: number;
+  roll: number;
 }
 
 /**
@@ -42,7 +46,9 @@ export default function AmbientTraffic() {
     }
     return out;
   }, []);
-  const refs = useRef<CarEntry[]>(data.map((d) => ({ ...d, group: null })));
+  const refs = useRef<CarEntry[]>(
+    data.map((d) => ({ ...d, group: null, pitch: 0, roll: 0 })),
+  );
 
   useFrame(() => {
     const tMs = Date.now();
@@ -63,8 +69,23 @@ export default function AmbientTraffic() {
       const x = a[0] + (b[0] - a[0]) * segT;
       const z = a[1] + (b[1] - a[1]) * segT;
       const rotY = a[2] + shortestAngleDelta(a[2], b[2]) * segT;
-      g.position.set(x, 0.6 + getVehicleGroundY(x, z), z);
+      // 4-wheel ground frame: places the car center on the average of
+      // the four tire-contact ground samples and tilts it to match
+      // mountain road slope (pitch on climbs, roll on switchbacks).
+      const dim =
+        (seed.variant && VARIANT_DIMENSIONS[seed.variant]) ??
+        VARIANT_DIMENSIONS.sedan;
+      const wheelbase = dim.bodyD - 2.0;
+      const trackWidth = dim.bodyW + 0.04;
+      const frame = getVehicleGroundFrame(x, z, rotY, wheelbase, trackWidth);
+      g.position.set(x, frame.centerY + VEHICLE_BODY_LIFT, z);
       g.rotation.y = rotY;
+      // Smooth pitch/roll so micro-jitter on coarse heightfield samples
+      // doesn't make ambient cars vibrate.
+      e.pitch += (frame.pitch - e.pitch) * 0.2;
+      e.roll += (frame.roll - e.roll) * 0.2;
+      g.rotation.x = e.pitch;
+      g.rotation.z = e.roll;
     }
   });
 
@@ -73,6 +94,11 @@ export default function AmbientTraffic() {
       {data.map((d, i) => (
         <group
           key={d.seed.id}
+          // YXZ rotation order so per-frame yaw + pitch + roll compose
+          // in the order a real vehicle experiences them (heading, then
+          // climb, then bank). Required for the slope visuals on the
+          // mountain switchbacks; default XYZ would shear the body.
+          rotation={new THREE.Euler(0, 0, 0, "YXZ")}
           ref={(g) => {
             const e = refs.current[i];
             if (e) e.group = g;

@@ -3,6 +3,7 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import type { VehicleState, VehicleVariant } from "../shared/types";
 import { VARIANT_DIMENSIONS } from "../shared/cityData";
+import { getVehicleGroundFrame } from "../shared/elevation";
 
 interface VehicleObjectProps {
   state: VehicleState;
@@ -14,26 +15,58 @@ interface VehicleObjectProps {
 // frame for every car (was ~20 allocs/frame with 20 remotes).
 const _lerpTarget = new THREE.Vector3();
 
+// Body-root height above the wheel-contact plane. State.y semantics
+// stay "ground + VEHICLE_BODY_LIFT" (matches LocalPlayer +
+// AmbientTraffic + INITIAL_VEHICLES y=0.6), and CarVisual internally
+// shifts its content down by this amount so tire bottoms land exactly
+// on the ground. See CarVisual below.
+const VEHICLE_BODY_LIFT = 0.6;
+
 export default function VehicleObject({
   state,
   isLocalDriverVehicle,
 }: VehicleObjectProps) {
   const groupRef = useRef<THREE.Group>(null!);
+  const pitchRef = useRef(0);
+  const rollRef = useRef(0);
 
   useFrame(() => {
-    if (!groupRef.current || isLocalDriverVehicle) return;
-    // Interpolate to server state for remote vehicles
-    _lerpTarget.set(state.x, state.y, state.z);
-    groupRef.current.position.lerp(_lerpTarget, 0.15);
-    groupRef.current.rotation.y +=
-      (state.rotY - groupRef.current.rotation.y) * 0.15;
+    const g = groupRef.current;
+    if (!g || isLocalDriverVehicle) return;
+
+    // Recompute the ground frame from x/z/rotY each frame. y is
+    // deterministic from x/z (terrainHeightAt is pure), so this never
+    // disagrees with what the authoritative driver computed.
+    const dim =
+      (state.variant && VARIANT_DIMENSIONS[state.variant]) ??
+      VARIANT_DIMENSIONS.sedan;
+    const wheelbase = dim.bodyD - 2.0; // CarVisual: wheelOffsetZ = bodyD/2 - 1
+    const trackWidth = dim.bodyW + 0.04; // CarVisual: wheelOffsetX = bodyW/2 + 0.02
+    const frame = getVehicleGroundFrame(
+      state.x,
+      state.z,
+      state.rotY,
+      wheelbase,
+      trackWidth,
+    );
+    _lerpTarget.set(state.x, frame.centerY + VEHICLE_BODY_LIFT, state.z);
+    g.position.lerp(_lerpTarget, 0.15);
+    g.rotation.y += (state.rotY - g.rotation.y) * 0.15;
+    pitchRef.current += (frame.pitch - pitchRef.current) * 0.2;
+    rollRef.current += (frame.roll - rollRef.current) * 0.2;
+    g.rotation.x = pitchRef.current;
+    g.rotation.z = rollRef.current;
   });
 
   return (
     <group
       ref={groupRef}
       position={[state.x, state.y, state.z]}
-      rotation={[0, state.rotY, 0]}
+      // YXZ order so yaw is applied first, then pitch around the
+      // vehicle's lateral axis, then roll around its forward axis.
+      // Default 'XYZ' would mix the axes when both pitch and roll are
+      // non-zero on a switchback corner.
+      rotation={new THREE.Euler(0, state.rotY, 0, "YXZ")}
     >
       <CarVisual variant={state.variant} color={state.color} />
     </group>
@@ -318,7 +351,18 @@ export function CarVisual({ variant, color, castShadow = true }: CarVisualProps)
   const isVan = safeVariant === "van";
 
   return (
-    <group>
+    <group position={[0, -VEHICLE_BODY_LIFT, 0]}>
+      {/* ^^^^ Tire-grounding offset.
+          CarVisual is authored with tire-center at local y=0.4 and tire
+          radius 0.4, so tire bottoms naturally sit at local y=0. The
+          gameplay convention (LocalPlayer + AmbientTraffic + INITIAL_VEHICLES)
+          is that vehicle state.y = groundY + VEHICLE_BODY_LIFT (0.6),
+          i.e. the *body root* — NOT the tire contact line. So we shift
+          all CarVisual content down by VEHICLE_BODY_LIFT here. With
+          state.y = groundY + 0.6 and content shifted by -0.6, the tire
+          bottoms render at world y = groundY exactly. The driving
+          headlight (defined as a sibling of CarVisual in LocalPlayer)
+          stays at its old world height since IT is not wrapped. */}
       {/* ----- Bumpers (dark plastic, sit slightly forward/back of body) ----- */}
       <mesh
         geometry={geo.bumperFront}

@@ -8,9 +8,10 @@ import {
   CHECKPOINTS,
   NPC_ROUTES,
   TRAFFIC_ROUTES,
+  VARIANT_DIMENSIONS,
   WORLD_HALF,
 } from "../shared/cityData";
-import { getVehicleGroundY } from "../shared/elevation";
+import { getVehicleGroundY, getVehicleGroundFrame } from "../shared/elevation";
 import {
   PLAYER_BODY_RADIUS,
   NPC_BODY_RADIUS,
@@ -167,6 +168,11 @@ export default function LocalPlayer({
   const vehicleSpeed = useRef(0);
   const vehicleRotY = useRef(0);
   const vehiclePos = useRef(new THREE.Vector3());
+  // Smoothed mountain-slope pitch/roll for the driven vehicle. Sampled
+  // each tick from getVehicleGroundFrame and lerped so coarse switchback
+  // segments don't pop.
+  const vehiclePitch = useRef(0);
+  const vehicleRoll = useRef(0);
   const vehicleMeshRef = useRef<THREE.Group>(null!);
 
   // Health & knockback
@@ -809,10 +815,44 @@ export default function LocalPlayer({
 
     vehiclePos.current.x = nx;
     vehiclePos.current.z = nz;
-    // Sample the mountain road elevation system (returns 0 outside the
-    // mountain country) so the player car climbs ridges/switchbacks
-    // instead of clipping through the slope at y=0.6.
-    vehiclePos.current.y = 0.6 + getVehicleGroundY(nx, nz);
+    // 4-wheel ground frame: y from the average of all 4 tire contact
+    // points (so the body rides over a switchback's outside-edge bump
+    // without lifting off), pitch from front-vs-rear samples, roll
+    // from left-vs-right. State.y semantics remain "body root above
+    // the tire-contact plane by VEHICLE_BODY_LIFT (0.6m)" — see
+    // VehicleObject.CarVisual offset wrapper.
+    const dimDriven =
+      (vData.variant && VARIANT_DIMENSIONS[vData.variant]) ??
+      VARIANT_DIMENSIONS.sedan;
+    const drivenWheelbase = dimDriven.bodyD - 2.0;
+    const drivenTrack = dimDriven.bodyW + 0.04;
+    const groundFrame = getVehicleGroundFrame(
+      nx,
+      nz,
+      vehicleRotY.current,
+      drivenWheelbase,
+      drivenTrack,
+    );
+    vehiclePos.current.y = 0.6 + groundFrame.centerY;
+    // Smooth pitch/roll over ~5 frames so a sharp switchback corner
+    // doesn't snap the chassis.
+    vehiclePitch.current += (groundFrame.pitch - vehiclePitch.current) * 0.2;
+    vehicleRoll.current += (groundFrame.roll - vehicleRoll.current) * 0.2;
+
+    // ===== Slope-aware physics =====
+    // Gravity component along the vehicle's forward axis. Positive
+    // pitch = nose-up = climbing → gravity pulls speed down. Negative
+    // pitch = descending → gravity adds speed. Cap so coming down a
+    // mountain is faster than max ground speed but not absurdly so —
+    // the player still has steering authority.
+    const SLOPE_GRAVITY = 14; // m/s² along forward; tuned arcade
+    const DOWNHILL_SPEED_CAP = VEHICLE_MAX_SPEED * 1.5;
+    vehicleSpeed.current += -SLOPE_GRAVITY * Math.sin(groundFrame.pitch) * dt;
+    if (vehicleSpeed.current > DOWNHILL_SPEED_CAP) {
+      vehicleSpeed.current = DOWNHILL_SPEED_CAP;
+    } else if (vehicleSpeed.current < -DOWNHILL_SPEED_CAP) {
+      vehicleSpeed.current = -DOWNHILL_SPEED_CAP;
+    }
 
     // ===== NPC stumble (driven car hitting pedestrians) =====
     if (Math.abs(vehicleSpeed.current) > VEHICLE_HIT_NPC_MIN_SPEED) {
@@ -848,10 +888,14 @@ export default function LocalPlayer({
       }
     }
 
-    // Sync vehicle mesh
+    // Sync vehicle mesh — yaw + slope pitch + slope roll. The group's
+    // rotation order is set to YXZ in the JSX below so these compose
+    // as heading → climb → bank, not the default XYZ axis salad.
     if (vehicleMeshRef.current) {
       vehicleMeshRef.current.position.copy(vehiclePos.current);
       vehicleMeshRef.current.rotation.y = vehicleRotY.current;
+      vehicleMeshRef.current.rotation.x = vehiclePitch.current;
+      vehicleMeshRef.current.rotation.z = vehicleRoll.current;
     }
 
     // Player position = inside vehicle (kept for HUD / minimap consistency)
@@ -1104,7 +1148,10 @@ export default function LocalPlayer({
             vehiclePos.current.y,
             vehiclePos.current.z,
           ]}
-          rotation={[0, vehicleRotY.current, 0]}
+          // YXZ so updateVehicle's rotation.x (pitch) and rotation.z
+          // (roll) tilt the body around its own lateral / forward axes
+          // after yaw. Default XYZ would skew the chassis on slopes.
+          rotation={new THREE.Euler(0, vehicleRotY.current, 0, "YXZ")}
         >
           <CarVisual
             variant={drivingVehicleState.variant}

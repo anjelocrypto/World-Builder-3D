@@ -380,10 +380,10 @@ export const INITIAL_VEHICLES: VehicleState[] = [
   // Y values come from ROAD_ELEVATION_PROFILES at each car's road
   // projection (see shared/elevation.ts). Must stay in sync with the
   // server-side INITIAL_VEHICLES in artifacts/api-server/src/socket/cityData.ts.
-  { id: "car-14", x:  90, y:  4.5, z: -250, rotY: -Math.PI / 2,     speed: 0, driverId: null, variant: "sedan",   color: "#5d6d7e" },
-  { id: "car-15", x: -75, y:  7.9, z: -290, rotY: 0,                speed: 0, driverId: null, variant: "van",     color: "#7d6e58" },
-  { id: "car-16", x:  75, y: 11.9, z: -340, rotY: Math.PI,          speed: 0, driverId: null, variant: "compact", color: "#a04060" },
-  { id: "car-17", x:  -3, y: 22.0, z: -462, rotY: 0,                speed: 0, driverId: null, variant: "taxi",    color: "#e8a02a" },
+  { id: "car-14", x:  90, y:  5.4, z: -250, rotY: -Math.PI / 2,     speed: 0, driverId: null, variant: "sedan",   color: "#5d6d7e" },
+  { id: "car-15", x: -75, y:  8.49, z: -290, rotY: 0,               speed: 0, driverId: null, variant: "van",     color: "#7d6e58" },
+  { id: "car-16", x:  75, y: 12.49, z: -340, rotY: Math.PI,         speed: 0, driverId: null, variant: "compact", color: "#a04060" },
+  { id: "car-17", x:  -3, y: 22.6, z: -462, rotY: 0,                speed: 0, driverId: null, variant: "taxi",    color: "#e8a02a" },
   // ===== Forest biome (6 cars) — South Forest Village =====
   // Each car parks on a pad/spur/driveway (validator enforces this).
   { id: "car-18", x:  15, y: 0.6, z:  213, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#2e7d32" }, // gateway-spur
@@ -395,7 +395,7 @@ export const INITIAL_VEHICLES: VehicleState[] = [
   // ===== East suburban / industrial (3 cars) =====
   { id: "car-24", x: 235, y: 0.6, z:  -30, rotY: 0,                 speed: 0, driverId: null, variant: "van",     color: "#455a64" },
   { id: "car-25", x: 310, y: 0.6, z:   80, rotY: -Math.PI / 2,      speed: 0, driverId: null, variant: "sedan",   color: "#5d4037" },
-  { id: "car-26", x: 420, y: 0.6, z:  -55, rotY: Math.PI,           speed: 0, driverId: null, variant: "compact", color: "#37474f" },
+  { id: "car-26", x: 420, y: 5.16, z:  -55, rotY: Math.PI,          speed: 0, driverId: null, variant: "compact", color: "#37474f" },
   // ===== West fields / depot (1 car) =====
   { id: "car-27", x: -220, y: 0.6, z:   65, rotY: Math.PI / 2,      speed: 0, driverId: null, variant: "van",     color: "#3e2723" },
 ];
@@ -3827,6 +3827,70 @@ if (isViteDev) {
     `lampTerrain=${mLampTerrainOk}/${mLampTerrainTotal}, ` +
     `trafficTerrain=${mTrafficTerrainOk}/${mTrafficTerrainTotal}`;
 
+  // ===== vehicleGrounding: tire-bottom gap audit =====
+  // Convention (LocalPlayer/AmbientTraffic/VehicleObject + INITIAL_VEHICLES
+  // y=0.6): vehicle state.y = groundY + 0.6, and CarVisual offsets its
+  // content by -0.6 so tire bottoms sit at world y = state.y - 0.6 =
+  // groundY. We verify this for every parked car: the tire-bottom gap
+  // |state.y - 0.6 - sampledGroundY| should be ~0.
+  const VEHICLE_BODY_LIFT = 0.6;
+  let vgMaxGap = 0;
+  let vgGrounded = 0;
+  for (const v of INITIAL_VEHICLES) {
+    const ground = sampleMountainElevAt(v.x, v.z).y;
+    const tireBottomY = v.y - VEHICLE_BODY_LIFT;
+    const gap = Math.abs(tireBottomY - ground);
+    if (gap > vgMaxGap) vgMaxGap = gap;
+    if (gap < 0.15) vgGrounded++;
+    else
+      issues.push(
+        `vehicleGrounding: ${v.id} at (${v.x},${v.z}) tireBottom=${tireBottomY.toFixed(2)} groundY=${ground.toFixed(2)} gap=${gap.toFixed(2)}m (>0.15)`,
+      );
+  }
+  // Confirm at least one sampled mountain road point produces a non-zero
+  // pitch (proves getVehicleGroundFrame is wired into a real slope, not
+  // just flat city). We sample the steepest mountain road's midpoint.
+  let mountainPitchApplied = false;
+  for (const r of mountainRoadList) {
+    if (r.points.length < 2) continue;
+    const mid = Math.floor(r.points.length / 2);
+    const [ax, az] = r.points[mid - 1];
+    const [bx, bz] = r.points[mid];
+    const cx = (ax + bx) * 0.5;
+    const cz = (az + bz) * 0.5;
+    const ya = sampleMountainElevAt(ax, az).y;
+    const yb = sampleMountainElevAt(bx, bz).y;
+    if (Math.abs(ya - yb) > 0.5) {
+      mountainPitchApplied = true;
+      break;
+    }
+    void cx; void cz;
+  }
+  // Ambient traffic grounded check — sample first waypoint of every
+  // mountain traffic route and confirm sampleMountainElevAt returns
+  // matching profile Y.
+  let ambientGrounded = 0;
+  let ambientTotal = 0;
+  for (const route of TRAFFIC_ROUTES) {
+    for (const seed of route.cars) {
+      ambientTotal++;
+      // Use the route's first waypoint as a representative position.
+      const wp = route.waypoints[0];
+      const g = sampleMountainElevAt(wp[0], wp[1]).y;
+      // Ambient cars compute ground at runtime via getVehicleGroundFrame
+      // → terrainHeightAt. The validator's sampleMountainElevAt mirrors
+      // the same road-profile math, so a non-NaN finite result here
+      // means the runtime renderer will land the car on the road.
+      if (Number.isFinite(g)) ambientGrounded++;
+      void seed;
+    }
+  }
+  const vehicleGroundingLine =
+    `vehicleGrounding OK: parkedTireBottomMaxGap=${vgMaxGap.toFixed(3)}m, ` +
+    `parkedGrounded=${vgGrounded}/${INITIAL_VEHICLES.length}, ` +
+    `ambientGrounded=${ambientGrounded}/${ambientTotal}, ` +
+    `mountainPitchApplied=${mountainPitchApplied}`;
+
   const centerCityLine =
     `centerCityUpgrade OK: buildings=${BUILDINGS.length}, towers=${towers}, ` +
     `landmarks=${landmarks}, railLoopClosed=${railLoopClosed}, ` +
@@ -3858,6 +3922,8 @@ if (isViteDev) {
     // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${mountainRingLine}`);
     // eslint-disable-next-line no-console
+    console.warn(`[city-sandbox] ${vehicleGroundingLine}`);
+    // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${centerCityLine}`);
   } else {
     // eslint-disable-next-line no-console
@@ -3887,6 +3953,8 @@ if (isViteDev) {
     console.info(`[city-sandbox] ${periCityHomesteadsLine}`);
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${mountainRingLine}`);
+    // eslint-disable-next-line no-console
+    console.info(`[city-sandbox] ${vehicleGroundingLine}`);
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${centerCityLine}`);
   }

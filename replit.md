@@ -126,6 +126,14 @@ Express 5 REST API + Socket.io game server.
 - Right-click / R still triggers `fight2` directly (cooldown-gated, no combo).
 - `PlaceholderCharacter` is kept as the Suspense fallback so a slow GLB fetch never leaves a player invisible.
 
+## Vehicle Grounding & Slope Physics
+
+- `getVehicleGroundFrame(x, z, rotY, wheelbase, trackWidth)` in `shared/elevation.ts` is the single shared 4-wheel ground sampler. Returns `{ centerY, pitch, roll, frontY, rearY, leftY, rightY }`. Forward = local **−Z** (matches LocalPlayer / AmbientTraffic / collision). Pitch is positive when the front wheels are higher (nose up = climbing); roll is positive when the right wheels are higher.
+- **Convention**: vehicle `state.y = groundY + 0.6` (body root above tire-contact plane). `INITIAL_VEHICLES` y=0.6, `LocalPlayer.updateVehicle` sets `vehiclePos.y = 0.6 + groundFrame.centerY`, `AmbientTraffic` and `VehicleObject` do the same. `CarVisual` wraps its content in `<group position={[0, -0.6, 0]}>` so tire bottoms render at world y = `state.y - 0.6 = groundY` exactly (no float, no clip). The driving headlight in `LocalPlayer` is a sibling of `CarVisual` — it stays at the same world height as before the fix.
+- **Pitch / roll on every renderer**: the driven vehicle (`LocalPlayer`), remote/parked cars (`VehicleObject`), and ambient AI (`AmbientTraffic`) all sample the ground frame each tick and apply `rotation = (pitch, yaw, roll)` with rotation order **YXZ** (yaw → pitch → roll). Pitch and roll are smoothed (lerp 0.2) so coarse switchback segments don't snap.
+- **Slope-aware physics** (`LocalPlayer.updateVehicle`): `vehicleSpeed += -SLOPE_GRAVITY * sin(pitch) * dt` with `SLOPE_GRAVITY = 14 m/s²`. Uphill drains speed automatically; downhill adds gravity acceleration. Speed clamped to `±VEHICLE_MAX_SPEED * 1.5` so descending a mountain feels faster but stays controllable.
+- **Validator**: `vehicleGrounding OK: parkedTireBottomMaxGap=Xm, parkedGrounded=N/M, ambientGrounded=N/M, mountainPitchApplied=true` printed at boot in `cityData.ts`. Fails any parked car whose tire-bottom gap to ground exceeds 0.15m.
+
 ## Procedural Vehicle Renderer
 
 - `CarVisual` in `artifacts/city-sandbox/src/game/VehicleObject.tsx` is the single shared car renderer for parked / remote / locally-driven / ambient AI cars.
