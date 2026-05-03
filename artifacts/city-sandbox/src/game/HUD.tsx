@@ -1,5 +1,15 @@
 import { useEffect, useRef } from "react";
 import {
+  Wifi,
+  WifiOff,
+  Users,
+  Heart,
+  Gauge,
+  Car,
+  Flag,
+  Compass,
+} from "lucide-react";
+import {
   CHECKPOINTS,
   REGIONAL_ROADS,
   ROADS,
@@ -29,6 +39,8 @@ interface HUDProps {
   clockPhase: string;
 }
 
+// Phase accent colors. Used both by the clock chip and by the
+// minimap frame so the whole HUD picks up subtle time-of-day cues.
 const PHASE_COLOR: Record<string, string> = {
   DAWN: "#ff9c5a",
   DAY: "#ffd55c",
@@ -36,7 +48,28 @@ const PHASE_COLOR: Record<string, string> = {
   NIGHT: "#7d9cff",
 };
 
-function Minimap({ px, pz }: { px: number; pz: number }) {
+// Single source of truth for the HUD accent palette so panels feel
+// like they're part of the same chassis instead of a debug stack.
+const ACCENT = "#00e5ff";
+const PANEL_BG = "rgba(8, 14, 28, 0.72)";
+const PANEL_BORDER = "rgba(0, 229, 255, 0.28)";
+const PANEL_RADIUS = 10;
+const PANEL_SHADOW =
+  "0 8px 24px rgba(0,0,0,0.45), 0 0 1px rgba(0,229,255,0.25), inset 0 1px 0 rgba(255,255,255,0.04)";
+
+const MINIMAP_PX = 200;
+
+function Minimap({
+  px,
+  pz,
+  heading,
+  phaseColor,
+}: {
+  px: number;
+  pz: number;
+  heading: number; // radians, 0 = looking +X (east) on the minimap
+  phaseColor: string;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   useEffect(() => {
@@ -53,7 +86,7 @@ function Minimap({ px, pz }: { px: number; pz: number }) {
     const toMapZ = (wz: number) => (wz + WORLD_HALF) * SCALE;
 
     ctx.clearRect(0, 0, W, H);
-    ctx.fillStyle = "rgba(0,0,0,0.75)";
+    ctx.fillStyle = "rgba(2, 6, 18, 0.92)";
     ctx.fillRect(0, 0, W, H);
 
     // Per-biome tints (drawn under everything)
@@ -102,41 +135,245 @@ function Minimap({ px, pz }: { px: number; pz: number }) {
       ctx.stroke();
     }
 
-    // Checkpoints
+    // Checkpoints — slightly larger now that the canvas is bigger
     ctx.fillStyle = "#f39c12";
     for (const cp of CHECKPOINTS) {
       ctx.beginPath();
-      ctx.arc(toMapX(cp.x), toMapZ(cp.z), 2.2, 0, Math.PI * 2);
+      ctx.arc(toMapX(cp.x), toMapZ(cp.z), 2.6, 0, Math.PI * 2);
       ctx.fill();
     }
 
-    // Player dot (clamped so it stays on screen even at edges)
-    const cx = Math.max(4, Math.min(W - 4, toMapX(px)));
-    const cz = Math.max(4, Math.min(H - 4, toMapZ(pz)));
-    ctx.fillStyle = "#00e5ff";
-    ctx.beginPath();
-    ctx.arc(cx, cz, 4, 0, Math.PI * 2);
-    ctx.fill();
+    // Player — directional arrow (rotated triangle) when we have a
+    // recent heading, otherwise a centered dot. Halo always drawn
+    // for visibility against busy biome tints.
+    const cx = Math.max(8, Math.min(W - 8, toMapX(px)));
+    const cz = Math.max(8, Math.min(H - 8, toMapZ(pz)));
+
     // Halo
-    ctx.strokeStyle = "#00e5ff";
-    ctx.lineWidth = 1;
+    ctx.strokeStyle = "rgba(0,229,255,0.55)";
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
-    ctx.arc(cx, cz, 7, 0, Math.PI * 2);
+    ctx.arc(cx, cz, 9, 0, Math.PI * 2);
     ctx.stroke();
 
-    ctx.strokeStyle = "#555";
+    // Arrow body
+    ctx.save();
+    ctx.translate(cx, cz);
+    ctx.rotate(heading);
+    ctx.fillStyle = ACCENT;
+    ctx.shadowColor = ACCENT;
+    ctx.shadowBlur = 8;
+    ctx.beginPath();
+    ctx.moveTo(0, -7); // tip
+    ctx.lineTo(5, 5);
+    ctx.lineTo(0, 2.5);
+    ctx.lineTo(-5, 5);
+    ctx.closePath();
+    ctx.fill();
+    ctx.restore();
+
+    // Phase-tinted inner border so the frame feels alive with the day cycle
+    ctx.strokeStyle = phaseColor + "55";
     ctx.lineWidth = 1;
-    ctx.strokeRect(0, 0, W, H);
-  }, [px, pz]);
+    ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
+  }, [px, pz, heading, phaseColor]);
 
   return (
     <canvas
       ref={canvasRef}
-      width={150}
-      height={150}
+      width={MINIMAP_PX}
+      height={MINIMAP_PX}
       style={{ display: "block" }}
     />
   );
+}
+
+function HealthBar({ health }: { health: number }) {
+  const SEGMENTS = 10;
+  const healthPct = Math.max(0, Math.min(100, health));
+  const filledSegments = Math.round((healthPct / 100) * SEGMENTS);
+  const color =
+    healthPct > 50 ? "#2ee07a" : healthPct > 25 ? "#ffb547" : "#ff5560";
+  const glow =
+    healthPct > 50 ? "rgba(46,224,122,0.5)"
+    : healthPct > 25 ? "rgba(255,181,71,0.55)"
+    : "rgba(255,85,96,0.65)";
+
+  return (
+    <div
+      style={{
+        background: PANEL_BG,
+        border: `1px solid ${PANEL_BORDER}`,
+        borderRadius: PANEL_RADIUS,
+        padding: "10px 14px 12px",
+        boxShadow: PANEL_SHADOW,
+        backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        minWidth: 220,
+      }}
+      data-testid="hud-health"
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          fontSize: 10,
+          letterSpacing: 2,
+          color: "#9bb",
+          marginBottom: 6,
+        }}
+      >
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Heart size={12} color={color} fill={color} />
+          HEALTH
+        </span>
+        <span style={{ color, fontWeight: "bold", letterSpacing: 1 }}>
+          {healthPct}<span style={{ color: "#556", fontWeight: "normal" }}>/100</span>
+        </span>
+      </div>
+      <div
+        style={{
+          display: "flex",
+          gap: 3,
+          height: 14,
+        }}
+      >
+        {Array.from({ length: SEGMENTS }).map((_, i) => {
+          const filled = i < filledSegments;
+          return (
+            <div
+              key={i}
+              style={{
+                flex: 1,
+                background: filled ? color : "rgba(255,255,255,0.06)",
+                boxShadow: filled ? `0 0 6px ${glow}` : "none",
+                borderRadius: 2,
+                transition: "background 0.2s, box-shadow 0.2s",
+              }}
+            />
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+function Speedometer({ speed, vehicleLabel }: { speed: number; vehicleLabel: string }) {
+  // Convert m/s → km/h. Speedometer caps at 240 km/h for the gauge ring.
+  const kph = Math.abs(speed * 3.6);
+  const MAX = 240;
+  const pct = Math.max(0, Math.min(1, kph / MAX));
+
+  // SVG ring math — 270° sweep starting at 135° (lower-left) and ending at 45° (lower-right)
+  const SIZE = 130;
+  const STROKE = 9;
+  const r = (SIZE - STROKE) / 2;
+  const c = SIZE / 2;
+  const sweepRad = (270 * Math.PI) / 180;
+  const startAngle = (135 * Math.PI) / 180;
+  // Background arc
+  const bgPath = describeArc(c, c, r, 135, 135 + 270);
+  // Foreground arc length proportional to pct
+  const fgPath = describeArc(c, c, r, 135, 135 + 270 * pct);
+
+  const tickColor =
+    kph < 60 ? "#2ee07a" : kph < 140 ? "#00e5ff" : kph < 200 ? "#ffb547" : "#ff5560";
+
+  // Suppress unused warning while keeping the math available for future tuning
+  void sweepRad;
+  void startAngle;
+
+  return (
+    <div
+      style={{
+        background: PANEL_BG,
+        border: `1px solid ${PANEL_BORDER}`,
+        borderRadius: PANEL_RADIUS,
+        padding: "12px 16px",
+        boxShadow: PANEL_SHADOW,
+        backdropFilter: "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        gap: 4,
+        minWidth: SIZE + 32,
+      }}
+      data-testid="hud-speedometer"
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 6,
+          fontSize: 10,
+          letterSpacing: 2,
+          color: "#9bb",
+          alignSelf: "stretch",
+          justifyContent: "space-between",
+        }}
+      >
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <Car size={12} color={ACCENT} />
+          {vehicleLabel ? vehicleLabel.toUpperCase() : "VEHICLE"}
+        </span>
+        <Gauge size={12} color={tickColor} />
+      </div>
+      <div style={{ position: "relative", width: SIZE, height: SIZE }}>
+        <svg width={SIZE} height={SIZE} style={{ display: "block" }}>
+          <path d={bgPath} stroke="rgba(255,255,255,0.08)" strokeWidth={STROKE} fill="none" strokeLinecap="round" />
+          <path
+            d={fgPath}
+            stroke={tickColor}
+            strokeWidth={STROKE}
+            fill="none"
+            strokeLinecap="round"
+            style={{
+              filter: `drop-shadow(0 0 6px ${tickColor})`,
+              transition: "stroke 0.3s",
+            }}
+          />
+        </svg>
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            pointerEvents: "none",
+          }}
+        >
+          <div
+            style={{
+              fontSize: 32,
+              fontWeight: "bold",
+              color: "#fff",
+              lineHeight: 1,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {kph.toFixed(0)}
+          </div>
+          <div style={{ fontSize: 10, color: "#9bb", letterSpacing: 2, marginTop: 2 }}>KM/H</div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// Standard SVG arc-path builder (degrees, clockwise sweep)
+function describeArc(cx: number, cy: number, r: number, startDeg: number, endDeg: number): string {
+  const polar = (deg: number) => {
+    const rad = (deg * Math.PI) / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+  };
+  const start = polar(startDeg);
+  const end = polar(endDeg);
+  const largeArc = endDeg - startDeg <= 180 ? 0 : 1;
+  return `M ${start.x} ${start.y} A ${r} ${r} 0 ${largeArc} 1 ${end.x} ${end.y}`;
 }
 
 export default function HUD({
@@ -157,10 +394,23 @@ export default function HUD({
   clockPhase,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
-  const healthPct = Math.max(0, Math.min(100, health));
-  const healthColor =
-    healthPct > 60 ? "#2ecc71" : healthPct > 30 ? "#f39c12" : "#e74c3c";
-  const kph = Math.abs(speed * 3.6).toFixed(0);
+
+  // Player heading for the minimap arrow. Derived from successive
+  // position deltas in a ref so we don't store it in React state
+  // (the parent already updates px/pz at HUD-throttle rate). Heading
+  // sticks while the player is stationary so the arrow doesn't flick
+  // back to north every time they stop moving.
+  const lastPos = useRef({ x: playerPositionX, z: playerPositionZ });
+  const headingRef = useRef(0);
+  const dx = playerPositionX - lastPos.current.x;
+  const dz = playerPositionZ - lastPos.current.z;
+  const distSq = dx * dx + dz * dz;
+  if (distSq > 0.04) {
+    // atan2(dz, dx) gives an angle where 0 = +X axis on the minimap;
+    // we render the triangle with its tip at -y, so subtract 90°.
+    headingRef.current = Math.atan2(dz, dx) - Math.PI / 2;
+    lastPos.current = { x: playerPositionX, z: playerPositionZ };
+  }
 
   return (
     <div
@@ -173,209 +423,399 @@ export default function HUD({
         userSelect: "none",
       }}
     >
-      {/* Health bar - bottom left */}
-      <div style={{ position: "absolute", bottom: 24, left: 24 }}>
-        <div style={{ fontSize: 11, color: "#aaa", marginBottom: 4 }}>HEALTH</div>
+      {/* ============================================================
+          TOP-LEFT — player / connection / count / clock cluster
+          ============================================================ */}
+      <div
+        style={{
+          position: "absolute",
+          top: 18,
+          left: 18,
+          display: "flex",
+          flexDirection: "column",
+          gap: 8,
+          minWidth: 220,
+        }}
+      >
         <div
           style={{
-            width: 150,
-            height: 12,
-            background: "rgba(0,0,0,0.6)",
-            border: "1px solid #444",
-            borderRadius: 2,
+            background: PANEL_BG,
+            border: `1px solid ${PANEL_BORDER}`,
+            borderRadius: PANEL_RADIUS,
+            padding: "10px 14px",
+            boxShadow: PANEL_SHADOW,
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
           }}
+          data-testid="hud-player"
         >
           <div
             style={{
-              width: `${healthPct}%`,
-              height: "100%",
-              background: healthColor,
-              transition: "width 0.2s, background 0.3s",
-              borderRadius: 2,
+              fontSize: 16,
+              fontWeight: "bold",
+              color: ACCENT,
+              letterSpacing: 1.5,
+              textShadow: "0 0 12px rgba(0,229,255,0.45)",
+              lineHeight: 1.1,
+              marginBottom: 6,
+            }}
+          >
+            {username}
+          </div>
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 12,
+              fontSize: 11,
+              color: "#9bb",
+            }}
+          >
+            <span
+              style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+              data-testid="hud-connection"
+            >
+              {connected ? (
+                <>
+                  <Wifi size={12} color="#2ee07a" />
+                  <span style={{ color: "#2ee07a" }}>ONLINE</span>
+                </>
+              ) : (
+                <>
+                  <WifiOff size={12} color="#ff5560" />
+                  <span style={{ color: "#ff5560" }}>OFFLINE</span>
+                </>
+              )}
+            </span>
+            <span
+              style={{ display: "inline-flex", alignItems: "center", gap: 5 }}
+              data-testid="hud-player-count"
+            >
+              <Users size={12} color={ACCENT} />
+              <span style={{ color: "#cde" }}>{playerCount}</span>
+            </span>
+          </div>
+        </div>
+
+        {/* Clock — same chassis, accented by phase color */}
+        <div
+          style={{
+            background: PANEL_BG,
+            border: `1px solid ${phaseColor}55`,
+            borderRadius: PANEL_RADIUS,
+            padding: "8px 12px",
+            boxShadow: PANEL_SHADOW,
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+          data-testid="hud-clock"
+        >
+          <div
+            style={{
+              width: 10,
+              height: 10,
+              borderRadius: "50%",
+              background: phaseColor,
+              boxShadow: `0 0 10px ${phaseColor}`,
+              flexShrink: 0,
             }}
           />
-        </div>
-        <div style={{ fontSize: 12, marginTop: 2, color: healthColor }}>
-          {healthPct} / 100
+          <div
+            style={{
+              fontSize: 15,
+              fontWeight: "bold",
+              color: "#fff",
+              letterSpacing: 2,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {clockLabel}
+          </div>
+          <div
+            style={{
+              marginLeft: "auto",
+              fontSize: 10,
+              color: phaseColor,
+              letterSpacing: 2,
+              fontWeight: "bold",
+            }}
+          >
+            {clockPhase}
+          </div>
         </div>
       </div>
 
-      {/* Speedometer - bottom right */}
-      {inVehicle && (
+      {/* ============================================================
+          TOP-RIGHT — minimap with phase-tinted frame + compass labels
+          ============================================================ */}
+      <div
+        style={{
+          position: "absolute",
+          top: 18,
+          right: 18,
+          background: PANEL_BG,
+          border: `1px solid ${PANEL_BORDER}`,
+          borderRadius: PANEL_RADIUS,
+          padding: 8,
+          boxShadow: `${PANEL_SHADOW}, 0 0 24px ${phaseColor}22`,
+          backdropFilter: "blur(6px)",
+          WebkitBackdropFilter: "blur(6px)",
+        }}
+        data-testid="hud-minimap"
+      >
         <div
           style={{
-            position: "absolute",
-            bottom: 24,
-            right: 24,
-            textAlign: "center",
-            background: "rgba(0,0,0,0.6)",
-            border: "1px solid #444",
-            padding: "8px 16px",
-            borderRadius: 4,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            fontSize: 10,
+            color: "#9bb",
+            letterSpacing: 2,
+            padding: "0 4px 6px",
           }}
         >
-          <div style={{ fontSize: 32, fontWeight: "bold", color: "#00e5ff" }}>
-            {kph}
-          </div>
-          <div style={{ fontSize: 11, color: "#aaa" }}>KM/H</div>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+            <Compass size={12} color={ACCENT} />
+            MAP
+          </span>
+          <span style={{ color: "#556", fontVariantNumeric: "tabular-nums" }}>
+            {Math.round(playerPositionX)}, {Math.round(playerPositionZ)}
+          </span>
+        </div>
+        <div
+          style={{
+            position: "relative",
+            width: MINIMAP_PX,
+            height: MINIMAP_PX,
+            borderRadius: 6,
+            overflow: "hidden",
+            border: `1px solid ${phaseColor}44`,
+          }}
+        >
+          <Minimap
+            px={playerPositionX}
+            pz={playerPositionZ}
+            heading={headingRef.current}
+            phaseColor={phaseColor}
+          />
+          {/* Compass labels — N/E/S/W around the minimap edge */}
+          {compassLabels.map(({ label, style }) => (
+            <div
+              key={label}
+              style={{
+                position: "absolute",
+                fontSize: 9,
+                fontWeight: "bold",
+                color: "#cde",
+                letterSpacing: 1,
+                textShadow: "0 0 4px rgba(0,0,0,0.9)",
+                pointerEvents: "none",
+                ...style,
+              }}
+            >
+              {label}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ============================================================
+          BOTTOM-LEFT — health
+          ============================================================ */}
+      <div style={{ position: "absolute", bottom: 22, left: 22 }}>
+        <HealthBar health={health} />
+      </div>
+
+      {/* ============================================================
+          BOTTOM-RIGHT — speedometer (vehicle only)
+          ============================================================ */}
+      {inVehicle && (
+        <div style={{ position: "absolute", bottom: 22, right: 22 }}>
+          <Speedometer speed={speed} vehicleLabel={vehicleLabel} />
         </div>
       )}
 
-      {/* Minimap - top right */}
+      {/* ============================================================
+          TOP-CENTER — subtle controls hint
+          ============================================================ */}
       <div
         style={{
           position: "absolute",
-          top: 16,
-          right: 16,
-          border: "1px solid #444",
-          borderRadius: 4,
-          overflow: "hidden",
-        }}
-      >
-        <Minimap px={playerPositionX} pz={playerPositionZ} />
-      </div>
-
-      {/* Player info + count - top left */}
-      <div
-        style={{
-          position: "absolute",
-          top: 16,
-          left: 16,
-          background: "rgba(0,0,0,0.6)",
-          border: "1px solid #444",
-          padding: "8px 12px",
-          borderRadius: 4,
-          fontSize: 13,
-        }}
-      >
-        <div style={{ color: "#00e5ff", fontWeight: "bold" }}>{username}</div>
-        <div style={{ color: "#aaa", marginTop: 2 }}>
-          {connected ? "🟢" : "🔴"} {playerCount} player{playerCount !== 1 ? "s" : ""}
-        </div>
-      </div>
-
-      {/* World clock chip — sits just under the username card on the
-          top-left so it never crosses the minimap or the controls
-          hint. Compact (no decorative panel). */}
-      <div
-        style={{
-          position: "absolute",
-          top: 78,
-          left: 16,
-          background: "rgba(0,0,0,0.6)",
-          border: `1px solid ${phaseColor}55`,
-          padding: "6px 10px",
-          borderRadius: 4,
-          fontSize: 12,
-          display: "flex",
-          alignItems: "center",
-          gap: 8,
-          minWidth: 110,
-        }}
-        data-testid="hud-clock"
-      >
-        <div
-          style={{
-            width: 8,
-            height: 8,
-            borderRadius: "50%",
-            background: phaseColor,
-            boxShadow: `0 0 6px ${phaseColor}`,
-          }}
-        />
-        <div style={{ color: "#fff", fontWeight: "bold", letterSpacing: 1 }}>
-          {clockLabel}
-        </div>
-        <div style={{ color: phaseColor, fontSize: 10, letterSpacing: 1 }}>
-          {clockPhase}
-        </div>
-      </div>
-
-      {/* Controls hint - top center */}
-      <div
-        style={{
-          position: "absolute",
-          top: 16,
+          top: 18,
           left: "50%",
           transform: "translateX(-50%)",
-          background: "rgba(0,0,0,0.5)",
-          border: "1px solid #333",
-          padding: "4px 10px",
-          borderRadius: 4,
-          fontSize: 11,
-          color: "#888",
-          textAlign: "center",
+          background: "rgba(8,14,28,0.45)",
+          border: "1px solid rgba(255,255,255,0.06)",
+          padding: "5px 12px",
+          borderRadius: 999,
+          fontSize: 10,
+          color: "rgba(255,255,255,0.55)",
+          letterSpacing: 1.5,
+          backdropFilter: "blur(4px)",
+          WebkitBackdropFilter: "blur(4px)",
+          whiteSpace: "nowrap",
         }}
       >
         {inVehicle
-          ? "WASD — Drive  |  E — Exit  |  Click — Look"
-          : "WASD — Move  |  Shift — Run  |  Space — Jump  |  E — Enter Car  |  Click — Look"}
+          ? "WASD DRIVE  ·  E EXIT  ·  CLICK LOOK"
+          : "WASD MOVE  ·  SHIFT RUN  ·  SPACE JUMP  ·  E ENTER  ·  CLICK LOOK"}
       </div>
 
-      {/* Interact prompt - center */}
+      {/* ============================================================
+          RACE — top-center under the controls hint
+          ============================================================ */}
+      {(raceActive || racePassed.length > 0) && (
+        <div
+          style={{
+            position: "absolute",
+            top: 64,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: PANEL_BG,
+            border: "1px solid rgba(243, 156, 18, 0.55)",
+            borderRadius: PANEL_RADIUS,
+            padding: "10px 22px",
+            textAlign: "center",
+            boxShadow: PANEL_SHADOW,
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+            minWidth: 180,
+          }}
+          data-testid="hud-race"
+        >
+          <div
+            style={{
+              fontSize: 10,
+              color: "#f39c12",
+              letterSpacing: 3,
+              marginBottom: 4,
+              display: "inline-flex",
+              alignItems: "center",
+              gap: 6,
+            }}
+          >
+            <Flag size={11} color="#f39c12" />
+            CHECKPOINT RACE
+          </div>
+          <div
+            style={{
+              fontSize: 24,
+              color: "#fff",
+              fontWeight: "bold",
+              letterSpacing: 2,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {raceActive ? formatTime(raceTime) : "FINISHED"}
+          </div>
+          <div style={{ fontSize: 11, color: "#9bb", marginTop: 2, letterSpacing: 1 }}>
+            {racePassed.length} / {CHECKPOINTS.length} CHECKPOINTS
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — interaction prompt (E key card)
+          ============================================================ */}
       {showInteract && !inVehicle && (
         <div
           style={{
             position: "absolute",
-            bottom: 120,
+            bottom: 130,
             left: "50%",
             transform: "translateX(-50%)",
-            background: "rgba(0,0,0,0.75)",
-            border: "1px solid #f39c12",
-            padding: "8px 20px",
-            borderRadius: 4,
-            fontSize: 14,
-            color: "#f39c12",
-            textAlign: "center",
+            background: PANEL_BG,
+            border: "1px solid rgba(243, 156, 18, 0.65)",
+            borderRadius: PANEL_RADIUS,
+            padding: "8px 14px 8px 8px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            boxShadow: `${PANEL_SHADOW}, 0 0 24px rgba(243,156,18,0.25)`,
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
           }}
           data-testid="interact-prompt"
         >
-          [E] Enter {vehicleLabel}
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              background: "rgba(243, 156, 18, 0.15)",
+              border: "1px solid rgba(243, 156, 18, 0.7)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 13,
+              fontWeight: "bold",
+              color: "#f39c12",
+              boxShadow: "inset 0 -2px 0 rgba(243,156,18,0.35)",
+            }}
+          >
+            E
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            Enter <span style={{ color: "#f39c12", fontWeight: "bold" }}>{vehicleLabel}</span>
+          </div>
         </div>
       )}
 
-      {/* Crosshair */}
+      {/* ============================================================
+          CENTER — crosshair (subtle)
+          ============================================================ */}
       <div
         style={{
           position: "absolute",
           top: "50%",
           left: "50%",
           transform: "translate(-50%,-50%)",
-          width: 20,
-          height: 20,
-          opacity: 0.5,
+          width: 14,
+          height: 14,
+          opacity: 0.4,
+          pointerEvents: "none",
         }}
       >
-        <div style={{ position: "absolute", top: 9, left: 0, right: 0, height: 2, background: "#fff" }} />
-        <div style={{ position: "absolute", left: 9, top: 0, bottom: 0, width: 2, background: "#fff" }} />
-      </div>
-
-      {/* Race UI - center top area */}
-      {(raceActive || racePassed.length > 0) && (
         <div
           style={{
             position: "absolute",
-            top: 70,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: "rgba(0,0,0,0.75)",
-            border: "1px solid #f39c12",
-            padding: "10px 20px",
-            borderRadius: 4,
-            textAlign: "center",
+            top: 6,
+            left: 0,
+            right: 0,
+            height: 1,
+            background: ACCENT,
+            boxShadow: `0 0 4px ${ACCENT}`,
           }}
-        >
-          <div style={{ fontSize: 11, color: "#f39c12", marginBottom: 4 }}>CHECKPOINT RACE</div>
-          <div style={{ fontSize: 22, color: "#fff" }}>
-            {raceActive ? formatTime(raceTime) : "FINISHED!"}
-          </div>
-          <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>
-            {racePassed.length} / {CHECKPOINTS.length} checkpoints
-          </div>
-        </div>
-      )}
+        />
+        <div
+          style={{
+            position: "absolute",
+            left: 6,
+            top: 0,
+            bottom: 0,
+            width: 1,
+            background: ACCENT,
+            boxShadow: `0 0 4px ${ACCENT}`,
+          }}
+        />
+        <div
+          style={{
+            position: "absolute",
+            top: 5,
+            left: 5,
+            width: 3,
+            height: 3,
+            borderRadius: "50%",
+            background: ACCENT,
+            boxShadow: `0 0 6px ${ACCENT}`,
+          }}
+        />
+      </div>
 
-      {/* Pointer lock hint */}
+      {/* Pointer lock hint (kept hidden by default, toggled by external code) */}
       <div
         style={{
           position: "absolute",
@@ -395,6 +835,16 @@ export default function HUD({
     </div>
   );
 }
+
+// Compass label positions placed around the minimap's inner border.
+// Defined as a module-level constant so the HUD doesn't reallocate
+// the array on every render.
+const compassLabels: Array<{ label: string; style: React.CSSProperties }> = [
+  { label: "N", style: { top: 4, left: "50%", transform: "translateX(-50%)" } },
+  { label: "S", style: { bottom: 4, left: "50%", transform: "translateX(-50%)" } },
+  { label: "W", style: { left: 4, top: "50%", transform: "translateY(-50%)" } },
+  { label: "E", style: { right: 4, top: "50%", transform: "translateY(-50%)" } },
+];
 
 function formatTime(ms: number): string {
   const s = Math.floor(ms / 1000);
