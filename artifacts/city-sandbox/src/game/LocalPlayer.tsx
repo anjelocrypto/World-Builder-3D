@@ -12,6 +12,7 @@ import {
   WORLD_HALF,
 } from "../shared/cityData";
 import { getVehicleGroundY, getVehicleGroundFrame } from "../shared/elevation";
+import { terrainHeightAt } from "../shared/terrain";
 import {
   PLAYER_BODY_RADIUS,
   NPC_BODY_RADIUS,
@@ -60,6 +61,30 @@ export enum Controls {
 // Module-level scratch reused by updateCamera every frame. Avoids a
 // fresh Vector3 allocation 60 times per second.
 const _camTarget = new THREE.Vector3();
+const _camLookDesired = new THREE.Vector3();
+
+// Camera smoothing constants. Stiffness values are used with
+// `alpha = 1 - exp(-dt * stiffness)` so smoothing is frame-rate
+// independent (60fps and 30fps converge to the same look).
+//   POS  — chase camera body follow speed
+//   LOOK — aim point follow speed (higher = snappier)
+// At high vehicle speed we keep POS stiff (the camera body should
+// still keep up) but loosen LOOK to filter out jitter from the
+// per-tick terrain-sampled vehicle y on steep mountain switchbacks.
+const CAM_POS_STIFFNESS = 8.0;
+const CAM_LOOK_STIFFNESS_BASE = 14.0;
+const CAM_LOOK_STIFFNESS_FAST = 5.0;
+// Minimum gap between the camera and the rendered terrain. Prevents
+// the chase camera clipping through a hillside on steep descents
+// (which is what was causing the white/black flashing).
+const CAM_TERRAIN_CLEARANCE = 1.0;
+// Extra chase distance scaled by speed factor so the car stays in
+// frame and the camera body has more time to settle.
+const CAM_SPEED_DIST_BONUS = 2.0;
+// Vehicle look point is offset above the body root so the camera
+// doesn't aim into the roof at speed.
+const CAM_VEHICLE_LOOK_HEIGHT = 1.4;
+const CAM_PLAYER_LOOK_HEIGHT = 1.0;
 
 const WALK_SPEED = 5;
 const RUN_SPEED = 10;
@@ -130,6 +155,13 @@ export default function LocalPlayer({
   const playerRotY = useRef(0);
   const cameraYaw = useRef(0);
   const cameraPitch = useRef(0.35);
+  // Smoothed aim target. Initialised lazily on the first updateCamera
+  // call so it doesn't snap from world-origin on mount. Smoothing this
+  // separately from camera.position is the core of the high-speed
+  // shake fix — the previous code lerped the body but snapped the
+  // lookAt, so any per-tick jitter in vehiclePos.y showed as visible
+  // shake/flash on downhill segments.
+  const cameraLookAtRef = useRef<THREE.Vector3 | null>(null);
   // Character avatar — root group sits at feet level (pos.y - half
   // height) and is transformed every frame in updatePlayer /
   // updateVehicle. PlaceholderCharacter reads its dynamic state via
@@ -674,7 +706,7 @@ export default function LocalPlayer({
     }
 
     // Camera
-    updateCamera(pos.current);
+    updateCamera(pos.current, dt, "walking");
 
     // Enter vehicle
     if (keys.interact && interactCooldown.current <= 0) {
@@ -914,8 +946,10 @@ export default function LocalPlayer({
     drivingRuntime.attackKind = attackKindRef.current;
     drivingRuntime.attackStartedAt = attackStartedAtRef.current;
 
-    // Camera follows vehicle
-    updateCamera(vehiclePos.current);
+    // Camera follows vehicle. Pass dt so updateCamera can use
+    // exponential damping; pass mode so it can apply slope-aware
+    // smoothing + aim higher.
+    updateCamera(vehiclePos.current, dt, "vehicle");
 
     // Exit vehicle
     if (keys.interact && interactCooldown.current <= 0) {
@@ -1101,18 +1135,85 @@ export default function LocalPlayer({
     });
   }
 
-  function updateCamera(target: THREE.Vector3) {
+  function updateCamera(
+    target: THREE.Vector3,
+    dt: number,
+    mode: "walking" | "vehicle",
+  ) {
     const yaw = cameraYaw.current;
     const pitch = cameraPitch.current;
-    const camX = target.x + Math.sin(yaw) * CAM_DIST * Math.cos(pitch);
-    const camY = target.y + Math.sin(pitch) * CAM_DIST + 1.8;
-    const camZ = target.z + Math.cos(yaw) * CAM_DIST * Math.cos(pitch);
 
-    // Reuse a module-scoped Vector3 instead of allocating one per
-    // frame (was 60+ allocs/sec just for the camera lerp).
+    // Speed factor (0..1) — only nonzero in vehicle mode. Drives the
+    // distance bonus and the look-at smoothing rate so high-speed
+    // downhill stretches feel stable, not shaky.
+    const speedFactor =
+      mode === "vehicle"
+        ? Math.min(1, Math.abs(vehicleSpeed.current) / VEHICLE_MAX_SPEED)
+        : 0;
+    const dist = CAM_DIST + speedFactor * CAM_SPEED_DIST_BONUS;
+
+    // Desired camera body position (chase rig).
+    const camX = target.x + Math.sin(yaw) * dist * Math.cos(pitch);
+    let camY = target.y + Math.sin(pitch) * dist + 1.8;
+    const camZ = target.z + Math.cos(yaw) * dist * Math.cos(pitch);
+
+    // Terrain clearance: never let the camera body sit below
+    // terrainY + clearance. This is what stops the chase camera from
+    // clipping into the back of a mountain on steep descents (the
+    // root cause of the white/black flashing during downhill runs).
+    const groundUnderCam = terrainHeightAt(camX, camZ);
+    const minCamY = groundUnderCam + CAM_TERRAIN_CLEARANCE;
+    if (camY < minCamY) camY = minCamY;
+
     _camTarget.set(camX, camY, camZ);
-    camera.position.lerp(_camTarget, 0.12);
-    camera.lookAt(target.x, target.y + 1, target.z);
+
+    // Frame-rate independent exponential damping.
+    // alpha = 1 - exp(-dt * stiffness) — at 60fps with stiffness=8
+    // that's ~0.124, very close to the previous fixed 0.12 but stable
+    // when delta varies (long frames during loading/HMR no longer
+    // jump the camera).
+    const posAlpha = 1 - Math.exp(-dt * CAM_POS_STIFFNESS);
+    camera.position.lerp(_camTarget, posAlpha);
+
+    // Post-lerp safety clamp: even when the desired position is
+    // above terrain, an abrupt terrain change at the *interpolated*
+    // (camera.x, camera.z) can still leave the lerp'd camera body
+    // under the hill for a few frames. Re-sample at the actual
+    // camera XZ and clamp upward — guarantees no clipping/flash.
+    const groundUnderActual = terrainHeightAt(
+      camera.position.x,
+      camera.position.z,
+    );
+    const minActualY = groundUnderActual + CAM_TERRAIN_CLEARANCE;
+    if (camera.position.y < minActualY) camera.position.y = minActualY;
+
+    // Desired look point. In vehicle mode aim slightly higher so the
+    // chase camera centres on the chassis, not the roof. We aim at
+    // the smoothed visual mesh position when available so any
+    // per-tick jitter in `target` (raw vehiclePos which absorbs the
+    // 4-wheel ground sample every frame) is filtered out.
+    const lookSrc =
+      mode === "vehicle" && vehicleMeshRef.current
+        ? vehicleMeshRef.current.position
+        : target;
+    const lookHeight =
+      mode === "vehicle" ? CAM_VEHICLE_LOOK_HEIGHT : CAM_PLAYER_LOOK_HEIGHT;
+    _camLookDesired.set(lookSrc.x, lookSrc.y + lookHeight, lookSrc.z);
+
+    // Lazy-initialise the smoothed lookAt ref so the first frame
+    // doesn't pull the aim from world origin.
+    if (cameraLookAtRef.current === null) {
+      cameraLookAtRef.current = _camLookDesired.clone();
+    }
+    // Loosen look smoothing as speed climbs — high-speed jitter on
+    // the body's terrain-sampled y becomes invisible because the aim
+    // point lags slightly behind.
+    const lookStiffness =
+      CAM_LOOK_STIFFNESS_BASE +
+      (CAM_LOOK_STIFFNESS_FAST - CAM_LOOK_STIFFNESS_BASE) * speedFactor;
+    const lookAlpha = 1 - Math.exp(-dt * lookStiffness);
+    cameraLookAtRef.current.lerp(_camLookDesired, lookAlpha);
+    camera.lookAt(cameraLookAtRef.current);
   }
 
   // Look up the live VehicleState for the car we're driving so the

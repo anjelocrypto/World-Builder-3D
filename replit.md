@@ -134,6 +134,14 @@ Express 5 REST API + Socket.io game server.
 - **Slope-aware physics** (`LocalPlayer.updateVehicle`): `vehicleSpeed += -SLOPE_GRAVITY * sin(pitch) * dt` with `SLOPE_GRAVITY = 14 m/s²`. Uphill drains speed automatically; downhill adds gravity acceleration. Speed clamped to `±VEHICLE_MAX_SPEED * 1.5` so descending a mountain feels faster but stays controllable.
 - **Validator**: `vehicleGrounding OK: parkedTireBottomMaxGap=Xm, parkedGrounded=N/M, ambientGrounded=N/M, mountainPitchApplied=true` printed at boot in `cityData.ts`. Fails any parked car whose tire-bottom gap to ground exceeds 0.15m.
 
+## Driving Camera (chase rig)
+
+- `LocalPlayer.updateCamera(target, dt, mode)` is the single chase/orbit camera. Both `camera.position` and the look-at point are smoothed independently with **frame-rate-independent exponential damping**: `alpha = 1 - exp(-dt * stiffness)`. Position stiffness 8; look-at stiffness 14 at rest, falling to 5 at full speed so high-speed downhill jitter on the per-tick terrain-sampled `vehiclePos.y` filters out instead of shaking the aim.
+- The smoothed look point lives in `cameraLookAtRef` (lazy-init Vector3) and is the only thing fed to `camera.lookAt()`. We aim at the **visually smoothed `vehicleMeshRef.position`** in vehicle mode, not the raw `vehiclePos`, so anything the renderer is already smoothing (mesh interpolation, eventual suspension dip) carries through to the aim.
+- **Terrain clearance**: every frame we sample `terrainHeightAt(camX, camZ)` and clamp `camera.position.y >= terrainY + 1.0`. This is the fix for the white/black flashing during downhill runs — the chase camera was clipping into mountain backs.
+- **Speed-aware framing**: chase distance grows by up to +2m at full speed (`CAM_SPEED_DIST_BONUS`) and the look point sits at +1.4m on the chassis (`CAM_VEHICLE_LOOK_HEIGHT`) so the car stays centred and the camera doesn't aim into the roof.
+- Mouse-look (`cameraYaw` / `cameraPitch` set by pointer-lock movement) and walking camera responsiveness are unchanged.
+
 ## Procedural Vehicle Renderer
 
 - `CarVisual` in `artifacts/city-sandbox/src/game/VehicleObject.tsx` is the single shared car renderer for parked / remote / locally-driven / ambient AI cars.
