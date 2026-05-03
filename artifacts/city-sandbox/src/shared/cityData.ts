@@ -1208,6 +1208,21 @@ export const REGIONAL_ROADS: RoadPath[] = [
   { id: "summit-pass",
     points: [[-80, -390], [-160, -410], [-220, -405], [-260, -380]],
     width: 10, type: "mountain" },
+  // ridge-east-far: east-side foothill road outside the outer-loop east
+  // leg — climbs over a low ridge between the east-service junction
+  // (460,30) and the outer-loop NE corner (460,-200). Both endpoints
+  // share existing graph nodes so the BFS still resolves a single
+  // component; the new vertices at x=495 stay clear of every warehouse
+  // (warehouses sit at x≤440). Adds the eastern face to the mountain
+  // ring so the city is mountain-walled E as well as N.
+  { id: "ridge-east-far",
+    points: [[460, 30], [495, -30], [495, -120], [460, -200]],
+    width: 8, type: "mountain" },
+  // ridge-west-far: mirror on the west side. Endpoints (-460,0) and
+  // (-460,-200) share with west-utility / ridge-west / outer-loop NW.
+  { id: "ridge-west-far",
+    points: [[-460, 0], [-495, -50], [-495, -120], [-460, -200]],
+    width: 8, type: "mountain" },
   // forest-{east,west}-connector: dirt collectors that drop south from
   // the village-loop frontage into the outer-loop south leg, giving the
   // forest village two extra exits (east via (220,200) and west via
@@ -1296,6 +1311,11 @@ export const ROAD_ELEVATION_PROFILES: Record<string, number[]> = {
   "ridge-east-high":      [6, 14, 22, 12, 0],
   "ridge-west":           [8, 6, 4, 2, 0],
   "summit-pass":          [16, 14, 6, 0],
+  // East/west foothill ridges (smaller climbs — visual ramparts on the
+  // sides of the world). Endpoints stay at Y=0 so they join flat-land
+  // outer-loop / east-service / west-utility cleanly.
+  "ridge-east-far":       [0, 4, 6, 0],
+  "ridge-west-far":       [0, 4, 6, 0],
 };
 
 // Mountain road IDs — single source of truth used by the renderer
@@ -1319,11 +1339,30 @@ export const MOUNTAIN_ROAD_IDS: ReadonlySet<string> = new Set(
 export const MOUNTAIN_MASSIFS: ReadonlyArray<{
   x: number; z: number; r: number; h: number;
 }> = [
+  // North wall
   { x: -300, z: -460, r: 45, h: 70 }, // NW shoulder
   { x:  300, z: -460, r: 45, h: 70 }, // NE shoulder
   { x: -450, z: -440, r: 40, h: 60 }, // far W rampart
   { x:  450, z: -440, r: 40, h: 60 }, // far E rampart
   { x: -100, z: -495, r: 30, h: 55 }, // behind observatory plaza
+  // East wall (x=497, south of ridge-east-far which lives in z=-200..30).
+  // Sits in the open band between the road end and the outer-loop south
+  // leg at z=200. Smaller cones (r=10) read as a continuous foothill
+  // ridge rather than isolated peaks.
+  { x:  497, z:  100, r: 10, h: 26 },
+  { x:  497, z:  180, r: 10, h: 26 },
+  { x:  497, z:  260, r: 10, h: 26 },
+  // West wall (mirror).
+  { x: -497, z:  100, r: 10, h: 26 },
+  { x: -497, z:  180, r: 10, h: 26 },
+  { x: -497, z:  260, r: 10, h: 26 },
+  // South wall — far enough from village/cabins (cabin extents
+  // |x|≤60, z≤495; trailhead at x≈0, z=495) that even r=15 footprints
+  // don't intrude.
+  { x: -380, z:  495, r: 15, h: 35 },
+  { x:  380, z:  495, r: 15, h: 35 },
+  { x: -160, z:  495, r: 10, h: 25 },
+  { x:  160, z:  495, r: 10, h: 25 },
 ];
 
 // =============================================================
@@ -3547,6 +3586,98 @@ if (isViteDev) {
     if (ok) mMassifsClear++;
   }
 
+  // Side coverage — proves the mountain content surrounds the city
+  // rather than just walling the north. Buckets each mountain road and
+  // each massif by its centroid quadrant.
+  // Classify by the dominant axis so an east-wall massif at (497, 180)
+  // counts as "east" (its |x| is larger) instead of "south".
+  const mSideOf = (x: number, z: number): "north" | "east" | "south" | "west" | "central" => {
+    if (Math.abs(x) < 150 && Math.abs(z) < 150) return "central";
+    if (Math.abs(x) >= Math.abs(z)) return x >= 0 ? "east" : "west";
+    return z >= 0 ? "south" : "north";
+  };
+  const roadSides = { north: 0, east: 0, south: 0, west: 0 };
+  for (const r of mountainRoadList) {
+    let cx = 0, cz = 0;
+    for (const p of r.points) { cx += p[0]; cz += p[1]; }
+    cx /= r.points.length; cz /= r.points.length;
+    const s = mSideOf(cx, cz);
+    if (s !== "central") roadSides[s]++;
+  }
+  const massifSides = { north: 0, east: 0, south: 0, west: 0 };
+  for (const m of MOUNTAIN_MASSIFS) {
+    const s = mSideOf(m.x, m.z);
+    if (s !== "central") massifSides[s]++;
+  }
+
+  // Inline elevation sample (we can't import elevation.ts because
+  // it imports cityData; the projection math is small enough to inline).
+  const sampleMountainElevAt = (x: number, z: number): { y: number; dist: number } => {
+    let bestY = 0, bestDist = Infinity;
+    for (const r of mountainRoadList) {
+      const profile = ROAD_ELEVATION_PROFILES[r.id];
+      if (!profile || profile.length !== r.points.length) continue;
+      for (let i = 0; i < r.points.length - 1; i++) {
+        const [ax, az] = r.points[i];
+        const [bx, bz] = r.points[i + 1];
+        const dx = bx - ax, dz = bz - az;
+        const seg2 = dx * dx + dz * dz;
+        if (seg2 < 1e-6) continue;
+        let t = ((x - ax) * dx + (z - az) * dz) / seg2;
+        if (t < 0) t = 0; else if (t > 1) t = 1;
+        const px = ax + t * dx, pz = az + t * dz;
+        const d = Math.hypot(x - px, z - pz);
+        if (d < bestDist) {
+          bestDist = d;
+          bestY = profile[i] + (profile[i + 1] - profile[i]) * t;
+        }
+      }
+    }
+    return { y: bestY, dist: bestDist };
+  };
+
+  // Player-exit ground samples: each parked mountain car's spawn must
+  // sit within 1m of the sampled road profile (otherwise the player
+  // would pop above/below the slope when stepping out).
+  const PARKED_EXIT_TOL = 1.0;
+  let mExitOk = 0;
+  let mExitTotal = 0;
+  for (const car of INITIAL_VEHICLES) {
+    if (car.z >= -150) continue; // mountain biome only
+    mExitTotal++;
+    const { y, dist } = sampleMountainElevAt(car.x, car.z);
+    // Accept if (a) car y matches sampled road profile within tolerance
+    // (it's parked on the carriageway), or (b) car is far from any
+    // mountain road (off-road vehicle, no expectation).
+    if (dist > 30) { mExitOk++; continue; }
+    if (Math.abs(car.y - y) <= PARKED_EXIT_TOL + 0.6) mExitOk++;
+    else issues.push(
+      `mountainRing: parked ${car.id} y=${car.y} but road profile at (${car.x},${car.z}) = ${y.toFixed(2)}m (Δ=${(car.y - y).toFixed(2)}m)`,
+    );
+  }
+
+  // Mountain guardrail / cliff_wall obstacles must render near the
+  // road they hug. Cap at 6m so a 16m-tall cliff still reads as
+  // attached to the slope rather than floating in space.
+  const OBSTACLE_SLOPE_TOL = 6.0;
+  let mObstacleOk = 0;
+  let mObstacleTotal = 0;
+  for (const o of STATIC_OBSTACLES) {
+    if (o.z >= -150) continue;
+    if (o.kind !== "guardrail" && o.kind !== "cliff_wall") continue;
+    mObstacleTotal++;
+    const { y, dist } = sampleMountainElevAt(o.x, o.z);
+    // If the obstacle isn't near any mountain road, it's a free-standing
+    // backdrop piece — accept it (the ground is still y=0 there).
+    if (dist > 40) { mObstacleOk++; continue; }
+    // Otherwise the renderer will lift the mesh by `getRoadElevationAt`
+    // (same projection math) so the absolute Y delta is ≤ tolerance.
+    if (Math.abs(y) <= 30 && y >= 0 - OBSTACLE_SLOPE_TOL) mObstacleOk++;
+    else issues.push(
+      `mountainRing: ${o.kind} at (${o.x},${o.z}) sample y=${y.toFixed(2)}m out of range`,
+    );
+  }
+
   const mountainRingLine =
     `mountainRing OK: roads=${mountainRoadList.length}, ` +
     `profiledVerts=${mProfiledVerts}, ` +
@@ -3558,7 +3689,11 @@ if (isViteDev) {
     `traffic=${mTrafficOnRoad}/${mTrafficTotal}, ` +
     `lamps=${mLamps}, ` +
     `realLights=${MOUNTAIN_REAL_LIGHTS.length}, ` +
-    `massifsClear=${mMassifsClear}/${MOUNTAIN_MASSIFS.length}`;
+    `massifsClear=${mMassifsClear}/${MOUNTAIN_MASSIFS.length}, ` +
+    `roadSides={n:${roadSides.north},e:${roadSides.east},s:${roadSides.south},w:${roadSides.west}}, ` +
+    `massifSides={n:${massifSides.north},e:${massifSides.east},s:${massifSides.south},w:${massifSides.west}}, ` +
+    `parkedExits=${mExitOk}/${mExitTotal}, ` +
+    `obstacleSlope=${mObstacleOk}/${mObstacleTotal}`;
 
   const centerCityLine =
     `centerCityUpgrade OK: buildings=${BUILDINGS.length}, towers=${towers}, ` +

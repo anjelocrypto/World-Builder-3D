@@ -406,9 +406,13 @@ export default function LocalPlayer({
     pos.current.z = nz;
     pos.current.y += vel.current.y * dt;
 
-    // Ground
-    if (pos.current.y <= PLAYER_HEIGHT / 2) {
-      pos.current.y = PLAYER_HEIGHT / 2;
+    // Ground — sample the mountain road elevation system so the player
+    // stands on the slope when walking onto an elevated road. Returns
+    // 0 outside mountain country, falling back to flat-ground behaviour.
+    const groundY = getVehicleGroundY(nx, nz);
+    const standingY = groundY + PLAYER_HEIGHT / 2;
+    if (pos.current.y <= standingY) {
+      pos.current.y = standingY;
       vel.current.y = 0;
       isGrounded.current = true;
     } else {
@@ -833,7 +837,12 @@ export default function LocalPlayer({
       // player can try again after they roll forward.
       return;
     }
-    pos.current.set(safe.x, 1, safe.z);
+    // Safe-exit Y must match the mountain road profile so the player
+    // doesn't pop out under the elevated carriageway when leaving a car
+    // on a switchback. Off-mountain returns 0 → standing y = 0.6 as
+    // before.
+    const exitGroundY = getVehicleGroundY(safe.x, safe.z);
+    pos.current.set(safe.x, exitGroundY + PLAYER_HEIGHT / 2, safe.z);
     vel.current.set(0, 0, 0);
     inVehicle.current = false;
     drivingVehicleId.current = null;

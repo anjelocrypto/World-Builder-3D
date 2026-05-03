@@ -66,8 +66,11 @@ function TrafficCar({ route, seed }: TrafficCarProps) {
 
 /**
  * Spawns one TrafficCar for each car-seed in TRAFFIC_ROUTES. Renders
- * the ambient cars (currently 10 across 4 routes — city loop, bridge-
- * forest spine, mountain switchbacks, outer service ring). Client-only.
+ * the ambient cars (currently 22 across 9 routes — city loop, bridge-
+ * forest spine, mountain switchbacks, east service road, inner-city
+ * ring, outer regional loop, ridge-east-high, ridge-west, summit-pass).
+ * The mountain routes climb because the per-frame position read sample
+ * elevation via getVehicleGroundY. Client-only.
  */
 export default function AmbientTraffic() {
   return (

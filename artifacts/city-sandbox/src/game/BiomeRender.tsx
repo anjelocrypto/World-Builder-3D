@@ -180,6 +180,26 @@ function BiomeGround() {
         <planeGeometry args={[400, 400]} />
         <meshLambertMaterial color="#5a5238" />
       </mesh>
+      {/* East foothill mountain strip — darker tint outside outer-loop
+          east leg (x=460), painted on top of the suburban tile so the
+          ridge-east-far road and the eastern MOUNTAIN_MASSIFS read as a
+          continuous mountain wall. */}
+      <mesh position={[480, 0.0012, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[40, 1000]} />
+        <meshLambertMaterial color="#3a3530" />
+      </mesh>
+      {/* West foothill mountain strip — mirror. */}
+      <mesh position={[-480, 0.0012, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[40, 1000]} />
+        <meshLambertMaterial color="#3a3530" />
+      </mesh>
+      {/* South foothill mountain strip — narrow band at z≈490 just
+          past the trailhead/cabins so the south MOUNTAIN_MASSIFS feel
+          rooted in mountain ground. */}
+      <mesh position={[0, 0.0012, 488]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+        <planeGeometry args={[1000, 24]} />
+        <meshLambertMaterial color="#3a3530" />
+      </mesh>
 
       {/* Transition strips at biome→city seams (y=0.0015 sits just
           above the base biome tints to overpaint the rectangular edge). */}
@@ -228,6 +248,11 @@ function BridgeLaneStripes() {
 // =============================================================
 
 function ObstacleMesh({ o }: { o: StaticObstacle }) {
+  // Mountain-area obstacles (cliff_wall, guardrail) sit beside elevated
+  // roads. Sample the road profile at the obstacle centre so they ride
+  // up the slope with the carriageway instead of clipping below it.
+  // Threshold mirrors the elevation helper's early bail (z > -150).
+  const slopeY = o.z < -150 ? getRoadElevationAt(o.x, o.z) : 0;
   switch (o.kind) {
     case "bridge_rail":
       return (
@@ -238,7 +263,7 @@ function ObstacleMesh({ o }: { o: StaticObstacle }) {
       );
     case "cliff_wall":
       return (
-        <mesh position={[o.x, 8, o.z]} castShadow receiveShadow>
+        <mesh position={[o.x, slopeY + 8, o.z]} castShadow receiveShadow>
           <boxGeometry args={[o.w, 16, o.d]} />
           <meshLambertMaterial color="#5a5044" />
         </mesh>
@@ -377,7 +402,7 @@ function ObstacleMesh({ o }: { o: StaticObstacle }) {
       );
     case "guardrail":
       return (
-        <mesh position={[o.x, 0.7, o.z]} castShadow>
+        <mesh position={[o.x, slopeY + 0.7, o.z]} castShadow>
           <boxGeometry args={[o.w, 1.4, o.d]} />
           <meshLambertMaterial color="#a8a8a0" />
         </mesh>
