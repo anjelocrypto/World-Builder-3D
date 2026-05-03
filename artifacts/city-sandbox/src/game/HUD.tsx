@@ -23,7 +23,18 @@ interface HUDProps {
   playerPositionX: number;
   playerPositionZ: number;
   connected: boolean;
+  /** "HH:MM" world clock; DayNightController updates ~1 Hz. */
+  clockLabel: string;
+  /** "DAWN" | "DAY" | "SUNSET" | "NIGHT" — drives the chip color. */
+  clockPhase: string;
 }
+
+const PHASE_COLOR: Record<string, string> = {
+  DAWN: "#ff9c5a",
+  DAY: "#ffd55c",
+  SUNSET: "#ff7a4f",
+  NIGHT: "#7d9cff",
+};
 
 function Minimap({ px, pz }: { px: number; pz: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -142,7 +153,10 @@ export default function HUD({
   playerPositionX,
   playerPositionZ,
   connected,
+  clockLabel,
+  clockPhase,
 }: HUDProps) {
+  const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
   const healthPct = Math.max(0, Math.min(100, health));
   const healthColor =
     healthPct > 60 ? "#2ecc71" : healthPct > 30 ? "#f39c12" : "#e74c3c";
@@ -237,6 +251,43 @@ export default function HUD({
         <div style={{ color: "#00e5ff", fontWeight: "bold" }}>{username}</div>
         <div style={{ color: "#aaa", marginTop: 2 }}>
           {connected ? "🟢" : "🔴"} {playerCount} player{playerCount !== 1 ? "s" : ""}
+        </div>
+      </div>
+
+      {/* World clock chip — sits just under the username card on the
+          top-left so it never crosses the minimap or the controls
+          hint. Compact (no decorative panel). */}
+      <div
+        style={{
+          position: "absolute",
+          top: 78,
+          left: 16,
+          background: "rgba(0,0,0,0.6)",
+          border: `1px solid ${phaseColor}55`,
+          padding: "6px 10px",
+          borderRadius: 4,
+          fontSize: 12,
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+          minWidth: 110,
+        }}
+        data-testid="hud-clock"
+      >
+        <div
+          style={{
+            width: 8,
+            height: 8,
+            borderRadius: "50%",
+            background: phaseColor,
+            boxShadow: `0 0 6px ${phaseColor}`,
+          }}
+        />
+        <div style={{ color: "#fff", fontWeight: "bold", letterSpacing: 1 }}>
+          {clockLabel}
+        </div>
+        <div style={{ color: phaseColor, fontSize: 10, letterSpacing: 1 }}>
+          {clockPhase}
         </div>
       </div>
 

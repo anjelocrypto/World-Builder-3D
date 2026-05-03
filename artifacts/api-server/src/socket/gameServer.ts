@@ -125,10 +125,13 @@ export function setupGameServer(httpServer: HttpServer) {
       };
       players.set(socket.id, player);
 
-      // Send full game state to joining player
+      // Send full game state to joining player. `serverNow` lets the
+      // client compute its clock offset so every player sees the same
+      // synchronized day/night cycle (see shared/timeOfDay.ts).
       const snapshot = getGameStateSnapshot();
       socket.emit("gameState", {
         myId: socket.id,
+        serverNow: Date.now(),
         ...snapshot,
       });
 

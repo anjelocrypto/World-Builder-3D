@@ -1,5 +1,7 @@
 import * as THREE from "three";
 import { useEffect, useMemo, useRef } from "react";
+import { useFrame } from "@react-three/fiber";
+import { dayNightRuntime } from "../shared/timeOfDay";
 import {
   BUILDINGS,
   RAMPS,
@@ -13,20 +15,8 @@ import type { Building, PropData } from "../shared/types";
 import CentralRail from "./CentralRail";
 
 // =============================================================
-// SKY + GROUND
+// GROUND (sky + fog now live in DayNightController)
 // =============================================================
-
-function Skybox() {
-  // Slightly brighter night-blue so distant fog blends with sky and the
-  // city is readable. Was: #0a0a1a (near-black). Sphere radius bumped
-  // from 280 → 850 to enclose the 1000-unit expanded world.
-  return (
-    <mesh>
-      <sphereGeometry args={[850, 24, 16]} />
-      <meshBasicMaterial color="#1a2440" side={THREE.BackSide} />
-    </mesh>
-  );
-}
 
 function Ground() {
   // Base ground covers the full 1000-unit playable area plus a small
@@ -402,6 +392,17 @@ function StreetLamps() {
   const armRef = useRef<THREE.InstancedMesh>(null);
   const headRef = useRef<THREE.InstancedMesh>(null);
   const poolRef = useRef<THREE.InstancedMesh>(null);
+  const headMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const poolMatRef = useRef<THREE.MeshBasicMaterial>(null);
+  const baseHeadColor = useMemo(() => new THREE.Color(LAMP_HEAD_COLOR), []);
+  const STREET_POOL_BASE_OPACITY = 0.18;
+  useFrame(() => {
+    const n = dayNightRuntime.nightFactor;
+    if (poolMatRef.current) poolMatRef.current.opacity = STREET_POOL_BASE_OPACITY * n;
+    if (headMatRef.current) {
+      headMatRef.current.color.copy(baseHeadColor).multiplyScalar(0.4 + 0.6 * n);
+    }
+  });
   useEffect(() => {
     const m = new THREE.Matrix4();
     const idQ = new THREE.Quaternion();
@@ -440,11 +441,16 @@ function StreetLamps() {
       </instancedMesh>
       <instancedMesh ref={headRef} args={[undefined, undefined, count]}>
         <boxGeometry args={[0.7, 0.3, 0.7]} />
-        <meshBasicMaterial color={LAMP_HEAD_COLOR} />
+        <meshBasicMaterial ref={headMatRef} color={LAMP_HEAD_COLOR} />
       </instancedMesh>
       <instancedMesh ref={poolRef} args={[undefined, undefined, count]}>
         <circleGeometry args={[5, 16]} />
-        <meshBasicMaterial color={LAMP_POOL_COLOR} transparent opacity={0.18} />
+        <meshBasicMaterial
+          ref={poolMatRef}
+          color={LAMP_POOL_COLOR}
+          transparent
+          opacity={0.18}
+        />
       </instancedMesh>
     </group>
   );
@@ -673,7 +679,6 @@ function Ramps() {
 export default function CityMap() {
   return (
     <group>
-      <Skybox />
       <Ground />
       <Roads />
       <Crosswalks />
@@ -688,12 +693,11 @@ export default function CityMap() {
       {/* Plaza point lights have moved into BiomeRender's
           DynamicPointLights, where they're nearest-N filtered with
           junction / village / mountain lights so the scene stays
-          inside the audit's ≤8 active pointLight budget. */}
+          inside the audit's ≤8 active pointLight budget.
 
-      {/* Atmospheric fog — extended for the 1000-unit world. Was
-          ["#1a2440", 90, 260]. Far end is set just inside the camera
-          far-plane so distant biomes fade into the sky. */}
-      <fog attach="fog" args={["#1a2440", 200, 800]} />
+          Sky + fog moved to DayNightController so they shift hue
+          with the time of day (and the controller is the single
+          owner of scene.background and scene.fog). */}
     </group>
   );
 }

@@ -13,7 +13,9 @@ import HUD from "./HUD";
 import NPCs from "./NPCs";
 import AmbientTraffic from "./AmbientTraffic";
 import BiomeRender from "./BiomeRender";
+import DayNightController from "./DayNightController";
 import { PerfMonitor, PerfOverlay } from "./PerfHUD";
+import { dayNightRuntime, type DayPhase } from "../shared/timeOfDay";
 
 const KEY_MAP = [
   { name: Controls.forward,      keys: ["ArrowUp",    "KeyW"] },
@@ -66,6 +68,30 @@ export default function GameScene({
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // World clock for the HUD chip. DayNightController writes to a
+  // module-level runtime ref every frame; we poll it once a second
+  // so the HUD only re-renders ~60 times per game-day instead of
+  // 60 times per real second.
+  const [clock, setClock] = useState<{ label: string; phase: DayPhase }>({
+    label: "--:--",
+    phase: "DAY",
+  });
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (!dayNightRuntime.ready) return;
+      setClock((prev) => {
+        if (
+          prev.label === dayNightRuntime.label &&
+          prev.phase === dayNightRuntime.phase
+        ) {
+          return prev;
+        }
+        return { label: dayNightRuntime.label, phase: dayNightRuntime.phase };
+      });
+    }, 1000);
+    return () => clearInterval(id);
+  }, []);
 
   // Shared map of NPC stumble entries. LocalPlayer writes when its
   // driven car hits a pedestrian; NPCs.tsx reads each frame to apply a
@@ -170,29 +196,14 @@ export default function GameScene({
           camera={{ fov: 75, near: 0.1, far: 1500, position: [0, 8, 15] }}
           style={{ width: "100%", height: "100%" }}
         >
-          {/* Global lighting — kept light to preserve the evening mood
-              while making the city readable. Only ONE shadow-casting
-              light to keep performance steady on Replit. Shadow camera
-              expanded to ±300 so the central city + immediate biome
-              ring still cast shadows; far biomes fall outside but they
-              are foggy at that distance anyway. */}
-          <hemisphereLight
-            args={["#aabbdd", "#242838", 0.55]}
-          />
-          <directionalLight
-            position={[40, 60, 30]}
-            intensity={0.55}
-            color="#ffe5c8"
-            castShadow
-            shadow-mapSize={[1024, 1024]}
-            shadow-camera-left={-300}
-            shadow-camera-right={300}
-            shadow-camera-top={300}
-            shadow-camera-bottom={-300}
-            shadow-camera-near={0.5}
-            shadow-camera-far={500}
-          />
-          <ambientLight intensity={0.18} color="#1a2240" />
+          {/* Global lighting + sky + fog + sun/moon — owned by the
+              DayNightController, which keeps exactly one shadow-
+              casting directional light (sun by day, moon by night)
+              and writes a runtime snapshot the lamps + point lights
+              + HUD ticker all read from. The previous static
+              hemi/dir/ambient lights and CityMap's static skybox/
+              fog have moved into this single component. */}
+          <DayNightController />
 
           <CityMap />
           <BiomeRender />
@@ -264,6 +275,8 @@ export default function GameScene({
         playerPositionX={uiState.px}
         playerPositionZ={uiState.pz}
         connected={connected}
+        clockLabel={clock.label}
+        clockPhase={clock.phase}
       />
     </div>
   );

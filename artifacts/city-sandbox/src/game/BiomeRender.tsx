@@ -20,6 +20,7 @@ import {
 } from "../shared/cityData";
 import { getRoadElevationAt } from "../shared/elevation";
 import { terrainHeightAt } from "../shared/terrain";
+import { dayNightRuntime } from "../shared/timeOfDay";
 import type {
   RoadPath, StaticObstacle, RegionalLampData, TreeInstance,
   PeriCityHomestead,
@@ -781,24 +782,62 @@ const FOREST_LAMP_POOL = "#f0c074";
 const FOREST_LAMP_POLE = "#3a2b1c";
 
 function ForestLamps() {
+  // Three SHARED materials so the day/night useFrame only mutates 3
+  // refs total instead of one per lamp instance. Each lamp's three
+  // meshes attach the corresponding material via the `material` prop.
+  const headMat = useMemo(
+    () => new THREE.MeshBasicMaterial({ color: FOREST_LAMP_HEAD }),
+    [],
+  );
+  const poolMat = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        color: FOREST_LAMP_POOL,
+        transparent: true,
+        opacity: 0.16,
+      }),
+    [],
+  );
+  const poleMat = useMemo(
+    () => new THREE.MeshLambertMaterial({ color: FOREST_LAMP_POLE }),
+    [],
+  );
+  const baseHeadColor = useMemo(() => new THREE.Color(FOREST_LAMP_HEAD), []);
+  const FOREST_POOL_BASE_OPACITY = 0.16;
+
+  useFrame(() => {
+    const n = dayNightRuntime.nightFactor;
+    poolMat.opacity = FOREST_POOL_BASE_OPACITY * n;
+    headMat.color.copy(baseHeadColor).multiplyScalar(0.4 + 0.6 * n);
+  });
+
+  useEffect(() => {
+    return () => {
+      headMat.dispose();
+      poolMat.dispose();
+      poleMat.dispose();
+    };
+  }, [headMat, poolMat, poleMat]);
+
   return (
     <group>
       {VILLAGE_LAMPS.map((lamp, i) => (
         <group key={i} position={[lamp.x, 0, lamp.z]}>
           {/* Wooden pole — no shadow (small + far from camera). */}
-          <mesh position={[0, 2.4, 0]}>
+          <mesh position={[0, 2.4, 0]} material={poleMat}>
             <cylinderGeometry args={[0.09, 0.11, 4.8, 6]} />
-            <meshLambertMaterial color={FOREST_LAMP_POLE} />
           </mesh>
           {/* Emissive lantern head */}
-          <mesh position={[0, 5.0, 0]}>
+          <mesh position={[0, 5.0, 0]} material={headMat}>
             <boxGeometry args={[0.55, 0.5, 0.55]} />
-            <meshBasicMaterial color={FOREST_LAMP_HEAD} />
           </mesh>
           {/* Fake light pool on the ground */}
-          <mesh position={[0, 0.04, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <mesh
+            position={[0, 0.04, 0]}
+            rotation={[-Math.PI / 2, 0, 0]}
+            material={poolMat}
+          >
             <circleGeometry args={[4, 14]} />
-            <meshBasicMaterial color={FOREST_LAMP_POOL} transparent opacity={0.16} />
           </mesh>
         </group>
       ))}
@@ -899,6 +938,8 @@ function PoleLayer({ lamps, style }: InstancedLampLayerProps) {
 
 function HeadLayer({ lamps, style }: InstancedLampLayerProps) {
   const ref = useRef<THREE.InstancedMesh>(null);
+  const matRef = useRef<THREE.MeshBasicMaterial>(null);
+  const baseColor = useMemo(() => new THREE.Color(style.headColor), [style.headColor]);
   useEffect(() => {
     const mesh = ref.current;
     if (!mesh) return;
@@ -914,16 +955,24 @@ function HeadLayer({ lamps, style }: InstancedLampLayerProps) {
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
   }, [lamps, style]);
+  useFrame(() => {
+    const m = matRef.current;
+    if (!m) return;
+    // Dim the head color toward neutral when the sun is up so the
+    // emissive lamp head doesn't read as full bright in midday light.
+    m.color.copy(baseColor).multiplyScalar(0.4 + 0.6 * dayNightRuntime.nightFactor);
+  });
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, lamps.length]}>
       <boxGeometry args={style.headSize} />
-      <meshBasicMaterial color={style.headColor} />
+      <meshBasicMaterial ref={matRef} color={style.headColor} />
     </instancedMesh>
   );
 }
 
 function PoolLayer({ lamps, style }: InstancedLampLayerProps) {
   const ref = useRef<THREE.InstancedMesh>(null);
+  const matRef = useRef<THREE.MeshBasicMaterial>(null);
   useEffect(() => {
     const mesh = ref.current;
     if (!mesh) return;
@@ -943,10 +992,22 @@ function PoolLayer({ lamps, style }: InstancedLampLayerProps) {
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
   }, [lamps, style]);
+  useFrame(() => {
+    const m = matRef.current;
+    if (!m) return;
+    // Pool fades almost completely during the day — by night the
+    // disc reaches its full base opacity.
+    m.opacity = style.poolOpacity * dayNightRuntime.nightFactor;
+  });
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, lamps.length]}>
       <circleGeometry args={[style.poolRadius, 14]} />
-      <meshBasicMaterial color={style.poolColor} transparent opacity={style.poolOpacity} />
+      <meshBasicMaterial
+        ref={matRef}
+        color={style.poolColor}
+        transparent
+        opacity={style.poolOpacity}
+      />
     </instancedMesh>
   );
 }
@@ -1053,6 +1114,10 @@ function DynamicPointLights() {
     }
     // Small N (~25): a full sort each frame is fine.
     buf.sort((a, b) => a.d - b.d);
+    // Daylight kills lamp realism: gate every real point light by
+    // nightFactor so the budget collapses to zero during midday and
+    // the lights smoothly come back on at dusk.
+    const n = dayNightRuntime.nightFactor;
     for (let k = 0; k < MAX_ACTIVE_LIGHTS; k++) {
       const ref = refs.current[k];
       if (!ref) continue;
@@ -1064,7 +1129,7 @@ function DynamicPointLights() {
       const s = sources[sel.i];
       ref.position.set(s.x, s.y, s.z);
       ref.color.copy(s._color);
-      ref.intensity = s.intensity;
+      ref.intensity = s.intensity * n;
       ref.distance = s.distance;
       ref.decay = 2;
     }

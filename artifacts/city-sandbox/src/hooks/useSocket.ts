@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { io, Socket } from "socket.io-client";
 import type { GameState, PlayerState, VehicleState } from "../shared/types";
 import { INITIAL_VEHICLES } from "../shared/cityData";
+import { setServerTimeOffset } from "../shared/timeOfDay";
 
 export function useSocket(username: string) {
   const socketRef = useRef<Socket | null>(null);
@@ -35,7 +36,14 @@ export function useSocket(username: string) {
       setConnected(false);
     });
 
-    socket.on("gameState", (data: { myId: string; players: Record<string, PlayerState>; vehicles: Record<string, VehicleState> }) => {
+    socket.on("gameState", (data: { myId: string; serverNow?: number; players: Record<string, PlayerState>; vehicles: Record<string, VehicleState> }) => {
+      // Capture clock offset BEFORE setting state so the very first
+      // useFrame in DayNightController reads a correct world time.
+      // serverNow is optional in case an older server is talking to a
+      // newer client; offset just stays at 0 (local time).
+      if (typeof data.serverNow === "number") {
+        setServerTimeOffset(data.serverNow - Date.now());
+      }
       setMyId(data.myId);
       setGameState({ players: data.players, vehicles: data.vehicles });
       setPlayerCount(Object.keys(data.players).length);

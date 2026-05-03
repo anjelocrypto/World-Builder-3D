@@ -106,6 +106,16 @@ Express 5 REST API + Socket.io game server.
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
 - `pnpm --filter @workspace/api-server run dev` — run API server locally
 
+## Day/Night Cycle
+
+- One in-game day = 2 real hours (`DAY_LENGTH_MS = 7_200_000` in `artifacts/city-sandbox/src/shared/timeOfDay.ts`).
+- Server emits `serverNow` in each `gameState`; clients compute a `serverOffsetMs` so all players see the same world time.
+- `DayNightController` (mounted in `GameScene`) owns scene background, fog, hemi/dir/ambient lights, and the sun & moon meshes. Exactly one shadow-casting directional light is reused — retinted between sun and moon, never added/removed.
+- Lamps (street, forest, regional pool/head, junction reals) read `dayNightRuntime.nightFactor` in `useFrame` and brighten at night, fade by day.
+- `DynamicPointLights` keeps its ≤8 active-light budget; per-light intensity is multiplied by `nightFactor`.
+- HUD renders a `HH:MM` clock + phase chip (DAWN / DAY / SUNSET / NIGHT), updated 1Hz.
+- First frame logs: `dayNight OK: cycleMs=..., clock=..., phase=..., sunY=..., moonY=..., nightFactor=..., activePointLights<=8`.
+
 ## Game Controls
 
 - **WASD** — Move / Drive
