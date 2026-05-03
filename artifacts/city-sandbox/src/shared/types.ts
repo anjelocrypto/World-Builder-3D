@@ -1,3 +1,22 @@
+// =============================================================
+// Character animation
+// -------------------------------------------------------------
+// Authoritative union of animation/action states a character can
+// be in. Both client (resolveAnimState) and server (whitelist
+// validation in gameServer.ts) MUST agree on this set. When adding
+// a new state here, also add it to the server's VALID_ANIM_STATES
+// guard or the new value will be silently dropped on the wire.
+// =============================================================
+export type PlayerAnimState =
+  | "idle"
+  | "walk"
+  | "run"
+  | "jump"
+  | "fall"
+  | "attack_light"
+  | "attack_heavy"
+  | "driving";
+
 export interface PlayerState {
   id: string;
   username: string;
@@ -9,6 +28,25 @@ export interface PlayerState {
   vehicleId: string | null;
   health: number;
   isRunning: boolean;
+  // ---------- Character animation (optional for back-compat) ----------
+  // All four are nullable/optional so an older client snapshot that
+  // pre-dates the animation system still parses cleanly. Renderers
+  // default missing values to "idle" / 0 / null at the read site.
+  animState?: PlayerAnimState;
+  /** Monotonic per-player counter; bump = "play one attack swing". */
+  attackSeq?: number;
+  /**
+   * Which attack kind the latest attackSeq increment represents. Bound
+   * to the seq event so remote replay picks the correct clip duration
+   * even if animState has already transitioned (latency / packet loss).
+   */
+  attackKind?: "light" | "heavy" | null;
+  /** ms timestamp of the last attack trigger (server wall clock). */
+  attackStartedAt?: number | null;
+  /** Whether the player is touching the ground this tick. */
+  isGrounded?: boolean;
+  /** Horizontal speed in m/s, used by remote renderers for blends. */
+  moveSpeed?: number;
 }
 
 export type VehicleVariant = "sedan" | "van" | "taxi" | "compact";

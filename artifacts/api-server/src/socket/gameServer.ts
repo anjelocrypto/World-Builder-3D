@@ -9,6 +9,37 @@ import { INITIAL_VEHICLES, SPAWN_POINTS, WORLD_HALF } from "./cityData";
 const clampWorld = (v: number, margin = 0): number =>
   Math.min(WORLD_HALF - margin, Math.max(-WORLD_HALF + margin, v));
 
+// Authoritative whitelist of animation states. Mirrors the
+// `PlayerAnimState` union in the city-sandbox shared types. If a new
+// state is added there, it must also be added here or the server
+// will scrub it from incoming playerUpdate packets.
+const VALID_ANIM_STATES = new Set<string>([
+  "idle",
+  "walk",
+  "run",
+  "jump",
+  "fall",
+  "attack_light",
+  "attack_heavy",
+  "driving",
+]);
+type PlayerAnimState =
+  | "idle"
+  | "walk"
+  | "run"
+  | "jump"
+  | "fall"
+  | "attack_light"
+  | "attack_heavy"
+  | "driving";
+
+// Hard cap on how much attackSeq may advance in a single packet.
+// A fair client increments by exactly 1 per attack trigger; this
+// bound keeps a hacked client from inflating the counter wildly
+// (which would force every other client to re-trigger their attack
+// replay logic on every tick).
+const ATTACK_SEQ_MAX_STEP = 5;
+
 interface PlayerState {
   id: string;
   username: string;
@@ -20,6 +51,12 @@ interface PlayerState {
   vehicleId: string | null;
   health: number;
   isRunning: boolean;
+  animState: PlayerAnimState;
+  attackSeq: number;
+  attackKind: "light" | "heavy" | null;
+  attackStartedAt: number | null;
+  isGrounded: boolean;
+  moveSpeed: number;
 }
 
 interface VehicleState {
@@ -79,6 +116,12 @@ export function setupGameServer(httpServer: HttpServer) {
         vehicleId: null,
         health: 100,
         isRunning: false,
+        animState: "idle",
+        attackSeq: 0,
+        attackKind: null,
+        attackStartedAt: null,
+        isGrounded: true,
+        moveSpeed: 0,
       };
       players.set(socket.id, player);
 
@@ -118,6 +161,60 @@ export function setupGameServer(httpServer: HttpServer) {
       // the 1000x1000 map.
       if (typeof data.x === "number") data.x = clampWorld(data.x, 1);
       if (typeof data.z === "number") data.z = clampWorld(data.z, 1);
+
+      // ---------- Animation / attack field validation ----------
+      // animState: must be a string from the whitelist. Anything else
+      // (number, null, object, unknown string) is scrubbed so the
+      // spread below leaves the previous server-stored value intact.
+      if (data.animState !== undefined) {
+        if (
+          typeof data.animState !== "string" ||
+          !VALID_ANIM_STATES.has(data.animState)
+        ) {
+          delete data.animState;
+        }
+      }
+      // attackKind: must be "light" | "heavy" | null. Anything else
+      // is scrubbed (previous value retained).
+      if (
+        data.attackKind !== undefined &&
+        data.attackKind !== null &&
+        data.attackKind !== "light" &&
+        data.attackKind !== "heavy"
+      ) {
+        delete data.attackKind;
+      }
+      // attackSeq: monotonic, bounded growth per packet, integer-only.
+      if (typeof data.attackSeq === "number" && Number.isFinite(data.attackSeq)) {
+        const next = Math.floor(data.attackSeq);
+        const floor = player.attackSeq;
+        const ceil = player.attackSeq + ATTACK_SEQ_MAX_STEP;
+        data.attackSeq = Math.max(floor, Math.min(ceil, next));
+      } else if (data.attackSeq !== undefined) {
+        delete data.attackSeq;
+      }
+      // attackStartedAt: number | null only.
+      if (
+        data.attackStartedAt !== undefined &&
+        data.attackStartedAt !== null &&
+        (typeof data.attackStartedAt !== "number" ||
+          !Number.isFinite(data.attackStartedAt))
+      ) {
+        delete data.attackStartedAt;
+      }
+      // isGrounded: boolean.
+      if (
+        data.isGrounded !== undefined &&
+        typeof data.isGrounded !== "boolean"
+      ) {
+        delete data.isGrounded;
+      }
+      // moveSpeed: non-negative bounded number.
+      if (typeof data.moveSpeed === "number" && Number.isFinite(data.moveSpeed)) {
+        data.moveSpeed = Math.max(0, Math.min(50, data.moveSpeed));
+      } else if (data.moveSpeed !== undefined) {
+        delete data.moveSpeed;
+      }
 
       const updated: PlayerState = { ...player, ...data, id: socket.id };
       players.set(socket.id, updated);

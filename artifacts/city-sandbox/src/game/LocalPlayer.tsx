@@ -33,6 +33,14 @@ import {
   type NpcStumbleMap,
 } from "../shared/collision";
 import { CarVisual } from "./VehicleObject";
+import CharacterAvatar, {
+  type CharacterRuntime,
+} from "./character/CharacterAvatar";
+import {
+  resolveAnimState,
+  ATTACK_LIGHT_COOLDOWN_MS,
+  ATTACK_HEAVY_COOLDOWN_MS,
+} from "./character/characterState";
 
 export enum Controls {
   forward = "forward",
@@ -42,6 +50,8 @@ export enum Controls {
   jump = "jump",
   run = "run",
   interact = "interact",
+  attackLight = "attackLight",
+  attackHeavy = "attackHeavy",
 }
 
 // Module-level scratch reused by updateCamera every frame. Avoids a
@@ -117,8 +127,31 @@ export default function LocalPlayer({
   const playerRotY = useRef(0);
   const cameraYaw = useRef(0);
   const cameraPitch = useRef(0.35);
-  const meshRef = useRef<THREE.Mesh>(null!);
-  const headRef = useRef<THREE.Mesh>(null!);
+  // Character avatar — root group sits at feet level (pos.y - half
+  // height) and is transformed every frame in updatePlayer /
+  // updateVehicle. PlaceholderCharacter reads its dynamic state via
+  // avatarRuntimeRef so animState changes don't force React re-renders.
+  const avatarGroupRef = useRef<THREE.Group>(null!);
+  const avatarRuntimeRef = useRef<CharacterRuntime>({
+    animState: "idle",
+    speed: 0,
+    attackSeq: 0,
+    attackKind: null,
+    attackStartedAt: null,
+  });
+
+  // Combat. attackSeq is a monotonic counter that the server clamps
+  // upward; bumping it = "play one attack swing". attackKind +
+  // attackStartedAt feed resolveAnimState. Cooldowns are tracked
+  // per-kind so a heavy swing doesn't lock out a follow-up light jab.
+  // prev*Key refs are for rising-edge keyboard detection.
+  const attackSeqRef = useRef(0);
+  const attackStartedAtRef = useRef<number | null>(null);
+  const attackKindRef = useRef<"light" | "heavy" | null>(null);
+  const lastLightAtRef = useRef(0);
+  const lastHeavyAtRef = useRef(0);
+  const prevAttackLightKey = useRef(false);
+  const prevAttackHeavyKey = useRef(false);
 
   // Vehicle state
   const inVehicle = useRef(false);
@@ -179,9 +212,27 @@ export default function LocalPlayer({
     };
     document.addEventListener("mousemove", onMouseMove);
 
+    // Combat: Mouse0 = light attack, Mouse2 = heavy. We listen on the
+    // canvas (not document) so clicks on HUD overlays don't punch. The
+    // contextmenu suppression keeps the browser right-click menu from
+    // popping up over the game when binding heavy to Mouse2. tryAttack
+    // closes over refs only, so the listener captured at mount stays
+    // valid for the life of the component.
+    const onMouseDown = (e: MouseEvent) => {
+      if (e.button === 0) tryAttack("light");
+      else if (e.button === 2) tryAttack("heavy");
+    };
+    const onContextMenu = (e: MouseEvent) => {
+      e.preventDefault();
+    };
+    canvas.addEventListener("mousedown", onMouseDown);
+    canvas.addEventListener("contextmenu", onContextMenu);
+
     return () => {
       canvas.removeEventListener("click", onClick);
       document.removeEventListener("mousemove", onMouseMove);
+      canvas.removeEventListener("mousedown", onMouseDown);
+      canvas.removeEventListener("contextmenu", onContextMenu);
     };
   }, [gl]);
 
@@ -193,6 +244,17 @@ export default function LocalPlayer({
     // Cooldowns
     if (interactCooldown.current > 0) interactCooldown.current -= dt;
     if (damageCooldown.current > 0) damageCooldown.current -= dt;
+
+    // Attack key edge detection (rising-edge so holding F doesn't
+    // spam attacks; mouse buttons are handled in the pointer-lock
+    // useEffect via onMouseDown). tryAttack itself re-checks inVehicle
+    // and the per-kind cooldown.
+    const wantLight = keys.attackLight;
+    const wantHeavy = keys.attackHeavy;
+    if (wantLight && !prevAttackLightKey.current) tryAttack("light");
+    if (wantHeavy && !prevAttackHeavyKey.current) tryAttack("heavy");
+    prevAttackLightKey.current = wantLight;
+    prevAttackHeavyKey.current = wantHeavy;
 
     if (inVehicle.current && drivingVehicleId.current) {
       updateVehicle(dt, keys, now);
@@ -322,6 +384,25 @@ export default function LocalPlayer({
     if (damageCooldown.current > 0) return;
     health.current = Math.max(0, health.current - amount);
     damageCooldown.current = DAMAGE_COOLDOWN_MS / 1000;
+  }
+
+  // Trigger a single attack swing. Bumps attackSeq so the network
+  // replicates the swing exactly once per kind, even if the previous
+  // packet hasn't been ack'd yet. Gated by per-kind cooldown and by
+  // not being inside a vehicle.
+  function tryAttack(kind: "light" | "heavy") {
+    if (inVehicle.current) return;
+    const tNow = Date.now();
+    // Per-kind cooldown: a recent heavy doesn't gate a fresh light,
+    // and vice versa. Each kind has its own timer.
+    const lastRef = kind === "heavy" ? lastHeavyAtRef : lastLightAtRef;
+    const cd =
+      kind === "heavy" ? ATTACK_HEAVY_COOLDOWN_MS : ATTACK_LIGHT_COOLDOWN_MS;
+    if (tNow - lastRef.current < cd) return;
+    lastRef.current = tNow;
+    attackSeqRef.current += 1;
+    attackStartedAtRef.current = tNow;
+    attackKindRef.current = kind;
   }
 
   function updatePlayer(
@@ -502,20 +583,35 @@ export default function LocalPlayer({
       }
     }
 
-    // Update meshes (visible only when not driving)
-    if (meshRef.current) {
-      meshRef.current.position.copy(pos.current);
-      meshRef.current.position.y = pos.current.y - PLAYER_HEIGHT / 2 + 0.6;
-      meshRef.current.rotation.y = playerRotY.current;
-      meshRef.current.visible = true;
-    }
-    if (headRef.current) {
-      headRef.current.position.set(
+    // ===== Character animation runtime + avatar transform =====
+    // Compute the per-frame animation state, push it (with derived
+    // speed and current attack fields) into the avatar runtime that
+    // PlaceholderCharacter reads each frame, and place the avatar
+    // group at the player's feet (root y = pos.y - PLAYER_HEIGHT/2).
+    const horizSpeed = Math.hypot(vel.current.x, vel.current.z);
+    const animState = resolveAnimState({
+      inVehicle: false,
+      now,
+      attackStartedAt: attackStartedAtRef.current,
+      attackKind: attackKindRef.current,
+      grounded: isGrounded.current,
+      velY: vel.current.y,
+      horizSpeed,
+    });
+    const runtime = avatarRuntimeRef.current;
+    runtime.animState = animState;
+    runtime.speed = horizSpeed;
+    runtime.attackSeq = attackSeqRef.current;
+    runtime.attackKind = attackKindRef.current;
+    runtime.attackStartedAt = attackStartedAtRef.current;
+    if (avatarGroupRef.current) {
+      avatarGroupRef.current.position.set(
         pos.current.x,
-        pos.current.y + 0.45,
+        pos.current.y - PLAYER_HEIGHT / 2,
         pos.current.z,
       );
-      headRef.current.visible = true;
+      avatarGroupRef.current.rotation.y = playerRotY.current;
+      avatarGroupRef.current.visible = true;
     }
 
     // Camera
@@ -544,6 +640,12 @@ export default function LocalPlayer({
         vehicleId: null,
         health: health.current,
         isRunning: keys.run,
+        animState,
+        attackSeq: attackSeqRef.current,
+        attackKind: attackKindRef.current,
+        attackStartedAt: attackStartedAtRef.current,
+        isGrounded: isGrounded.current,
+        moveSpeed: horizSpeed,
       });
     }
   }
@@ -703,10 +805,17 @@ export default function LocalPlayer({
     pos.current.copy(vehiclePos.current);
     pos.current.y += 0.5;
 
-    // Hide local body & head while driving (remote players already hide
-    // when isInVehicle on their snapshot).
-    if (meshRef.current) meshRef.current.visible = false;
-    if (headRef.current) headRef.current.visible = false;
+    // Hide local avatar while driving (remote players already hide
+    // when isInVehicle on their snapshot). Push driving state to the
+    // runtime so the (hidden) PlaceholderCharacter holds a neutral
+    // pose if it's ever made visible mid-tick.
+    if (avatarGroupRef.current) avatarGroupRef.current.visible = false;
+    const drivingRuntime = avatarRuntimeRef.current;
+    drivingRuntime.animState = "driving";
+    drivingRuntime.speed = 0;
+    drivingRuntime.attackSeq = attackSeqRef.current;
+    drivingRuntime.attackKind = attackKindRef.current;
+    drivingRuntime.attackStartedAt = attackStartedAtRef.current;
 
     // Camera follows vehicle
     updateCamera(vehiclePos.current);
@@ -732,6 +841,12 @@ export default function LocalPlayer({
         vehicleId: vId,
         health: health.current,
         isRunning: false,
+        animState: "driving",
+        attackSeq: attackSeqRef.current,
+        attackKind: attackKindRef.current,
+        attackStartedAt: attackStartedAtRef.current,
+        isGrounded: true,
+        moveSpeed: 0,
       });
       emitVehicleUpdate({
         id: vId,
@@ -912,24 +1027,20 @@ export default function LocalPlayer({
 
   return (
     <group>
-      {/* Player body */}
-      <mesh
-        ref={meshRef}
-        position={[pos.current.x, pos.current.y, pos.current.z]}
-        castShadow
+      {/* Local player avatar. Root sits at feet level — PlaceholderCharacter
+          is authored with feet at local-y=0 — so we initialise the group at
+          (pos.x, pos.y - PLAYER_HEIGHT/2, pos.z) and let updatePlayer /
+          updateVehicle move/hide it each frame. */}
+      <group
+        ref={avatarGroupRef}
+        position={[
+          pos.current.x,
+          pos.current.y - PLAYER_HEIGHT / 2,
+          pos.current.z,
+        ]}
       >
-        <boxGeometry args={[0.6, PLAYER_HEIGHT, 0.4]} />
-        <meshLambertMaterial color="#3498db" />
-      </mesh>
-      {/* Player head */}
-      <mesh
-        ref={headRef}
-        position={[pos.current.x, pos.current.y + 0.45, pos.current.z]}
-        castShadow
-      >
-        <boxGeometry args={[0.45, 0.45, 0.45]} />
-        <meshLambertMaterial color="#f5cba7" />
-      </mesh>
+        <CharacterAvatar runtimeRef={avatarRuntimeRef} isLocal />
+      </group>
       {/* Driving vehicle visual — uses CarVisual so taxi/van/compact
           look correct while we drive them. */}
       {drivingVehicleState && (

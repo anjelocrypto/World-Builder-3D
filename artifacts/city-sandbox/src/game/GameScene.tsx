@@ -16,13 +16,18 @@ import BiomeRender from "./BiomeRender";
 import { PerfMonitor, PerfOverlay } from "./PerfHUD";
 
 const KEY_MAP = [
-  { name: Controls.forward,  keys: ["ArrowUp",    "KeyW"] },
-  { name: Controls.back,     keys: ["ArrowDown",  "KeyS"] },
-  { name: Controls.left,     keys: ["ArrowLeft",  "KeyA"] },
-  { name: Controls.right,    keys: ["ArrowRight", "KeyD"] },
-  { name: Controls.jump,     keys: ["Space"] },
-  { name: Controls.run,      keys: ["ShiftLeft", "ShiftRight"] },
-  { name: Controls.interact, keys: ["KeyE"] },
+  { name: Controls.forward,      keys: ["ArrowUp",    "KeyW"] },
+  { name: Controls.back,         keys: ["ArrowDown",  "KeyS"] },
+  { name: Controls.left,         keys: ["ArrowLeft",  "KeyA"] },
+  { name: Controls.right,        keys: ["ArrowRight", "KeyD"] },
+  { name: Controls.jump,         keys: ["Space"] },
+  { name: Controls.run,          keys: ["ShiftLeft", "ShiftRight"] },
+  { name: Controls.interact,     keys: ["KeyE"] },
+  // Combat. KeyboardControls only handles keys; mouse buttons (Mouse0
+  // for light, Mouse2 for heavy) are listened to separately inside
+  // LocalPlayer's pointer-lock effect.
+  { name: Controls.attackLight,  keys: ["KeyF"] },
+  { name: Controls.attackHeavy,  keys: ["KeyR"] },
 ];
 
 interface GameSceneProps {
