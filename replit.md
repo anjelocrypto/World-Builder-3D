@@ -2,163 +2,91 @@
 
 ## Overview
 
-pnpm workspace monorepo using TypeScript. Each package manages its own dependencies.
+This project is a pnpm workspace monorepo using TypeScript, designed for a browser-based 3D multiplayer open-world sandbox game called "City Sandbox". The game features a large, detailed 3D world with a central city, various biomes (mountain, forest, suburban/industrial, fields), and a complex road network. Players can explore the world, drive cars, and interact with a multiplayer environment. The project aims to deliver a rich, immersive, and performant multiplayer experience.
 
-## Stack
+The system includes a robust API server with real-time capabilities via Socket.io, a PostgreSQL database with Drizzle ORM, and a client-side built with React, Three.js, and React Three Fiber. The core vision is to create a dynamic and expansive virtual world where players can engage in various activities within a meticulously crafted environment.
 
-- **Monorepo tool**: pnpm workspaces
-- **Node.js version**: 24
-- **Package manager**: pnpm
-- **TypeScript version**: 5.9
-- **API framework**: Express 5
-- **Realtime**: Socket.io (multiplayer game server at `/api/socket.io`)
-- **Database**: PostgreSQL + Drizzle ORM (provisioned, schema empty for now)
-- **Validation**: Zod (`zod/v4`), `drizzle-zod`
-- **API codegen**: Orval (from OpenAPI spec)
-- **Build**: esbuild (CJS bundle)
+## User Preferences
 
-## Artifacts
+- I prefer simple language.
+- I like functional programming.
+- I want iterative development.
+- Ask before making major changes.
+- Provide detailed explanations for complex features.
+- Do not make changes to folder `artifacts/city-sandbox/public/models/`.
+- Do not make changes to file `artifacts/city-sandbox/src/shared/cityData.ts` without explicit confirmation.
+- Ensure all new features are accompanied by comprehensive validation logic.
 
-### City Sandbox (`artifacts/city-sandbox`) — Preview path: `/`
-Browser-based 3D multiplayer open-world sandbox game.
+## System Architecture
 
-**Tech:** React + Vite + TypeScript + Three.js + @react-three/fiber + @react-three/drei + Socket.io client
+The project is structured as a pnpm workspace monorepo.
 
-**World layout (1000×1000):**
-- `WORLD_HALF=500`, `WORLD_SIZE=1000`, `CITY_HALF=100` define the global bounds and central-city radius (`shared/cityData.ts`).
-- Five biomes: **central city** (|x|,|z|<100), **mountain** (north, z=-150..-500, switchback dirt road + observatory), **bridge + forest** (south, z=130..500, stone bridge across a ravine into a coniferous forest with cabins, ranger station, gas stop), **east** (suburban/industrial — warehouses + water tower), **west** (fields + depots).
-- 43 `REGIONAL_ROADS` polylines (typed `asphalt | bridge | forest | mountain | dirt`) connect biomes to the central grid. The road network is laid out in tiers: **arterial** (`outer-loop` w=14 closed regional ring at ~ ±460 / z = ±200/±380, plus `inner-city-ring` w=12 closed quad at ±100, plus `bridge`/`spine-*` w≥12), **collector** (`east-service`, `west-utility`, `mountain-switchback`, `ridge-east` joining the switchbacks to the outer-loop NE corner), and **local** (forest spurs and driveways, `forest-east-connector` / `forest-west-connector` from the village down to the outer-loop south leg). Endpoints are designed to share graph nodes (e.g. `outer-loop` (460,30) ↔ `east-service` end, (-460,0) ↔ `west-utility` end, (0,200) ↔ `forest-main`). A dev-only road-graph validator builds a snap-merged BFS graph (with city N-S/E-W crossings split into junction nodes) and prints `roadNetwork OK: components=N, deadEndsByKind={…}, arterial=Xm, collector=Ym, local=Zm, trafficWaypointsOnRoad=A/B, isolatedRoads=K, outerLoopExists=true, cityRingExists=true`.
-- 37 `STATIC_OBSTACLES` (AABBs for cliff walls, large rocks, bridge rails, cabins, gas stop, ranger station, observatory, warehouses, water tower base, depots, tree trunks) **plus 12 wooden_house + 60 yard_fence AABBs** for the peri-city homestead belt.
-- **Peri-city homestead belt** (`PERI_CITY_HOMESTEADS` in `cityData.ts`, rendered by `PeriCityHomesteads` in `BiomeRender.tsx`): 12 small wooden homesteads in 4 cardinal clusters (N/S/E/W, 3 each) sitting in the `110..140` belt outside `inner-city-ring` and inside the tree belt. Each homestead has a yard rectangle (yardW × yardD), a centred wooden house (7×6 AABB), a low plank fence around the yard with a 4m gate on `gateSide`, and a 4m-wide dirt driveway in `REGIONAL_ROADS` (`drv-hs-*`) tapping into a matching intermediate vertex on `inner-city-ring` (collinear inserts preserve the rendered ring). Houses + fences are appended to `STATIC_OBSTACLES` so the existing collision pipeline blocks them; yards themselves are non-collidable cosmetic ground patches with a slack-1.5m tree-rejection rule. Validator: `periCityHomesteads OK: houses=12, yards=12, fences=60, driveways=12, treeClear=420/420, roadClear=12/12, obstacleClear=12/12, drivewayConnect=12/12, sides={north:3,east:3,south:3,west:3}`.
-- 209 instanced forest trees (`FOREST_TREES`) + 420 peri-city belt trees (`CITY_EDGE_TREES`) + 60 forest rocks + 120 mountain rocks, all generated by seeded PRNGs so every client sees the same world.
-- **Mountain ring** (`shared/terrain.ts` + `shared/elevation.ts` + `ROAD_ELEVATION_PROFILES` / `MOUNTAIN_ROAD_IDS` / `MOUNTAIN_MASSIFS` / `MOUNTAIN_REAL_LIGHTS` in `cityData.ts`): 8 mountain roads (`mountain-switchbacks`, `mountain-lookout`, `ridge-east`, `ridge-east-high`, `ridge-west`, `summit-pass`, plus the east/west foothill ramparts `ridge-east-far` and `ridge-west-far`) carry per-vertex elevation profiles (Y up to 22m at the observatory summit). **Single source of truth = `terrainHeightAt(x, z)` in `shared/terrain.ts`**, which combines (a) road support — projection onto the nearest mountain road, lerped profile Y, smoothstepping to 0 over a 30m skirt past the carriageway edge — and (b) massif domes — each `MOUNTAIN_MASSIFS` entry contributes a smooth dome of radius `r` and peak `h`, blended via `max()` so overlapping domes form a continuous ridge. `getRoadElevationAt` and `getVehicleGroundY` in `elevation.ts` are thin wrappers around `terrainHeightAt`, so the player car/walking ground/safe-exit Y, the 5 ambient mountain cars, the road quads, the 37 mountain shoulder lamps, the cliff/guardrail obstacles, and the visible heightfield mesh all read from the *same* function — guaranteeing nothing floats. **Terrain renderer**: `MountainTerrain` in `BiomeRender.tsx` is a single `PlaneGeometry` (1000×1000, 200×200 segments ≈ 40k verts) with each vertex displaced by `terrainHeightAt`, sat 0.02m below the flat BiomeGround tints so flat parts hide and only the elevated terrain pokes above (no more cone "pyramid" mountains; the previous flat north plane + east/west/south foothill strips are gone — their visible mountain Y now comes from the heightfield). 25 `MOUNTAIN_MASSIFS` are positioned in 4 ridge bands (9 north arc spanning x=±470 z=-485..-498, 6 east rampart at x=498, 6 west mirror, 4 south wall) so the city is mountain-walled on N/E/W with the south kept road-free for the forest village. `RegionalRoadSegment` builds an explicit (right, fwd, up) Matrix4 basis so each road quad sits at the segment midY tilted along its 3D tangent. Parked mountain cars car-14..17 carry pre-computed Y values matching the road profile (mirrored in `artifacts/api-server/src/socket/cityData.ts`). Validator: `mountainRing OK: roads=8, profiledVerts=36, maxGrade=13.3%, summitY=22m, endpointMaxGap=0.00m, gradeViolations=0, endpointViolations=0, traffic=22/22, lamps=37, realLights=6, massifsClear=25/25, roadSides={n:4,e:2,s:0,w:2}, massifSides={n:7,e:7,s:4,w:7}, parkedExits=4/4, obstacleSlope=15/15, terrainVsRoad=36/36, lampTerrain=37/37, trafficTerrain=22/22` — the last three are critical new checks that catch any future regression where a massif dome pokes above a road profile (which would visually float the road).
-- **Peri-city forest belt** (`CITY_EDGE_TREES` in `cityData.ts`, rendered via the reusable `TreeInstances` component in `BiomeRender.tsx`): ≈420 instanced trees in the square annulus `125 ≤ max(|x|, |z|) ≤ 230` around the central city. Rejection rules keep trees off every regional road (clearance = `halfWidth + 6m`), out of the city core (`|x|,|z| ≤ CITY_HALF + 15`), and clear of buildings, static obstacles, parked vehicles, lamps, parking spots, and checkpoints. Includes structured roadside rows along the outside of `inner-city-ring`, `spine-north`, `spine-south`, and the city-end of `east-service` / `west-utility`. Density is biased toward corners (scatter near a cardinal axis is thinned ~40% so road exits read as openings). Validator: `cityForestBelt OK: N trees, north=A south=B east=C west=D, roadClear=N/N, buildingClear=N/N`.
+**Core Technologies:**
+- **Monorepo:** pnpm workspaces
+- **Node.js:** v24
+- **TypeScript:** v5.9
+- **API Framework:** Express 5
+- **Realtime:** Socket.io (for multiplayer game server)
+- **Database:** PostgreSQL with Drizzle ORM
+- **Validation:** Zod (`zod/v4`), `drizzle-zod`
+- **API Codegen:** Orval (from OpenAPI spec)
+- **Build Tool:** esbuild (CJS bundle)
+- **Frontend:** React, Vite, Three.js, @react-three/fiber, @react-three/drei, Socket.io client
 
-**Features:**
-- District-aware city core (5 districts × 12 blocks, **65 buildings** = 52 random + 8 hand-placed glass highrises 50–78m + 5 hand-placed landmarks 96–118m) with sidewalks, crosswalks, 90 streetlamps, 36 traffic lights, parking markings, props, ramps. New `Building` optional fields `tier` (`mid|high|landmark`), `glass`, `crownLight`, `neonSign`, `podium` drive the richer rendering for the upper tiers.
-- **Elevated rail loop** circling the central city in the empty 106..114 corridor outside `inner-city-ring`. `ELEVATED_RAIL_LOOP` is an octagonal closed polyline at radius 110 (chamfered 20m corners), `RAIL_DECK_HEIGHT=12`. `getRailPillars()` lazily samples one pillar every 22m and rejects any that lands inside a city or regional carriageway. **Train** = 3 cars deterministic via `Date.now()` against the loop's arc-length parameterization with a ~3s dwell at the station. `TRAIN_STATION` is "Central Loop Station" at (110, -65) on the east edge — 8×20 deck at y=12 with stairs back down to (102, -65). 4 **`SKYBRIDGES`** (north/south/east/west) span between corner highrises and pass over the city's inner roads at y=10. All rendered by `game/CentralRail.tsx`.
-- 28 parked vehicles spread across all biomes in 4 visual variants (sedan, van, taxi w/ rooftop sign, compact).
-- 12 ambient NPC pedestrians on sidewalk loops + 17 ambient AI cars on **6 traffic routes** (city loop, bridge-forest spine, mountain switchbacks, east service road, inner-city ring, outer regional loop) — all deterministic from `Date.now()`, client-only.
-- Third-person player controller (WASD, Shift, Space, E for vehicles, Mouse0/F = light attack, Mouse2/R = heavy attack), pointer-lock camera, drivable cars with speedometer.
-- **Character animation system** (`game/character/`): forward-compatible avatar rig built around a procedural placeholder so the game ships without a GLB. `characterState.ts` exports a pure `resolveAnimState({...})` state machine plus thresholds (WALK 0.5 m/s, RUN 7.0 m/s, light-attack 450ms / heavy-attack 750ms windows). `PlaceholderCharacter.tsx` renders six shared-geometry/material instanced boxes (body / head / 2 arms / 2 legs) and reads a mutable `CharacterRuntime` ref each frame so animState changes never trigger React re-renders. Punch one-shot is latched on **strict** `attackSeq > lastSeq` (lastSeq seeded from the runtime's current seq at mount, so a remote player who already attacked before you joined doesn't false-fire), and the duration is chosen from a **separately networked `attackKind`** ("light"|"heavy"|null) frozen at trigger time — so a heavy swing replays as heavy even if a late `attackState` packet arrives after the window closed. `CharacterAvatar.tsx` is a thin wrapper that adds the floating name label for non-local players and contains a commented stub for the future GLB swap. **Network contract** (`shared/types.ts` ↔ `artifacts/api-server/src/socket/gameServer.ts`): `PlayerState` carries optional `animState`, `attackSeq`, `attackKind`, `attackStartedAt`, `isGrounded`, `moveSpeed` (all optional → older snapshots remain back-compat; renderers default to `idle` / `0` / `null`). The server initialises every joiner to those defaults and `playerUpdate` validates each field — `animState` must be a string in `VALID_ANIM_STATES` (anything else, including non-strings, is `delete`d so the prior server value is preserved via spread); `attackKind` must be `"light"|"heavy"|null`; `attackSeq` is forced monotonic, integer, and bounded to a `+5`/packet rise (`ATTACK_SEQ_MAX_STEP`); `attackStartedAt` validated as `number|null`; `isGrounded` boolean; `moveSpeed` clamped `[0, 50]`. `LocalPlayer` keeps **per-kind cooldown timers** (`lastLightAtRef`, `lastHeavyAtRef`) so a recent heavy never gates a follow-up light jab and vice versa, edge-detects `attackLight`/`attackHeavy` keys, hooks pointer-lock to listen for canvas `mousedown` (Mouse0=light, Mouse2=heavy, contextmenu suppressed), and writes both the local runtime ref *and* the outbound emit payload from a single source. `RemotePlayer` lerps toward the latest snapshot, anchors the avatar group at `(state.x, state.y - 0.6, state.z)` so feet land at ground level, and falls back to a position-delta speed estimate if `moveSpeed` is missing.
-- Socket.io multiplayer: sync position/rotation/movement/vehicle state.
-- Collision: building AABB **plus** static-obstacle AABB checks for both walking and driving (`shared/collision.ts`: `playerHitsAnyObstacle`, `vehicleHitsAnyObstacle`).
-- 14 race checkpoints across 3 routes: city (5 gates), forest (5 gates), mountain (4 gates).
-- HUD with health, **world-scale minimap** (biome tints + all `REGIONAL_ROADS` polylines + city grid + checkpoints, player dot tracks full -500..500 range), speedometer, interaction prompt, player count.
-- Lobby: username + join.
+**UI/UX and Design:**
+- **World Layout:** A 1000x1000 unit world with five distinct biomes: central city, mountain, bridge/forest, east (suburban/industrial), and west (fields/depots).
+- **Road Network:** Hierarchical road system (arterial, collector, local) with 43 `REGIONAL_ROADS` polylines, validated for connectivity and integrity.
+- **City Core:** Features 65 buildings (random, hand-placed highrises, landmarks), sidewalks, crosswalks, streetlamps, traffic lights, and props.
+- **Peri-city Homesteads:** 12 wooden homesteads with yards, fences, and driveways, integrated with collision detection.
+- **Terrain:** Dynamic mountain terrain rendered using `PlaneGeometry` with vertex displacement based on `terrainHeightAt(x, z)` for realistic elevation, ensuring road profiles and objects are correctly grounded.
+- **Lighting:** Dynamic day/night cycle (`DAY_LENGTH_MS = 7_200_000`) influencing scene background, fog, and light intensity. Includes `hemisphereLight`, shadow-casting `directionalLight`, ambient light, and numerous instanced road lamps (`RegionalRoadLamps`) and real `pointLight`s at junctions and villages.
+- **Minimap:** Canvas-based world-scale minimap in HUD showing biomes, roads, city grid, checkpoints, and player position.
+- **Cinematic Menu:** A self-contained R3F `Canvas` in the lobby (`MenuWorldPreview.tsx`) provides a 3D world preview with a `MenuCameraRig` cycling through 5 pre-defined shots on a ~50s smoothstep-eased loop. Reuses `DayNightController`, `CityMap`, `BiomeRender`, `AmbientTraffic`, `NPCs`. Deliberately omits all multiplayer surface area (no `useSocket`, no `LocalPlayer`/`RemotePlayer`/`HUD`, no character GLBs). `App.tsx` lazy-loads `Game` via `React.lazy` so the gameplay module graph — and `AnimatedCharacter`'s module-scope `useGLTF.preload(...)` calls — never evaluate until JOIN WORLD is clicked. Menu Canvas passes `failIfMajorPerformanceCaveat: false` so headless / software-rendering chromiums fall back gracefully instead of throwing `Error creating WebGL context`. Lobby UI (`data-testid="input-username"`, `data-testid="button-join"`, `onJoin` validation) is unchanged; the form card sits over the canvas with a translucent blurred background and a dark radial vignette for legibility.
 
-**Lighting & fog:**
-- One `hemisphereLight` + one shadow-casting `directionalLight` + dim `ambientLight` in `GameScene.tsx`.
-- Camera `far=1500`, directional shadow camera ±300, far=500.
-- Fog `["#1a2440", 180, 700]`, skybox sphere r=850, ground plane 1100×1100. Plaza point lights kept.
-- **Regional road lighting** (`REGIONAL_ROAD_LAMPS` in `cityData.ts`, rendered by `RegionalRoadLamps` in `BiomeRender.tsx`): 240 lamps procedurally generated along the shoulder of every regional road. Style mapped from `RoadPath.type` (urban/bridge/rural/mountain) with per-style spacing (urban 42m both sides, bridge 32m both sides, rural 55m alternating, mountain 65m alternating). Driveway-class roads (`drv-*`, `*-spur`) get a single marker lamp. Renderer uses 3 `InstancedMesh` per style (pole + emissive head + transparent ground pool) — zero real lights per lamp. **15 regional/village real `pointLight`s** are the lighting added by this pass: 12 `JUNCTION_REAL_LIGHTS` at major junctions (inner-ring cardinals, bridge ends, outer-loop corners, east-service/outer-loop, west-utility/outer-loop, ridge-east/switchback) + 3 `VILLAGE_REAL_LIGHTS` at the south-forest village center. All are no-shadow, decay=2, distance≈32–38m. The full scene also retains the **4 plaza `pointLight`s** in `CityMap.tsx` (downtown corners) and the **1 local-only headlight `pointLight`** that the active driver carries on their vehicle, so total live point lights in scene ≈ 20 (15 regional/village + 4 plaza + 1 driver headlight). Validator prints `regionalRoadLighting OK: X lamps, Y real lights, coverage=A/B major samples` (Y counts only the regional/village lights this pass owns) and flags any lamp out-of-bounds, in-carriageway, off-shoulder, or on a static obstacle, plus per-sample coverage gaps for arterial/collector roads.
-- **Driveway/spur lighting via village coverage** (intentional): `gateway-spur`, `drv-cabin-e1`, `drv-cabin-e3`, and `drv-cabin-w1` produce *zero* `REGIONAL_ROAD_LAMPS` because their entrance marker lamp falls within the 8m dedup radius of an existing `VILLAGE_LAMPS` entry (e.g. `drv-cabin-e1` starts at village-loop vertex (25,365) which already has a village lamp). They are lit, just by the south-forest village's own lamp set rather than the regional generator. The other driveways (`drv-cabin-e2`, `drv-cabin-w2`, `drv-east-warehouse-a/b`, `drv-east-loading`, `drv-west-depot`, `forest-spur`, `trailhead-spur`) each get exactly one regional marker lamp at their entrance.
+**Technical Implementations & Features:**
+- **Multiplayer:** Socket.io for real-time player and vehicle state synchronization (position, rotation, movement, vehicle state). Server performs sanity checks (e.g., anti-teleport).
+- **Collision Detection:** AABB-based collision for walking and driving against buildings and static obstacles (`shared/collision.ts`).
+- **Character System:**
+    - Placeholder avatar rig with procedural geometry.
+    - `resolveAnimState` state machine for `idle`, `walk`, `run`, `fight1`, `fight2` animations.
+    - Networked `animState`, `attackSeq`, `attackKind`, `attackStartedAt`, `isGrounded`, `moveSpeed` for character synchronization.
+    - Local cooldown timers for attack types and a fight combo system.
+    - Future-proofed for GLB avatar integration.
+- **Vehicles:**
+    - Four drivable car variants (sedan, van, taxi, compact).
+    - `getVehicleGroundFrame` for 4-wheel ground sampling, providing `centerY`, `pitch`, `roll`.
+    - Slope-aware physics (`SLOPE_GRAVITY`) for realistic uphill/downhill driving.
+    - Procedural `CarVisual` renderer sharing geometries and materials for performance.
+    - Dedicated `CarVisual` component for rendering consistent visuals across all vehicle types (parked, remote, local, ambient).
+- **Ambient Elements:**
+    - 28 parked vehicles, 12 ambient NPC pedestrians, and 17 ambient AI cars following predefined routes, all deterministic from `Date.now()`.
+    - Instanced rendering for trees, rocks, and various obstacles for performance optimization.
+- **Elevated Rail Loop:** Octagonal rail loop circling the city with a train, station, and skybridges. Pillars are procedurally generated to avoid road intrusions.
+- **Game Controls:** Standard WASD movement, Shift for run, Space for jump, E for vehicle interaction, mouse for camera, Mouse0/F for light attack, Mouse2/R for heavy attack.
+- **Camera System:** Frame-rate-independent exponential damping for smooth chase/orbit camera transitions. Includes terrain clearance logic to prevent camera clipping and speed-aware framing.
 
-**Data layout (`src/shared/cityData.ts`):**
-- City data: `ROADS`, `DISTRICTS`, `blockDefs`, `BUILDINGS`, `INITIAL_VEHICLES`, `SPAWN_POINTS`, `CHECKPOINTS`, `RAMPS`, `STREET_LIGHTS`, `TRAFFIC_LIGHTS`, `PARKING_SPOTS`, `NPC_ROUTES`, `TRAFFIC_ROUTES`, `PROPS`, `VARIANT_DIMENSIONS`.
-- Biome data: `REGIONAL_ROADS`, `STATIC_OBSTACLES`, `FOREST_TREES`, `FOREST_ROCKS`, `MOUNTAIN_ROCKS`.
-- Dev-only validator runs on import and prints a single `world OK (1000x1000): …` info line; spawns/vehicles/checkpoints out of bounds or overlapping a building or static obstacle, or any traffic/regional-road waypoint outside `WORLD_HALF`, become console warnings. Adds a `centerCityUpgrade OK: buildings=N, towers=A, landmarks=B, railLoopClosed=true, railPillarsClear=P/P, stationClear=true, trainPathClear=S/S, roadIntrusions=0, skybridgeClearance=K/K` line that confirms the loop is closed, no pillar lands in any carriageway, the station footprint is off-road, the train's sampled path doesn't pierce any tall building, and every skybridge clears its under-road segment by ≥5m.
+**System Design Choices:**
+- **Deterministic World Elements:** Many elements like tree placement, rock placement, NPC routes, and ambient traffic are generated deterministically using seeded PRNGs or `Date.now()` to ensure consistent world state across clients without server-side computation.
+- **Data Synchronization:** Critical data like `SPAWN_POINTS` and `INITIAL_VEHICLES` are mirrored and kept in sync between client and server, with the server being authoritative.
+- **Performance Optimization:** Extensive use of `InstancedMesh` for rendering multiple similar objects (trees, rocks, lamps, buildings) and caching of geometries/materials for vehicles to minimize draw calls and memory usage.
+- **Validation:** Extensive world validation occurs on import and boot, checking for proper placement, clearance, and connectivity of roads, buildings, and environmental elements.
 
-**File map (city-sandbox `src/game/`):**
-- `CityMap.tsx` — central-city statics: skybox, ground, city roads, crosswalks, sidewalks, buildings, streetlamps, traffic lights, parking markings, props, ramps, fog, plaza point lights. Mounts `CentralRail` for the elevated loop / station / skybridges / train.
-- `CentralRail.tsx` — elevated rail deck + pillars, `TrainStation` (deck, canopy, stairs, emissive sign), `Skybridges` (glass tubes), `Train` (3 cars whose arc-length is recomputed every frame from `Date.now()` so all clients stay in sync without netcode).
-- `BiomeRender.tsx` — `RegionalRoads` (segment quads per polyline), `BiomeGround` (5 tinted planes), `ObstacleMesh` (12 obstacle kinds), instanced `ForestTrees` (trunk + canopy), `ForestRocks`, `MountainRocks`. All `InstancedMesh` components call `computeBoundingSphere()`/`computeBoundingBox()` after writing matrices so far instances aren't frustum/shadow culled.
-- `VehicleObject.tsx` — drivable car geometry; exports `CarVisual` reused by `AmbientTraffic`.
-- `NPCs.tsx` — one ambient pedestrian per `NPC_ROUTES` entry, deterministic from `Date.now()`.
-- `AmbientTraffic.tsx` — one cosmetic AI car per `TrafficRoute.cars` entry, deterministic from `Date.now()` + per-car phase.
-- `GameScene.tsx` — Canvas, lighting, mounts `CityMap` + `BiomeRender` + remote players, vehicles, checkpoint race, HUD.
-- `HUD.tsx` — minimap is canvas-based, `SCALE = width / WORLD_SIZE`, draws biome tints, regional roads, city grid, checkpoints, and the player dot at full world scale.
+## External Dependencies
 
-**Spawn / data sync (important):**
-- The central plaza around (0, 0) is building-free (the `cx=0,cz=0` block is omitted from `blockDefs`).
-- `SPAWN_POINTS` and `INITIAL_VEHICLES` MUST stay in sync between `src/shared/cityData.ts` and `artifacts/api-server/src/socket/cityData.ts` — the server is authoritative over position/driver but `variant` and `color` flow through to clients unchanged.
-- `LocalPlayer` uses the server's authoritative position (`initialSpawn` prop). All clamps now use `WORLD_HALF` (`±(WORLD_HALF - PLAYER_BODY_RADIUS)` walking, `±(WORLD_HALF - 7)` driving) instead of hard-coded `±95`/`±93`.
-- `GameScene` wraps the canvas in a `tabIndex=0` div and focuses on mount/click so the Replit preview iframe reliably receives keyboard events.
-
-**Spawn handling (important):**
-- The central plaza around (0, 0) is intentionally building-free (the `cx=0,cz=0` block is omitted from `blockDefs`).
-- `SPAWN_POINTS` in `src/shared/cityData.ts` and `artifacts/api-server/src/socket/cityData.ts` MUST stay in sync — the server picks one for each joining player and sends it back in the `gameState` payload.
-- `INITIAL_VEHICLES` is also mirrored: the server is authoritative over each car's position/driver, but `variant` and `color` are visual fields that flow through to the client unchanged. `VehicleState.variant` is optional on both sides for back-compat.
-- `LocalPlayer` uses the server's authoritative position (`initialSpawn` prop derived from `gameState.players[myId]`) as its initial spawn. The deterministic `charCodeAt` fallback is only used if the server didn't supply one.
-- `GameScene` wraps the canvas in a `tabIndex=0` div and focuses the wrapper + window on mount/click so the Replit preview iframe reliably receives keyboard events (drei's `useKeyboardControls` listens on `window`).
-
-**File map (city-sandbox `src/game/`):**
-- `CityMap.tsx` — static world: skybox, ground, roads, crosswalks, sidewalks, buildings, streetlamps, traffic lights, parking markings, props, ramps, fog, plaza point lights.
-- `VehicleObject.tsx` — drivable car geometry. Exports `CarVisual` (a variant-driven car body) so `AmbientTraffic` can reuse the same look.
-- `NPCs.tsx` — one ambient pedestrian per `NPC_ROUTES` entry, deterministic from `Date.now()`.
-- `AmbientTraffic.tsx` — one cosmetic AI car per `TrafficRoute.cars` entry, deterministic from `Date.now()` + per-car phase.
-- `GameScene.tsx` — Canvas, lighting, mounts everything plus remote players, vehicles, checkpoint race, HUD.
-
-### API Server (`artifacts/api-server`) — Preview path: `/api`
-Express 5 REST API + Socket.io game server.
-
-**Socket.io game server** (`src/socket/gameServer.ts`):
-- Players: join, move, leave
-- Vehicles: 4 cars with driver state
-- Server-side sanity check (anti-teleport)
-- Player count broadcast
-
-## Key Commands
-
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- `pnpm --filter @workspace/api-server run dev` — run API server locally
-
-## Day/Night Cycle
-
-- One in-game day = 2 real hours (`DAY_LENGTH_MS = 7_200_000` in `artifacts/city-sandbox/src/shared/timeOfDay.ts`).
-- Server emits `serverNow` in each `gameState`; clients compute a `serverOffsetMs` so all players see the same world time.
-- `DayNightController` (mounted in `GameScene`) owns scene background, fog, hemi/dir/ambient lights, and the sun & moon meshes. Exactly one shadow-casting directional light is reused — retinted between sun and moon, never added/removed.
-- Lamps (street, forest, regional pool/head, junction reals) read `dayNightRuntime.nightFactor` in `useFrame` and brighten at night, fade by day.
-- `DynamicPointLights` keeps its ≤8 active-light budget; per-light intensity is multiplied by `nightFactor`.
-- HUD renders a `HH:MM` clock + phase chip (DAWN / DAY / SUNSET / NIGHT), updated 1Hz.
-- First frame logs: `dayNight OK: cycleMs=..., clock=..., phase=..., sunY=..., moonY=..., nightFactor=..., activePointLights<=8`.
-
-## Character Animations
-
-- 5 GLB clips drive every player: `standing` (idle), `walking`, `running`, `fight1`, `fight2` — files live in `artifacts/city-sandbox/public/models/`.
-- `AnimatedCharacter.tsx` loads each GLB once via drei `useGLTF` (cached + preloaded), clones the standing rig per instance with `SkeletonUtils.clone`, and re-binds every clip onto that mixer so a single skinned mesh plays all five animations.
-- Locomotion clips cross-fade based on `runtime.animState` (`idle` ↔ `walk` ↔ `run`).
-- Fight clips trigger one-shot on `runtime.attackSeq` strict-increment; `attackKind` ("light"/"heavy") chooses fight1 vs fight2.
-- **Fight combo (left-click / F):** first click plays `fight1`. A second click during fight1 queues `fight2` to fire automatically the instant fight1's window closes (handled in `LocalPlayer.tryFightCombo` + the `fightQueuedRef` release in `useFrame`). Clicks during fight2 are ignored — the combo is two-deep by spec.
-- Right-click / R still triggers `fight2` directly (cooldown-gated, no combo).
-- `PlaceholderCharacter` is kept as the Suspense fallback so a slow GLB fetch never leaves a player invisible.
-
-## Vehicle Grounding & Slope Physics
-
-- `getVehicleGroundFrame(x, z, rotY, wheelbase, trackWidth)` in `shared/elevation.ts` is the single shared 4-wheel ground sampler. Returns `{ centerY, pitch, roll, frontY, rearY, leftY, rightY }`. Forward = local **−Z** (matches LocalPlayer / AmbientTraffic / collision). Pitch is positive when the front wheels are higher (nose up = climbing); roll is positive when the right wheels are higher.
-- **Convention**: vehicle `state.y = groundY + 0.6` (body root above tire-contact plane). `INITIAL_VEHICLES` y=0.6, `LocalPlayer.updateVehicle` sets `vehiclePos.y = 0.6 + groundFrame.centerY`, `AmbientTraffic` and `VehicleObject` do the same. `CarVisual` wraps its content in `<group position={[0, -0.6, 0]}>` so tire bottoms render at world y = `state.y - 0.6 = groundY` exactly (no float, no clip). The driving headlight in `LocalPlayer` is a sibling of `CarVisual` — it stays at the same world height as before the fix.
-- **Pitch / roll on every renderer**: the driven vehicle (`LocalPlayer`), remote/parked cars (`VehicleObject`), and ambient AI (`AmbientTraffic`) all sample the ground frame each tick and apply `rotation = (pitch, yaw, roll)` with rotation order **YXZ** (yaw → pitch → roll). Pitch and roll are smoothed (lerp 0.2) so coarse switchback segments don't snap.
-- **Slope-aware physics** (`LocalPlayer.updateVehicle`): `vehicleSpeed += -SLOPE_GRAVITY * sin(pitch) * dt` with `SLOPE_GRAVITY = 14 m/s²`. Uphill drains speed automatically; downhill adds gravity acceleration. Speed clamped to `±VEHICLE_MAX_SPEED * 1.5` so descending a mountain feels faster but stays controllable.
-- **Validator**: `vehicleGrounding OK: parkedTireBottomMaxGap=Xm, parkedGrounded=N/M, ambientGrounded=N/M, mountainPitchApplied=true` printed at boot in `cityData.ts`. Fails any parked car whose tire-bottom gap to ground exceeds 0.15m.
-
-## Driving Camera (chase rig)
-
-- `LocalPlayer.updateCamera(target, dt, mode)` is the single chase/orbit camera. Both `camera.position` and the look-at point are smoothed independently with **frame-rate-independent exponential damping**: `alpha = 1 - exp(-dt * stiffness)`. Position stiffness 8; look-at stiffness 14 at rest, falling to 5 at full speed so high-speed downhill jitter on the per-tick terrain-sampled `vehiclePos.y` filters out instead of shaking the aim.
-- The smoothed look point lives in `cameraLookAtRef` (lazy-init Vector3) and is the only thing fed to `camera.lookAt()`. We aim at the **visually smoothed `vehicleMeshRef.position`** in vehicle mode, not the raw `vehiclePos`, so anything the renderer is already smoothing (mesh interpolation, eventual suspension dip) carries through to the aim.
-- **Terrain clearance**: every frame we sample `terrainHeightAt(camX, camZ)` and clamp `camera.position.y >= terrainY + 1.0`. This is the fix for the white/black flashing during downhill runs — the chase camera was clipping into mountain backs.
-- **Speed-aware framing**: chase distance grows by up to +2m at full speed (`CAM_SPEED_DIST_BONUS`) and the look point sits at +1.4m on the chassis (`CAM_VEHICLE_LOOK_HEIGHT`) so the car stays centred and the camera doesn't aim into the roof.
-- Mouse-look (`cameraYaw` / `cameraPitch` set by pointer-lock movement) and walking camera responsiveness are unchanged.
-
-## Procedural Vehicle Renderer
-
-- `CarVisual` in `artifacts/city-sandbox/src/game/VehicleObject.tsx` is the single shared car renderer for parked / remote / locally-driven / ambient AI cars.
-- Variants (sedan, van, taxi, compact) keep their original `VARIANT_DIMENSIONS` (collision OBBs unchanged) and now layer rounded body + bevelled top + hood + trunk + cabin + roof bevel + bumpers + grille bars + wheel arches + front/side/rear glass + tires + rims + hubs + side mirrors + door handles + door / hood seams + headlights + turn signals + taillights + brake strip + reverse pads + front/rear plates.
-- Materials are MeshStandardMaterial (paint + glass + tire + rim + plastic + headlight emissive + taillight emissive + plate + taxi black/yellow), all module-level singletons. Paint and trim materials are cached **per color string**, so all e.g. red sedans share one paint material instance.
-- Variant geometries (body shells, hood, trunk, cabin, bumpers, arches) are also cached per variant the first time they appear, so per-frame rendering only references those shared geometries.
-- Variant flair: taxi adds a black/yellow rooftop sign with checker stripes + black side trim; van adds a tall rear cargo box, side sliding-door seam, and rear double-door split seam.
-- Vehicle facing convention preserved: front = local **−Z** (headlights / grille / front plate); rear = local **+Z** (taillights / rear plate). Cabin offset stays toward +Z. `LocalPlayer`'s driving headlight stays aligned.
-- `AmbientTraffic` continues to pass `castShadow={false}`; only the body / cabin / hood / cargo box opt into shadows even on shadow-casting cars to keep shadow draw count reasonable.
-
-## Game Controls
-
-- **WASD** — Move / Drive
-- **Shift** — Run
-- **Space** — Jump
-- **E** — Enter/Exit vehicle
-- **Click canvas** — Capture mouse for camera look
-- **Mouse** — Rotate camera
-
-See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details.
+- **pnpm workspaces:** Monorepo management.
+- **Node.js 24:** Runtime environment.
+- **TypeScript 5.9:** Programming language.
+- **Express 5:** Web application framework for API server.
+- **Socket.io:** Real-time communication library for multiplayer.
+- **PostgreSQL:** Relational database.
+- **Drizzle ORM:** TypeScript ORM for PostgreSQL.
+- **Zod (v4):** Schema declaration and validation library.
+- **drizzle-zod:** Integration between Drizzle ORM and Zod.
+- **Orval:** OpenAPI spec to TypeScript client generator.
+- **esbuild:** JavaScript bundler.
+- **React:** Frontend library.
+- **Vite:** Frontend build tool.
+- **Three.js:** 3D graphics library.
+- **@react-three/fiber:** React renderer for Three.js.
+- **@react-three/drei:** Collection of useful helpers and abstractions for @react-three/fiber.
+- **SkeletonUtils.clone (from 'three/examples/jsm/utils/SkeletonUtils'):** For cloning GLB character rigs.

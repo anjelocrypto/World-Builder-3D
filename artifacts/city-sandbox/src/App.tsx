@@ -1,6 +1,11 @@
-import { useState } from "react";
+import { Suspense, lazy, useState } from "react";
 import Lobby from "@/pages/Lobby";
-import Game from "@/pages/Game";
+
+// Lazy-load Game so its module graph (GameScene → LocalPlayer → CharacterAvatar
+// → AnimatedCharacter, which calls useGLTF.preload(...) at module top level)
+// does not evaluate while the user is still on the Lobby. This is what keeps
+// the heavy character GLBs from being fetched before JOIN WORLD is clicked.
+const Game = lazy(() => import("@/pages/Game"));
 
 export default function App() {
   const [username, setUsername] = useState<string | null>(null);
@@ -9,5 +14,9 @@ export default function App() {
     return <Lobby onJoin={(name) => setUsername(name)} />;
   }
 
-  return <Game username={username} />;
+  return (
+    <Suspense fallback={<div style={{ width: "100vw", height: "100vh", background: "#0a0a1a" }} />}>
+      <Game username={username} />
+    </Suspense>
+  );
 }
