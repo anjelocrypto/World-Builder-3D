@@ -84,7 +84,7 @@ export default function Lobby({ onJoin }: LobbyProps) {
               marginBottom: 8,
             }}
           >
-            CITY SANDBOX
+            HANTA CITY
           </div>
           <div
             style={{
