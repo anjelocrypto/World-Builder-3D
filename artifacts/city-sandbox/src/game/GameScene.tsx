@@ -195,6 +195,14 @@ export default function GameScene({
           gl={{ powerPreference: "high-performance", antialias: false, stencil: false }}
           camera={{ fov: 75, near: 0.1, far: 1500, position: [0, 8, 15] }}
           style={{ width: "100%", height: "100%" }}
+          onCreated={({ gl }) => {
+            // Physically-correct colour pipeline: sRGB output + ACES filmic tone-mapping.
+            // PCFSoftShadowMap replaces the default PCFShadowMap for softer shadow edges.
+            gl.outputColorSpace = THREE.SRGBColorSpace;
+            gl.toneMapping = THREE.ACESFilmicToneMapping;
+            gl.toneMappingExposure = 1.0;
+            gl.shadowMap.type = THREE.PCFSoftShadowMap;
+          }}
         >
           {/* Global lighting + sky + fog + sun/moon — owned by the
               DayNightController, which keeps exactly one shadow-

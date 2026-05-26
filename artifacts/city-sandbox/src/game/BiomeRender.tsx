@@ -88,7 +88,7 @@ function RegionalRoadSegment({
   return (
     <mesh ref={meshRef} receiveShadow>
       <planeGeometry args={[width, lenS]} />
-      <meshLambertMaterial color={color} />
+      <meshStandardMaterial color={color} roughness={0.90} metalness={0.02} />
     </mesh>
   );
 }
@@ -173,7 +173,7 @@ function MountainTerrain() {
     // hides beneath the BiomeGround tiles and only the elevated parts
     // are visible. flatShading reads as rugged rock facets.
     <mesh geometry={geom} position={[0, -0.02, 0]} receiveShadow>
-      <meshLambertMaterial color="#3f3a33" flatShading />
+      <meshStandardMaterial color="#3a3630" roughness={0.92} metalness={0.04} flatShading />
     </mesh>
   );
 }
@@ -794,7 +794,9 @@ function ForestLamps() {
       new THREE.MeshBasicMaterial({
         color: FOREST_LAMP_POOL,
         transparent: true,
-        opacity: 0.16,
+        opacity: 0.32,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
       }),
     [],
   );
@@ -803,7 +805,7 @@ function ForestLamps() {
     [],
   );
   const baseHeadColor = useMemo(() => new THREE.Color(FOREST_LAMP_HEAD), []);
-  const FOREST_POOL_BASE_OPACITY = 0.16;
+  const FOREST_POOL_BASE_OPACITY = 0.32;
 
   useFrame(() => {
     const n = dayNightRuntime.nightFactor;
@@ -878,22 +880,22 @@ const LAMP_STYLE_DEFS: Record<LampStyle, LampStyleDef> = {
   urban: {
     poleColor: "#444448", poleHeight: 6.0, poleRadius: 0.10, poleTopY: 3.0,
     headColor: "#fff2c0", headSize: [0.7, 0.3, 0.7], headY: 5.95,
-    poolColor: "#ffe49a", poolRadius: 5.5, poolOpacity: 0.16,
+    poolColor: "#ffe49a", poolRadius: 5.5, poolOpacity: 0.34,
   },
   bridge: {
     poleColor: "#3a3a3e", poleHeight: 6.4, poleRadius: 0.11, poleTopY: 3.2,
     headColor: "#fff0b0", headSize: [0.8, 0.35, 0.8], headY: 6.35,
-    poolColor: "#ffe0a0", poolRadius: 6.5, poolOpacity: 0.20,
+    poolColor: "#ffe0a0", poolRadius: 6.5, poolOpacity: 0.38,
   },
   rural: {
     poleColor: "#3a2b1c", poleHeight: 4.6, poleRadius: 0.10, poleTopY: 2.3,
     headColor: "#ffc880", headSize: [0.55, 0.5, 0.55], headY: 4.7,
-    poolColor: "#f0a060", poolRadius: 4.5, poolOpacity: 0.14,
+    poolColor: "#f0a060", poolRadius: 4.5, poolOpacity: 0.28,
   },
   mountain: {
     poleColor: "#2c2c30", poleHeight: 3.0, poleRadius: 0.09, poleTopY: 1.5,
     headColor: "#ffb070", headSize: [0.5, 0.3, 0.5], headY: 3.05,
-    poolColor: "#e09060", poolRadius: 3.5, poolOpacity: 0.16,
+    poolColor: "#e09060", poolRadius: 3.5, poolOpacity: 0.30,
   },
 };
 
@@ -1007,6 +1009,8 @@ function PoolLayer({ lamps, style }: InstancedLampLayerProps) {
         color={style.poolColor}
         transparent
         opacity={style.poolOpacity}
+        blending={THREE.AdditiveBlending}
+        depthWrite={false}
       />
     </instancedMesh>
   );

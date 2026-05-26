@@ -24,7 +24,10 @@ function Ground() {
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
       <planeGeometry args={[1100, 1100]} />
-      <meshLambertMaterial color="#2a2e3a" />
+      {/* MeshStandard gives the city ground a subtle roughness under ACES
+          lighting, so it reads as compacted earth/tarmac rather than a
+          flat painted plane. */}
+      <meshStandardMaterial color="#252830" roughness={0.92} metalness={0.02} />
     </mesh>
   );
 }
@@ -33,11 +36,11 @@ function Ground() {
 // ROADS — carriageway, sidewalks (raised curbs), lane markings, crosswalks
 // =============================================================
 
-const ROAD_COLOR = "#1d1d22";
-const LANE_COLOR = "#f0c040";
-const SIDEWALK_COLOR = "#4a4a52";
-const CURB_COLOR = "#6b6b73";
-const CROSSWALK_COLOR = "#dcdce0";
+const ROAD_COLOR = "#18181e";       // slightly darker asphalt
+const LANE_COLOR = "#e8b830";       // aged yellow lane markings
+const SIDEWALK_COLOR = "#42424a";   // darker concrete
+const CURB_COLOR = "#626268";
+const CROSSWALK_COLOR = "#d8d8dc";
 
 function Roads() {
   return (
@@ -187,21 +190,25 @@ function BuildingExtras({ b }: { b: Building }) {
   if (!b.tier || b.tier === "mid") return null;
   return (
     <group>
-      {/* Podium — wider 2-floor base wrapping the tower */}
+      {/* Podium — wider 2-floor base wrapping the tower. Darker material
+          so the base reads as heavy stone/concrete, contrasting the
+          glass curtain wall above. */}
       {b.podium && (
         <mesh position={[0, 3, 0]} castShadow receiveShadow>
           <boxGeometry args={[b.w + 1.6, 6, b.d + 1.6]} />
-          <meshLambertMaterial color="#2a2f38" />
+          <meshStandardMaterial color="#20242e" roughness={0.75} metalness={0.1} />
         </mesh>
       )}
-      {/* Crown light — emissive halo near the roof */}
+      {/* Crown light — emissive band near the roof apex.
+          Landmarks get a cool blue beacon, highrises warm amber. */}
       {b.crownLight && (
         <mesh position={[0, b.h - 0.3, 0]}>
           <boxGeometry args={[b.w + 0.4, 0.6, b.d + 0.4]} />
           <meshBasicMaterial
-            color={b.tier === "landmark" ? "#7ed4ff" : "#ffd070"}
+            color={b.tier === "landmark" ? "#60c8ff" : "#ffc040"}
             transparent
-            opacity={0.85}
+            opacity={0.92}
+            toneMapped={false}
           />
         </mesh>
       )}
@@ -222,12 +229,36 @@ function BuildingMesh({ b }: BuildingMeshProps) {
   // buildings ≈ 520 individual meshes) now live in the shared
   // <BuildingWindowsInstanced/> below, which collapses them into a
   // small fixed set of InstancedMesh draw calls.
+  //
+  // Material selection: highrise/landmark get MeshStandard so they pick
+  // up reflections and roughness variation (glass-clad towers). Downtown
+  // gets a rougher standard material. Residential/commercial stay Lambert
+  // for performance (they're numerous and their brick/stucco finish
+  // doesn't need specularity).
+  const isHighrise = b.district === "highrise" || b.district === "landmark";
+  const isDowntown = b.district === "downtown";
+
   return (
     <group position={[b.x, 0, b.z]}>
       {/* Body */}
       <mesh position={[0, b.h / 2, 0]} castShadow receiveShadow>
         <boxGeometry args={[b.w, b.h, b.d]} />
-        <meshLambertMaterial color={b.color} />
+        {isHighrise ? (
+          // Glass-clad towers: low roughness, high metalness → reflective
+          // tinted panels. `glass` flag from cityData controls how
+          // mirror-like each tower is.
+          <meshStandardMaterial
+            color={b.color}
+            roughness={b.glass ? 0.12 : 0.38}
+            metalness={b.glass ? 0.82 : 0.45}
+          />
+        ) : isDowntown ? (
+          // Mid-rise commercial: concrete + stone, slightly specular.
+          <meshStandardMaterial color={b.color} roughness={0.60} metalness={0.15} />
+        ) : (
+          // Residential / commercial: brick/stucco, flat Lambert is fine.
+          <meshLambertMaterial color={b.color} />
+        )}
       </mesh>
 
       {/* Door (front +Z face) */}
@@ -345,7 +376,10 @@ function BuildingWindowsInstanced() {
 function WindowBucket({
   color, opacity, matrices,
 }: { color: string; opacity: number; matrices: THREE.Matrix4[] }) {
-  const ref = useRef<THREE.InstancedMesh>(null);
+  const ref    = useRef<THREE.InstancedMesh>(null);
+  const matRef = useRef<THREE.MeshBasicMaterial>(null);
+  const baseOpacity = opacity;
+
   useEffect(() => {
     const mesh = ref.current;
     if (!mesh) return;
@@ -355,11 +389,30 @@ function WindowBucket({
     mesh.instanceMatrix.needsUpdate = true;
     mesh.computeBoundingSphere();
   }, [matrices]);
+
+  // Night-reactive windows: nearly invisible in bright daylight (stops
+  // windows from reading as neon-bright rectangles at noon), warm and
+  // glowing at night. The per-building seed variation (lit vs dim) is
+  // preserved because the base opacity already encodes it.
+  useFrame(() => {
+    const mat = matRef.current;
+    if (!mat) return;
+    const n = dayNightRuntime.nightFactor;
+    // Minimum 12% of base during full daylight → full base at night.
+    mat.opacity = baseOpacity * (0.12 + 0.88 * n);
+  });
+
   if (matrices.length === 0) return null;
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, matrices.length]}>
       <planeGeometry args={[1, 1]} />
-      <meshBasicMaterial color={color} transparent opacity={opacity} />
+      <meshBasicMaterial
+        ref={matRef}
+        color={color}
+        transparent
+        opacity={opacity}
+        depthWrite={false}
+      />
     </instancedMesh>
   );
 }
@@ -380,7 +433,7 @@ function Buildings() {
 // =============================================================
 
 const LAMP_HEAD_COLOR = "#fff2c0";
-const LAMP_POOL_COLOR = "#ffe49a";
+const LAMP_POOL_COLOR = "#ffcc70";
 
 function StreetLamps() {
   // Was: 90 lamps × 4 child meshes = 360 individual meshes. Now: 4
@@ -395,12 +448,16 @@ function StreetLamps() {
   const headMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const poolMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const baseHeadColor = useMemo(() => new THREE.Color(LAMP_HEAD_COLOR), []);
-  const STREET_POOL_BASE_OPACITY = 0.18;
+  // Stronger pool at night (0.38) — additive blending means it won't
+  // over-expose; depthWrite=false prevents z-sorting artefacts on the road.
+  const STREET_POOL_BASE_OPACITY = 0.38;
   useFrame(() => {
     const n = dayNightRuntime.nightFactor;
     if (poolMatRef.current) poolMatRef.current.opacity = STREET_POOL_BASE_OPACITY * n;
     if (headMatRef.current) {
-      headMatRef.current.color.copy(baseHeadColor).multiplyScalar(0.4 + 0.6 * n);
+      // Head dims to ~35% of full brightness during the day so it doesn't
+      // read as a bright white square in sunlight.
+      headMatRef.current.color.copy(baseHeadColor).multiplyScalar(0.35 + 0.65 * n);
     }
   });
   useEffect(() => {
@@ -444,12 +501,16 @@ function StreetLamps() {
         <meshBasicMaterial ref={headMatRef} color={LAMP_HEAD_COLOR} />
       </instancedMesh>
       <instancedMesh ref={poolRef} args={[undefined, undefined, count]}>
-        <circleGeometry args={[5, 16]} />
+        <circleGeometry args={[5.5, 20]} />
+        {/* Additive blending makes the pool look like real emitted light on
+            the dark asphalt. depthWrite=false prevents z-sort artefacts. */}
         <meshBasicMaterial
           ref={poolMatRef}
           color={LAMP_POOL_COLOR}
           transparent
-          opacity={0.18}
+          opacity={STREET_POOL_BASE_OPACITY}
+          blending={THREE.AdditiveBlending}
+          depthWrite={false}
         />
       </instancedMesh>
     </group>
