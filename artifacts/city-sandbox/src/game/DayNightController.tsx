@@ -232,6 +232,13 @@ export default function DayNightController() {
       }
     }
 
+    // Billboard halo discs — circleGeometry faces +Z by default, so without
+    // this the disc shows only an edge when the camera is behind the plane.
+    // Copying the camera quaternion onto each halo makes it always face the
+    // viewer. The groups have no rotation (only position), so world ≡ local.
+    if (sunHaloRef.current)  sunHaloRef.current.quaternion.copy(camera.quaternion);
+    if (moonHaloRef.current) moonHaloRef.current.quaternion.copy(camera.quaternion);
+
     if (moonGroupRef.current) {
       moonGroupRef.current.position.set(
         cx2 + Math.cos(t.moonAngle) * SKY_DIST,
@@ -326,6 +333,7 @@ export default function DayNightController() {
             depthWrite={false}
             depthTest={false}
             blending={THREE.AdditiveBlending}
+            side={THREE.DoubleSide}
           />
         </mesh>
         {/* Core disc — solid, slightly smaller than the halo. */}
@@ -353,6 +361,7 @@ export default function DayNightController() {
             depthWrite={false}
             depthTest={false}
             blending={THREE.AdditiveBlending}
+            side={THREE.DoubleSide}
           />
         </mesh>
         {/* Moon is smaller and cooler than the sun. */}

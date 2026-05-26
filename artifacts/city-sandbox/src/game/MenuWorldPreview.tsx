@@ -1,6 +1,7 @@
 import { Component, useRef, type ReactNode } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import * as THREE from "three";
+import { configureWorldRenderer } from "./rendererConfig";
 import CityMap from "./CityMap";
 import BiomeRender from "./BiomeRender";
 import AmbientTraffic from "./AmbientTraffic";
@@ -163,6 +164,7 @@ export default function MenuWorldPreview() {
         // instead of failing the entire menu preview.
         failIfMajorPerformanceCaveat: false,
       }}
+      onCreated={({ gl }) => configureWorldRenderer(gl)}
       camera={{ fov: 60, near: 0.1, far: 1500, position: SHOTS[0].pos }}
       style={{
         position: "absolute",
