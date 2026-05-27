@@ -12,6 +12,25 @@ export interface ActiveTest {
   nextCp:      number;
 }
 
+/** Phase 3: one player-owned vehicle as returned by the server. */
+export interface OwnedVehicleSummary {
+  dbId:      string;
+  vehicleId: string;
+  model:     string;
+  variant:   string;
+  color:     string;
+  plate:     string;
+  locked:    boolean;
+}
+
+/** Phase 3: one entry in the dealership catalog as used by the shop UI. */
+export interface VehicleShopItem {
+  model:   string;
+  variant: string;
+  price:   number;
+  colors:  readonly string[];
+}
+
 export interface RpProfile {
   playerId:      string;
   cash:          number;
@@ -29,6 +48,8 @@ export interface RpProfile {
   wantedStars:   number;
   /** Non-null only while a driver-license test is in progress. */
   activeTest:    ActiveTest | null;
+  /** Phase 3: vehicles owned by this player. Empty until server sends them. */
+  ownedVehicles: OwnedVehicleSummary[];
 }
 
 export interface RpToast {
@@ -60,6 +81,20 @@ export const STATION_SPAWN_JITTER_Z = 3;
 /** Licensing Office entrance — SE inner block, east-facing sidewalk. */
 export const LICENSING_OFFICE_POS: [number, number, number] = [14, 0, -30];
 
+/** Vehicle dealership entrance — NE outer district. */
+export const DEALERSHIP_POS: [number, number, number] = [68, 0, -72];
+
+/**
+ * Dealership catalog — mirrors server VEHICLE_SHOP_CATALOG in cityData.ts.
+ * Must stay in sync; the server allowlist is authoritative.
+ */
+export const VEHICLE_SHOP_CATALOG: VehicleShopItem[] = [
+  { model: "compact", variant: "compact", price: 300, colors: ["#e84141", "#4169e1", "#f5f5f5", "#2d2d2d"] },
+  { model: "sedan",   variant: "sedan",   price: 700, colors: ["#e84141", "#4169e1", "#f5f5f5", "#2d2d2d", "#1a5c1a"] },
+  { model: "taxi",    variant: "taxi",    price: 900, colors: ["#f5c518"] },
+  { model: "van",     variant: "van",     price: 1200, colors: ["#e84141", "#f5f5f5", "#1a5c1a", "#2d2d2d"] },
+];
+
 /**
  * Test vehicle starting position (Phase 2). Center at x=13; body edge at
  * x=12 → 2 m clearance from the x=0 road boundary at x=10.
@@ -80,20 +115,32 @@ export const LICENSE_TEST_CHECKPOINTS: [number, number, number][] = [
   [ 14, 0.5, -26],   // CP3 — finish line near Licensing Office entrance
 ];
 
-// ── Client-side optimistic license check ──────────────────────────────────
+// ── Client-side optimistic license + lock check ────────────────────────────
 
 /**
  * Returns true if a player with the given profile is allowed to drive
- * `vehicleId`. This is an optimistic client check only — the server also
- * enforces this in vehicleUpdate. Never use the client result to unlock
- * real game state; use it only to skip the emitVehicleUpdate call and
- * show feedback.
+ * `vehicleId`. Accepts optional ownership fields so locked owned vehicles
+ * are blocked optimistically before the server rejects them.
+ *
+ * This is an optimistic client check only — the server also enforces this in
+ * vehicleUpdate. Never use the client result to unlock real game state; use it
+ * only to skip the emitVehicleUpdate call and show feedback.
  */
 export function canDriveVehicleClient(
   vehicleId: string,
   rp: RpProfile | null,
+  vehicleOwned?: boolean,
+  vehicleLocked?: boolean,
+  vehicleOwnerId?: string,
 ): boolean {
   if (!rp) return false;
+  // Phase 3: locked owned vehicle — only owner can enter
+  if (vehicleOwned && vehicleLocked) {
+    const isOwner = rp.ownedVehicles.some(
+      (v) => v.vehicleId === vehicleId && v.dbId !== undefined,
+    ) || vehicleOwnerId === rp.playerId;
+    if (!isOwner) return false;
+  }
   if (rp.driverLicense) return true;
   if (rp.activeTest?.vehicleId === vehicleId) return true;
   return false;

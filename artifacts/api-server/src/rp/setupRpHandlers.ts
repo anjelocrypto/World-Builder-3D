@@ -17,6 +17,10 @@ import {
   handleCheckpoint,
   type LicenseContext,
 } from "./rpLicenseService";
+import {
+  buyVehicle,
+  toggleLock,
+} from "./rpVehicleService";
 
 export type { LicenseContext };
 
@@ -26,8 +30,9 @@ export function setupRpHandlers(
 ): void {
 
   // ── rp:interact ───────────────────────────────────────────────────────────
-  // Phase 2: licensing office start-test.  Other buildings (ATM, job board,
-  // police station) will be added here in later phases.
+  // Phase 2: licensing office start-test.
+  // Phase 3: dealership is handled via rp:buyVehicle (separate event).
+  // Other buildings (ATM, job board, police station) will be added in later phases.
   socket.on(
     "rp:interact",
     (data: { building?: string; action?: string } | null | undefined) => {
@@ -66,8 +71,6 @@ export function setupRpHandlers(
   // ── rp:licenseTestCheckpoint ──────────────────────────────────────────────
   // Client emits { idx } when within range of a checkpoint marker.  Server
   // validates using authoritative vehicle position — never client coordinates.
-  // handleCheckpoint is async (final CP awaits DB write); errors are caught
-  // here so an unhandled rejection cannot bring down the process.
   socket.on(
     "rp:licenseTestCheckpoint",
     (data: { idx?: unknown } | null | undefined) => {
@@ -82,6 +85,55 @@ export function setupRpHandlers(
           msg:      "Server error processing checkpoint — drive through again.",
           color:    "red",
           duration: 4000,
+        });
+      });
+    },
+  );
+
+  // ── rp:buyVehicle ─────────────────────────────────────────────────────────
+  // Phase 3: client emits { model, variant, color } when purchasing from the
+  // dealership. Server validates license, proximity, catalog, and cash.
+  socket.on(
+    "rp:buyVehicle",
+    (data: { model?: unknown; variant?: unknown; color?: unknown } | null | undefined) => {
+      const model   = typeof data?.model   === "string" ? data.model   : "";
+      const variant = typeof data?.variant === "string" ? data.variant : "";
+      const color   = typeof data?.color   === "string" ? data.color   : "";
+
+      if (!model || !variant || !color) {
+        logger.debug({ socketId: socket.id, data }, "[rp] rp:buyVehicle: missing fields");
+        return;
+      }
+
+      buyVehicle(socket, ctx, model, variant, color).catch((err) => {
+        logger.error({ err, socketId: socket.id }, "[rp] buyVehicle threw");
+        socket.emit("rp:toast", {
+          msg:      "Server error processing purchase — try again.",
+          color:    "red",
+          duration: 4000,
+        });
+      });
+    },
+  );
+
+  // ── rp:toggleLock ─────────────────────────────────────────────────────────
+  // Phase 3: client emits { vehicleId } to lock/unlock an owned vehicle.
+  // Server validates ownership and proximity.
+  socket.on(
+    "rp:toggleLock",
+    (data: { vehicleId?: unknown } | null | undefined) => {
+      const vehicleId = typeof data?.vehicleId === "string" ? data.vehicleId : "";
+      if (!vehicleId) {
+        logger.debug({ socketId: socket.id, data }, "[rp] rp:toggleLock: missing vehicleId");
+        return;
+      }
+
+      toggleLock(socket, ctx, vehicleId).catch((err) => {
+        logger.error({ err, socketId: socket.id, vehicleId }, "[rp] toggleLock threw");
+        socket.emit("rp:toast", {
+          msg:      "Server error toggling lock — try again.",
+          color:    "red",
+          duration: 3000,
         });
       });
     },

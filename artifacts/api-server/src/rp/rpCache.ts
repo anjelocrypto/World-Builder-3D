@@ -8,6 +8,19 @@
 
 // ── Per-player cache entry ─────────────────────────────────────────────────
 
+/** Minimal summary of one player-owned vehicle kept in the RP cache. */
+export interface OwnedVehicleSummary {
+  /** UUID primary key from rp_owned_vehicles.id */
+  dbId:      string;
+  /** In-world vehicle id: "ov-<dbId>". Unique per session. */
+  vehicleId: string;
+  model:     string;
+  variant:   string;
+  color:     string;
+  plate:     string;
+  locked:    boolean;
+}
+
 export interface RpCacheEntry {
   /** UUID primary key from rp_players.id */
   playerId:      string;
@@ -23,6 +36,8 @@ export interface RpCacheEntry {
   currentJob:    string | null;
   onDuty:        boolean;
   wantedStars:   number;
+  /** Phase 3: vehicles owned by this player. Populated after DB load on join. */
+  ownedVehicles: OwnedVehicleSummary[];
 }
 
 // ── Active license-test state ──────────────────────────────────────────────
@@ -74,5 +89,7 @@ export function buildProfile(
           nextCp:      testState.nextCp,
         }
       : null,
+    // Phase 3: owned vehicles summary (client displays in shop/garage UI).
+    ownedVehicles: entry.ownedVehicles,
   };
 }

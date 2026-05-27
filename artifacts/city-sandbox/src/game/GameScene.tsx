@@ -9,6 +9,7 @@ import type { RpProfile, RpToast } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
 import LicenseTestHUD from "./LicenseTestHUD";
+import VehicleShopHUD from "./VehicleShopHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -58,6 +59,10 @@ interface GameSceneProps {
   emitRpInteract:  (building: string, action: string) => void;
   /** Emit rp:licenseTestCheckpoint. From useRpSocket. */
   emitLicenseCheckpoint: (idx: number) => void;
+  /** Phase 3: Emit rp:buyVehicle. From useRpSocket. */
+  emitBuyVehicle:  (model: string, variant: string, color: string) => void;
+  /** Phase 3: Emit rp:toggleLock. From useRpSocket. */
+  emitToggleLock:  (vehicleId: string) => void;
 }
 
 export default function GameScene({
@@ -76,6 +81,8 @@ export default function GameScene({
   canDriveVehicle,
   emitRpInteract,
   emitLicenseCheckpoint,
+  emitBuyVehicle,
+  emitToggleLock,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -89,7 +96,12 @@ export default function GameScene({
     px: 0,
     pz: 0,
     nearOffice: false,
+    nearDealership: false,
+    nearOwnedVehicleId: null as string | null,
   });
+
+  // Phase 3: dealership shop panel visibility
+  const [showShop, setShowShop] = useState(false);
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -286,6 +298,8 @@ export default function GameScene({
             emitRpInteract={emitRpInteract}
             emitLicenseCheckpoint={emitLicenseCheckpoint}
             activeTest={rpProfile?.activeTest}
+            emitToggleLock={emitToggleLock}
+            onOpenShop={() => setShowShop(true)}
           />
 
           <PerfMonitor />
@@ -299,6 +313,17 @@ export default function GameScene({
 
       {/* License test HUD — top-center overlay during an active driver test */}
       <LicenseTestHUD activeTest={rpProfile?.activeTest ?? null} />
+
+      {/* Phase 3: dealership shop panel */}
+      <VehicleShopHUD
+        open={showShop}
+        rpProfile={rpProfile}
+        onClose={() => setShowShop(false)}
+        onBuy={(model, variant, color) => {
+          emitBuyVehicle(model, variant, color);
+          setShowShop(false);
+        }}
+      />
 
       <HUD
         health={uiState.health}
@@ -321,6 +346,8 @@ export default function GameScene({
         bank={rpProfile?.bank}
         driverLicense={rpProfile?.driverLicense}
         nearOffice={uiState.nearOffice}
+        nearDealership={uiState.nearDealership}
+        nearOwnedVehicleId={uiState.nearOwnedVehicleId}
       />
     </div>
   );

@@ -64,5 +64,7 @@ export async function upsertPlayer(
     onDuty:        player.onDuty,
     // Phase 2: query rp_warrants WHERE cleared_at IS NULL to populate wantedStars.
     wantedStars:   0,
+    // Phase 3: loaded separately via loadAndSpawnOwnedVehicles after join.
+    ownedVehicles: [],
   };
 }

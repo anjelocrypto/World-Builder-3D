@@ -17,6 +17,7 @@ import { useEffect, useState, useCallback } from "react";
 import type { Socket } from "socket.io-client";
 import type { RpProfile, RpToast } from "../shared/rpTypes";
 import { canDriveVehicleClient } from "../shared/rpTypes";
+import type { VehicleState } from "../shared/types";
 
 export function useRpSocket(socket: Socket | null) {
   const [rpProfile, setRpProfile] = useState<RpProfile | null>(null);
@@ -26,7 +27,7 @@ export function useRpSocket(socket: Socket | null) {
     if (!socket) return;
 
     const onProfile = (data: RpProfile) => {
-      setRpProfile(data);
+      setRpProfile({ ...data, ownedVehicles: data.ownedVehicles ?? [] });
     };
 
     const onProfileUpdate = (data: Partial<RpProfile>) => {
@@ -80,11 +81,19 @@ export function useRpSocket(socket: Socket | null) {
 
   /**
    * Returns true if the local player is allowed to drive `vehicleId`.
+   * Accepts the full vehicle state so lock + ownership can be checked optimistically.
    * This is an OPTIMISTIC check — the server enforces it in vehicleUpdate.
    * Use this to skip the emitVehicleUpdate call and avoid a brief visual glitch.
    */
   const canDriveVehicle = useCallback(
-    (vehicleId: string): boolean => canDriveVehicleClient(vehicleId, rpProfile),
+    (vehicleId: string, vehicle?: Partial<VehicleState>): boolean =>
+      canDriveVehicleClient(
+        vehicleId,
+        rpProfile,
+        vehicle?.owned,
+        vehicle?.locked,
+        vehicle?.ownerId,
+      ),
     [rpProfile],
   );
 
@@ -107,6 +116,22 @@ export function useRpSocket(socket: Socket | null) {
     [socket],
   );
 
+  /** Phase 3: emit rp:buyVehicle to purchase a vehicle at the dealership. */
+  const emitBuyVehicle = useCallback(
+    (model: string, variant: string, color: string) => {
+      socket?.emit("rp:buyVehicle", { model, variant, color });
+    },
+    [socket],
+  );
+
+  /** Phase 3: emit rp:toggleLock to lock/unlock an owned vehicle. */
+  const emitToggleLock = useCallback(
+    (vehicleId: string) => {
+      socket?.emit("rp:toggleLock", { vehicleId });
+    },
+    [socket],
+  );
+
   return {
     rpProfile,
     rpToasts,
@@ -115,5 +140,7 @@ export function useRpSocket(socket: Socket | null) {
     canDriveVehicle,
     emitInteract,
     emitLicenseCheckpoint,
+    emitBuyVehicle,
+    emitToggleLock,
   };
 }

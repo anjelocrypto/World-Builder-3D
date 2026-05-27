@@ -61,6 +61,12 @@ export interface VehicleState {
   driverId: string | null;
   color: string;
   variant?: VehicleVariant;
+  // Phase 3: ownership fields. Present only on player-owned vehicles (owned=true).
+  // SERVER-AUTHORITATIVE — never sent by the client in vehicleUpdate patches.
+  ownerId?: string;
+  plate?:   string;
+  locked?:  boolean;
+  owned?:   boolean;
 }
 
 export interface GameState {

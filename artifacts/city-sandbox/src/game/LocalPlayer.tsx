@@ -4,7 +4,7 @@ import { useKeyboardControls } from "@react-three/drei";
 import * as THREE from "three";
 import type { VehicleState } from "../shared/types";
 import type { ActiveTest } from "../shared/rpTypes";
-import { LICENSING_OFFICE_POS } from "../shared/rpTypes";
+import { LICENSING_OFFICE_POS, DEALERSHIP_POS } from "../shared/rpTypes";
 import {
   SPAWN_POINTS,
   CHECKPOINTS,
@@ -124,6 +124,8 @@ interface LocalPlayerProps {
     px: number;
     pz: number;
     nearOffice: boolean;
+    nearDealership: boolean;
+    nearOwnedVehicleId: string | null;
   }) => void;
   playerPosRef: React.MutableRefObject<THREE.Vector3>;
   // Authoritative spawn from the server's gameState. Falls back to a
@@ -137,7 +139,7 @@ interface LocalPlayerProps {
    * visual glitch. Omit to disable the gate (e.g. when rp:profile hasn't
    * arrived yet — default behaviour is to allow entry until told otherwise).
    */
-  canDriveVehicle?: (vehicleId: string) => boolean;
+  canDriveVehicle?: (vehicleId: string, vehicle?: Partial<VehicleState>) => boolean;
   /**
    * Show an ephemeral toast without a server round-trip. Used to give
    * immediate feedback when the local license gate blocks vehicle entry
@@ -160,6 +162,15 @@ interface LocalPlayerProps {
    * while a test is in progress. Used to drive checkpoint proximity detection.
    */
   activeTest?: ActiveTest | null;
+  /**
+   * Phase 3: Emit rp:toggleLock when player presses E near their owned vehicle.
+   */
+  emitToggleLock?: (vehicleId: string) => void;
+  /**
+   * Phase 3: Called when player presses E near the dealership entrance.
+   * GameScene uses this to toggle the VehicleShopHUD open.
+   */
+  onOpenShop?: () => void;
 }
 
 export default function LocalPlayer({
@@ -178,6 +189,8 @@ export default function LocalPlayer({
   emitRpInteract,
   emitLicenseCheckpoint,
   activeTest,
+  emitToggleLock,
+  onOpenShop,
 }: LocalPlayerProps) {
   const { camera, gl } = useThree();
   const [, getKeys] = useKeyboardControls<Controls>();
@@ -274,6 +287,10 @@ export default function LocalPlayer({
   const lastUIEmit = useRef(0);
 
   // UI state cache (avoid re-render spam)
+  // Phase 3: proximity state refs — updated each frame, read by E key handler
+  const nearDealershipRef     = useRef(false);
+  const nearOwnedVehicleIdRef = useRef<string | null>(null);
+
   const uiCache = useRef({
     health: 100,
     speed: 0,
@@ -286,6 +303,8 @@ export default function LocalPlayer({
     px: pos.current.x,
     pz: pos.current.z,
     nearOffice: false,
+    nearDealership: false,
+    nearOwnedVehicleId: null as string | null,
   });
 
   // Pointer lock
@@ -470,6 +489,31 @@ export default function LocalPlayer({
     const nearOffice =
       !inVehicle.current && odx * odx + odz * odz < 6 * 6;
 
+    // Phase 3: dealership proximity (also writes to ref for E key handler)
+    const [dlrX, , dlrZ] = DEALERSHIP_POS;
+    const ddx = curPos.x - dlrX;
+    const ddz = curPos.z - dlrZ;
+    const nearDealership =
+      !inVehicle.current && ddx * ddx + ddz * ddz < 8 * 8;
+    nearDealershipRef.current = nearDealership;
+
+    // Phase 3: nearest owned vehicle within 6 m (for lock/unlock prompt)
+    let nearOwnedVehicleId: string | null = null;
+    if (!inVehicle.current) {
+      let bestDist2 = 6 * 6;
+      for (const v of Object.values(vehicles)) {
+        if (!v.owned) continue;
+        const vdx = curPos.x - v.x;
+        const vdz = curPos.z - v.z;
+        const d2 = vdx * vdx + vdz * vdz;
+        if (d2 < bestDist2) {
+          bestDist2 = d2;
+          nearOwnedVehicleId = v.id;
+        }
+      }
+    }
+    nearOwnedVehicleIdRef.current = nearOwnedVehicleId;
+
     const newUI = {
       health: health.current,
       speed,
@@ -482,6 +526,8 @@ export default function LocalPlayer({
       px: curPos.x,
       pz: curPos.z,
       nearOffice,
+      nearDealership,
+      nearOwnedVehicleId,
     };
 
     // Throttled per-field UI diff. JSON.stringify on a 10-key object
@@ -501,7 +547,9 @@ export default function LocalPlayer({
       newUI.vehicleLabel !== cache.vehicleLabel ||
       newUI.raceActive !== cache.raceActive ||
       newUI.racePassed !== cache.racePassed ||
-      newUI.nearOffice !== cache.nearOffice;
+      newUI.nearOffice !== cache.nearOffice ||
+      newUI.nearDealership !== cache.nearDealership ||
+      newUI.nearOwnedVehicleId !== cache.nearOwnedVehicleId;
     const timeChanged = Math.abs(newUI.raceTime - cache.raceTime) > 100;
     const sinceLast = now - lastUIEmit.current;
     if (
@@ -811,35 +859,43 @@ export default function LocalPlayer({
     // Camera
     updateCamera(pos.current, dt, "walking");
 
-    // Enter vehicle / Licensing Office interact
+    // Enter vehicle / Licensing Office / Dealership / Lock-Unlock interact
     if (keys.interact && interactCooldown.current <= 0) {
       const near = findNearestVehicle(pos.current);
       if (near && !near.driverId) {
         // Optimistic license gate (Phase 1B). If canDriveVehicle is not yet
         // provided (rp:profile hasn't arrived) we allow entry — the server
         // will reject and send rp:toast if the player isn't licensed.
-        if (canDriveVehicle && !canDriveVehicle(near.id)) {
-          // Blocked by the optimistic license gate. The client intentionally
-          // does NOT emit vehicleUpdate, so the server never sends rp:toast —
-          // show feedback locally instead.
-          pushToast?.(
-            "Driver License required. Visit the Licensing Office.",
-            "red",
-            4000,
-          );
+        if (canDriveVehicle && !canDriveVehicle(near.id, near)) {
+          // Blocked by the optimistic gate. Show feedback locally.
+          const reason = near.owned && near.locked
+            ? "That vehicle is locked. Get closer and press E to unlock it first."
+            : "Driver License required. Visit the Licensing Office.";
+          pushToast?.(reason, "red", 4000);
           interactCooldown.current = 1.0;
         } else {
           enterVehicle(near);
           interactCooldown.current = 0.5;
         }
       } else {
-        // No vehicle nearby — check for Licensing Office (Phase 2).
-        const [offX2, , offZ2] = LICENSING_OFFICE_POS;
-        const odx2 = pos.current.x - offX2;
-        const odz2 = pos.current.z - offZ2;
-        if (odx2 * odx2 + odz2 * odz2 < 6 * 6) {
-          emitRpInteract?.("licensing_office", "start_driver_test");
+        // No unoccupied vehicle nearby — check Phase 3: lock/unlock owned vehicle.
+        const ownedVId = nearOwnedVehicleIdRef.current;
+        if (ownedVId) {
+          emitToggleLock?.(ownedVId);
           interactCooldown.current = 1.0;
+        } else {
+          // Check for Licensing Office (Phase 2).
+          const [offX2, , offZ2] = LICENSING_OFFICE_POS;
+          const odx2 = pos.current.x - offX2;
+          const odz2 = pos.current.z - offZ2;
+          if (odx2 * odx2 + odz2 * odz2 < 6 * 6) {
+            emitRpInteract?.("licensing_office", "start_driver_test");
+            interactCooldown.current = 1.0;
+          } else if (nearDealershipRef.current) {
+            // Phase 3: open dealership shop.
+            onOpenShop?.();
+            interactCooldown.current = 0.5;
+          }
         }
       }
     }

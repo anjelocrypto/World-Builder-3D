@@ -87,10 +87,13 @@ export function isInsideObstacle(
  */
 export function validateRpMarkers(obstacles: StaticObstacle[]): void {
   const OFF_ROAD = [
-    { label: "STATION_SPAWN",        x: 128, z: -65 },
-    { label: "LICENSING_OFFICE_POS", x:  14, z: -30 },
-    { label: "TEST_VEHICLE_SPAWN",   x:  13, z: -30 },
-    { label: "CP3_FINISH",           x:  14, z: -26 },
+    { label: "STATION_SPAWN",           x: 128, z: -65 },
+    { label: "LICENSING_OFFICE_POS",    x:  14, z: -30 },
+    { label: "TEST_VEHICLE_SPAWN",      x:  13, z: -30 },
+    { label: "CP3_FINISH",              x:  14, z: -26 },
+    // Phase 3
+    { label: "DEALERSHIP_POS",          x:  68, z: -72 },
+    { label: "DEALERSHIP_DELIVERY_PAD", x:  68, z: -68 },
   ];
   const ON_ROAD = [
     { label: "CP0", x:  2, z: -40 },

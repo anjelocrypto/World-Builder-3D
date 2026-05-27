@@ -1,7 +1,7 @@
 import { Server, Socket } from "socket.io";
 import type { Server as HttpServer } from "http";
 import { logger } from "../lib/logger";
-import { INITIAL_VEHICLES, WORLD_HALF } from "./cityData";
+import { INITIAL_VEHICLES, WORLD_HALF, DEALERSHIP_DELIVERY_PAD } from "./cityData";
 import {
   validateRpMarkers,
   validateRpMarkerVehicleClearance,
@@ -13,6 +13,10 @@ import { rpCache, rpTestState, buildProfile } from "../rp/rpCache";
 import { upsertPlayer } from "../rp/rpPlayerService";
 import { setupRpHandlers, type LicenseContext } from "../rp/setupRpHandlers";
 import { failTest, cleanupOnDisconnect } from "../rp/rpLicenseService";
+import {
+  loadAndSpawnOwnedVehicles,
+  despawnOwnedVehicles,
+} from "../rp/rpVehicleService";
 
 // Clamp a horizontal world coordinate so a hacked client cannot push a
 // player or vehicle outside the playable map. The margin keeps the
@@ -83,6 +87,12 @@ interface VehicleState {
   // client can render different car body shapes. The server itself does
   // not act on this value.
   variant?: string;
+  // Phase 3: ownership fields. Set only on player-owned vehicles (owned=true).
+  // These fields are SERVER-AUTHORITATIVE — stripped from client vehicleUpdate patches.
+  ownerId?: string;
+  plate?:   string;
+  locked?:  boolean;
+  owned?:   boolean;
 }
 
 const players = new Map<string, PlayerState>();
@@ -131,6 +141,19 @@ export function setupGameServer(httpServer: HttpServer) {
     }
     logger.info(
       `[rp] TEST_VEHICLE_SPAWN OBB OK — all 4 body corners clear all carriageways`,
+    );
+
+    // Phase 3: dealership delivery pad OBB check.
+    const DLVR_X = DEALERSHIP_DELIVERY_PAD[0];
+    const DLVR_Z = DEALERSHIP_DELIVERY_PAD[2];
+    if (!validateVehicleSpawnOBB(DLVR_X, DLVR_Z)) {
+      throw new Error(
+        `[rp] DEALERSHIP_DELIVERY_PAD OBB (x=${DLVR_X}, z=${DLVR_Z}) ` +
+        `clips a road carriageway — update DEALERSHIP_DELIVERY_PAD`,
+      );
+    }
+    logger.info(
+      `[rp] DEALERSHIP_DELIVERY_PAD OBB OK — all 4 body corners clear all carriageways`,
     );
   } catch (err) {
     logger.error({ err }, "[rp] startup validation FAILED — fix RP marker positions");
@@ -188,13 +211,17 @@ export function setupGameServer(httpServer: HttpServer) {
       // ── RP layer — DB upsert + profile emit ─────────────────────────────
       if (token) {
         upsertPlayer(token, username)
-          .then((rpEntry) => {
+          .then(async (rpEntry) => {
             rpCache.set(socket.id, rpEntry);
+            // Emit initial profile (ownedVehicles = [] until vehicles load)
             socket.emit("rp:profile", buildProfile(rpEntry));
             logger.info(
               { socketId: socket.id, playerId: rpEntry.playerId },
               "[rp] profile loaded",
             );
+            // Phase 3: load + spawn owned vehicles; emits rp:profileUpdate with
+            // ownedVehicles array and vehicleAdded for each vehicle.
+            await loadAndSpawnOwnedVehicles(socket.id, ctx);
           })
           .catch((err) => {
             logger.error({ err, socketId: socket.id }, "[rp] upsertPlayer failed");
@@ -285,6 +312,21 @@ export function setupGameServer(httpServer: HttpServer) {
         return;
       }
 
+      // ── Phase 3: lock gate for owned vehicles ────────────────────────────
+      // An owned+locked vehicle may only be entered by its ownerId.
+      if (vehicle.owned && vehicle.locked && data.driverId === socket.id) {
+        const entry = rpCache.get(socket.id);
+        const isOwner = entry && vehicle.ownerId === entry.playerId;
+        if (!isOwner) {
+          socket.emit("rp:toast", {
+            msg:      "That vehicle is locked.",
+            color:    "red",
+            duration: 3000,
+          });
+          return;
+        }
+      }
+
       // ── Unoccupied-car gate + license check ──────────────────────────────
       // An unoccupied vehicle may ONLY be updated by a packet that simultaneously
       // claims it (driverId === socket.id) AND passes the license check.
@@ -320,9 +362,10 @@ export function setupGameServer(httpServer: HttpServer) {
         }
       }
 
-      // Strip visual-only fields (variant, color) — must not be mutated by client.
+      // Strip visual-only and ownership fields — must not be mutated by client.
+      // ownerId, plate, locked, owned are SERVER-AUTHORITATIVE (Phase 3).
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      const { variant: _v, color: _c, ...safe } = data;
+      const { variant: _v, color: _c, ownerId: _o, plate: _p, locked: _l, owned: _ow, ...safe } = data;
 
       if (typeof safe.x === "number") safe.x = clampWorld(safe.x, 7);
       if (typeof safe.z === "number") safe.z = clampWorld(safe.z, 7);
@@ -339,7 +382,11 @@ export function setupGameServer(httpServer: HttpServer) {
         cleanupOnDisconnect(socket.id, ctx);
       }
 
-      // Clear RP cache (after test cleanup).
+      // Phase 3: despawn owned vehicles BEFORE clearing rpCache so
+      // despawnOwnedVehicles can still read the owned vehicle list.
+      despawnOwnedVehicles(socket.id, ctx);
+
+      // Clear RP cache (after test cleanup + owned vehicle despawn).
       rpCache.delete(socket.id);
 
       const player = players.get(socket.id);

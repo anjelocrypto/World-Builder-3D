@@ -18,6 +18,7 @@ import type { ActiveTest } from "../shared/rpTypes";
 import {
   STATION_MARKER_POS,
   LICENSING_OFFICE_POS,
+  DEALERSHIP_POS,
   LICENSE_TEST_CHECKPOINTS,
 } from "../shared/rpTypes";
 
@@ -31,11 +32,13 @@ export default function RPMarkers({ activeTest }: RPMarkersProps) {
   const activeTestRef = useRef<ActiveTest | null>(activeTest);
   activeTestRef.current = activeTest;
 
-  const platMatRef    = useRef<THREE.MeshStandardMaterial>(null!);
-  const ringMatRef    = useRef<THREE.MeshStandardMaterial>(null!);
-  const signMatRef    = useRef<THREE.MeshStandardMaterial>(null!);
-  const officeRingRef = useRef<THREE.MeshStandardMaterial>(null!);
-  const officeSignRef = useRef<THREE.MeshStandardMaterial>(null!);
+  const platMatRef      = useRef<THREE.MeshStandardMaterial>(null!);
+  const ringMatRef      = useRef<THREE.MeshStandardMaterial>(null!);
+  const signMatRef      = useRef<THREE.MeshStandardMaterial>(null!);
+  const officeRingRef   = useRef<THREE.MeshStandardMaterial>(null!);
+  const officeSignRef   = useRef<THREE.MeshStandardMaterial>(null!);
+  const dealerRingRef   = useRef<THREE.MeshStandardMaterial>(null!);
+  const dealerSignRef   = useRef<THREE.MeshStandardMaterial>(null!);
   // One ref per checkpoint ring (4 total). Populated only while activeTest
   // renders the checkpoint groups; null-checked before every write.
   const cpRingRefs = [
@@ -59,6 +62,11 @@ export default function RPMarkers({ activeTest }: RPMarkersProps) {
     const officePulse = 0.5 + 0.3 * Math.sin(t * 2.2);
     if (officeRingRef.current) officeRingRef.current.emissiveIntensity = officePulse;
     if (officeSignRef.current) officeSignRef.current.emissiveIntensity = 0.8 + 0.2 * Math.sin(t * 3.0);
+
+    // Dealership — green/gold pulse
+    const dealerPulse = 0.5 + 0.3 * Math.sin(t * 1.6 + 1.0);
+    if (dealerRingRef.current) dealerRingRef.current.emissiveIntensity = dealerPulse;
+    if (dealerSignRef.current) dealerSignRef.current.emissiveIntensity = 0.8 + 0.2 * Math.sin(t * 2.4 + 0.5);
 
     // Checkpoint rings — only animate when a test is active.
     // nextCp ring: bright fast pulse. Passed: static dim. Future: slow medium pulse.
@@ -198,6 +206,56 @@ export default function RPMarkers({ activeTest }: RPMarkersProps) {
             </mesh>
 
             <pointLight position={[0, 4, 0]} color="#ffaa22" intensity={2.5} distance={14} decay={2} />
+          </group>
+        );
+      })()}
+
+      {/* ════ Dealership marker ══════════════════════════════════════════════ */}
+      {(() => {
+        const [dx, , dz] = DEALERSHIP_POS;
+        return (
+          <group position={[dx, 0, dz]}>
+            {/* Ground ring — 6–7 m radius, gold/green */}
+            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[6, 7, 48]} />
+              <meshStandardMaterial
+                ref={dealerRingRef}
+                color="#1a3a0a"
+                emissive="#66cc22"
+                emissiveIntensity={0.5}
+                transparent
+                opacity={0.5}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+
+            {/* Sign post */}
+            <mesh position={[0, 2, -0.3]}>
+              <boxGeometry args={[0.12, 4, 0.12]} />
+              <meshStandardMaterial color="#1a1a1a" roughness={0.7} metalness={0.6} />
+            </mesh>
+
+            {/* Sign board */}
+            <mesh position={[0, 3.7, -0.3]}>
+              <boxGeometry args={[4.6, 0.85, 0.1]} />
+              <meshStandardMaterial
+                ref={dealerSignRef}
+                color="#0a1400"
+                emissive="#44bb00"
+                emissiveIntensity={0.8}
+                roughness={0.3}
+                metalness={0.2}
+              />
+            </mesh>
+
+            {/* Sign text strip */}
+            <mesh position={[0, 4.0, -0.24]}>
+              <boxGeometry args={[4.2, 0.1, 0.01]} />
+              <meshStandardMaterial color="#ffffff" emissive="#aaffaa" emissiveIntensity={2} />
+            </mesh>
+
+            <pointLight position={[0, 4.5, 0]} color="#66cc22" intensity={2.5} distance={16} decay={2} />
           </group>
         );
       })()}

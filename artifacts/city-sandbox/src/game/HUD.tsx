@@ -49,6 +49,15 @@ interface HUDProps {
    * Shows an office-specific interact prompt distinct from the vehicle prompt.
    */
   nearOffice?: boolean;
+  /**
+   * Phase 3: True when walking player is within 8m of the Dealership entrance.
+   */
+  nearDealership?: boolean;
+  /**
+   * Phase 3: vehicleId of the nearest owned vehicle within 6m, or null.
+   * Shows a lock/unlock prompt.
+   */
+  nearOwnedVehicleId?: string | null;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -408,6 +417,8 @@ export default function HUD({
   bank,
   driverLicense,
   nearOffice,
+  nearDealership,
+  nearOwnedVehicleId,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -828,6 +839,105 @@ export default function HUD({
               Driver License
             </span>{" "}
             <span style={{ color: "#9bb", fontSize: 11 }}>· $200</span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Dealership interact prompt (Phase 3)
+          ============================================================ */}
+      {nearDealership && !inVehicle && !showInteract && !nearOffice && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 130,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: PANEL_BG,
+            border: "1px solid rgba(102, 204, 34, 0.65)",
+            borderRadius: PANEL_RADIUS,
+            padding: "8px 14px 8px 8px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            boxShadow: `${PANEL_SHADOW}, 0 0 24px rgba(102,204,34,0.2)`,
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              background: "rgba(102, 204, 34, 0.15)",
+              border: "1px solid rgba(102, 204, 34, 0.7)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 13,
+              fontWeight: "bold",
+              color: "#66cc22",
+              boxShadow: "inset 0 -2px 0 rgba(102,204,34,0.35)",
+            }}
+          >
+            E
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            Browse{" "}
+            <span style={{ color: "#66cc22", fontWeight: "bold" }}>
+              Dealership
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Lock/Unlock owned vehicle prompt (Phase 3)
+          ============================================================ */}
+      {nearOwnedVehicleId && !inVehicle && !showInteract && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 160,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: PANEL_BG,
+            border: "1px solid rgba(100, 181, 246, 0.65)",
+            borderRadius: PANEL_RADIUS,
+            padding: "8px 14px 8px 8px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            boxShadow: `${PANEL_SHADOW}, 0 0 18px rgba(100,181,246,0.2)`,
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              background: "rgba(100, 181, 246, 0.15)",
+              border: "1px solid rgba(100, 181, 246, 0.7)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 13,
+              fontWeight: "bold",
+              color: "#64b5f6",
+              boxShadow: "inset 0 -2px 0 rgba(100,181,246,0.35)",
+            }}
+          >
+            E
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            🔑{" "}
+            <span style={{ color: "#64b5f6", fontWeight: "bold" }}>
+              Lock / Unlock
+            </span>{" "}
+            your vehicle
           </div>
         </div>
       )}

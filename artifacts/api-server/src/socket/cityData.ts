@@ -86,6 +86,56 @@ export const STATION_SPAWN_JITTER_X = 4;
 /** Jitter half-depth on Z: final z ∈ [STATION_SPAWN[2]−3, STATION_SPAWN[2]+3]. */
 export const STATION_SPAWN_JITTER_Z = 3;
 
+// ── Dealership (Phase 3) ──────────────────────────────────────────────────
+
+/**
+ * Vehicle dealership entrance — NE outer district, clear of all roads.
+ * Validated: x=68 is 23 m from x=45 NS road (>10 m); z=−72 is 27 m from
+ * z=−45 EW road (>10 m).
+ */
+export const DEALERSHIP_POS: [number, number, number] = [68, 0, -72];
+
+/**
+ * Delivery pad — where purchased vehicles spawn.
+ * Validated off-road (same district as DEALERSHIP_POS).
+ */
+export const DEALERSHIP_DELIVERY_PAD: [number, number, number] = [68, 0.6, -68];
+
+/** Radius (m) player must be within to interact with the Dealership. */
+export const DEALERSHIP_INTERACT_RADIUS = 8;
+
+/**
+ * Server-authoritative vehicle purchase catalog.
+ * model+variant uniquely identify a vehicle body.
+ * colors is the allowlist the server accepts — client cannot send other values.
+ */
+export const VEHICLE_SHOP_CATALOG = [
+  {
+    model:   "compact",
+    variant: "compact" as const,
+    price:   300,
+    colors:  ["#e84141", "#4169e1", "#f5f5f5", "#2d2d2d"],
+  },
+  {
+    model:   "sedan",
+    variant: "sedan"   as const,
+    price:   700,
+    colors:  ["#e84141", "#4169e1", "#f5f5f5", "#2d2d2d", "#1a5c1a"],
+  },
+  {
+    model:   "taxi",
+    variant: "taxi"    as const,
+    price:   900,
+    colors:  ["#f5c518"],
+  },
+  {
+    model:   "van",
+    variant: "van"     as const,
+    price:   1200,
+    colors:  ["#e84141", "#f5f5f5", "#1a5c1a", "#2d2d2d"],
+  },
+] as const;
+
 // ── Licensing Office (Phase 2) ─────────────────────────────────────────────
 
 /** Entrance of the Licensing Office — SE inner block, east-facing sidewalk. */
