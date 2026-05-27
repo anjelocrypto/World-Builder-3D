@@ -82,6 +82,17 @@ export interface JobState {
   deliveryDropoffs?: [number, number, number][];
   /** Calculated pay in $, rounded to nearest $10. */
   deliveryPay?:     number;
+
+  // Phase 5C — Mechanic extras (undefined for other jobs)
+  /** Server-assigned broken-vehicle service call position [x, y, z]. */
+  mechanicTarget?:         [number, number, number];
+  /** Fixed pay for this service call. */
+  mechanicPay?:            number;
+  /**
+   * Unix ms when the player arrived and repair started (set when nextCp advances to 1).
+   * Payment gated on: Date.now() − mechanicRepairStartedAt >= MECHANIC_REPAIR_DURATION_MS.
+   */
+  mechanicRepairStartedAt?: number;
 }
 
 // ── Module-level maps ──────────────────────────────────────────────────────

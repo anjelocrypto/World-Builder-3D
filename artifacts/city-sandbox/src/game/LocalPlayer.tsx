@@ -17,6 +17,9 @@ import {
   DELIVERY_HUB,
   DELIVERY_HUB_RADIUS,
   DELIVERY_CP_ACCEPT_RADIUS,
+  MECHANIC_GARAGE,
+  MECHANIC_GARAGE_RADIUS,
+  MECHANIC_SERVICE_RADIUS,
 } from "../shared/rpTypes";
 import {
   SPAWN_POINTS,
@@ -146,6 +149,8 @@ interface LocalPlayerProps {
     nearTaxiDepot: boolean;
     /** Phase 5B: true when walking player is within DELIVERY_HUB_RADIUS of the Delivery Hub. */
     nearDeliveryHub: boolean;
+    /** Phase 5C: true when walking player is within MECHANIC_GARAGE_RADIUS of the Mechanic Garage. */
+    nearMechanicGarage: boolean;
   }) => void;
   playerPosRef: React.MutableRefObject<THREE.Vector3>;
   // Authoritative spawn from the server's gameState. Falls back to a
@@ -333,6 +338,8 @@ export default function LocalPlayer({
   const nearTaxiDepotRef      = useRef(false);
   // Phase 5B: Delivery Hub proximity ref — read by E key handler
   const nearDeliveryHubRef    = useRef(false);
+  // Phase 5C: Mechanic Garage proximity ref — read by E key handler
+  const nearMechanicGarageRef = useRef(false);
   // Phase 4: job checkpoint retry state (same pattern as license-test cpRetryRef)
   const jobCpRetryRef = useRef<{ nextCp: number; lastAttemptAt: number } | null>(null);
 
@@ -353,6 +360,7 @@ export default function LocalPlayer({
     nearDepot: false,
     nearTaxiDepot: false,
     nearDeliveryHub: false,
+    nearMechanicGarage: false,
   });
 
   // Pointer lock
@@ -607,6 +615,32 @@ export default function LocalPlayer({
           }
         }
       }
+    } else if (activeJob.job === "mechanic" && inVehicle.current) {
+      // Phase 5C: mechanic uses vehicle position.
+      // checkpoints[0] and checkpoints[1] are identical (same target); the
+      // server uses nextCp to distinguish travel (0) from repair (1).
+      const nextCpIdx = activeJob.nextCp;
+      if (nextCpIdx < activeJob.checkpoints.length) {
+        const [cpx, , cpz] = activeJob.checkpoints[nextCpIdx];
+        const mdx = vehiclePos.current.x - cpx;
+        const mdz = vehiclePos.current.z - cpz;
+        const inRange = mdx * mdx + mdz * mdz < MECHANIC_SERVICE_RADIUS * MECHANIC_SERVICE_RADIUS;
+
+        const mRetry = jobCpRetryRef.current;
+        // Idx 1 retries every 1 s (repair timer server-side); idx 0 once on arrival.
+        const retryInterval = nextCpIdx === 1 ? 1000 : 1000;
+
+        if (inRange) {
+          const r = jobCpRetryRef.current;
+          if (!r || r.nextCp !== nextCpIdx || now - r.lastAttemptAt >= retryInterval) {
+            jobCpRetryRef.current = { nextCp: nextCpIdx, lastAttemptAt: now };
+            emitJobCheckpoint?.(nextCpIdx);
+          }
+        } else if (mRetry?.nextCp === nextCpIdx) {
+          // Left the radius — allow re-entry to fire again
+          jobCpRetryRef.current = null;
+        }
+      }
     } else {
       // Mismatched mode — reset retry
       jobCpRetryRef.current = null;
@@ -666,6 +700,15 @@ export default function LocalPlayer({
       dhubdx * dhubdx + dhubdz * dhubdz < DELIVERY_HUB_RADIUS * DELIVERY_HUB_RADIUS;
     nearDeliveryHubRef.current = nearDeliveryHub;
 
+    // Phase 5C: Mechanic Garage proximity (also writes to ref for E key handler)
+    const [mgX, , mgZ] = MECHANIC_GARAGE;
+    const mgdx = curPos.x - mgX;
+    const mgdz = curPos.z - mgZ;
+    const nearMechanicGarage =
+      !inVehicle.current &&
+      mgdx * mgdx + mgdz * mgdz < MECHANIC_GARAGE_RADIUS * MECHANIC_GARAGE_RADIUS;
+    nearMechanicGarageRef.current = nearMechanicGarage;
+
     // Phase 3: nearest owned vehicle within 6 m (for lock/unlock prompt)
     let nearOwnedVehicleId: string | null = null;
     if (!inVehicle.current) {
@@ -700,6 +743,7 @@ export default function LocalPlayer({
       nearDepot,
       nearTaxiDepot,
       nearDeliveryHub,
+      nearMechanicGarage,
     };
 
     // Throttled per-field UI diff. JSON.stringify on a 10-key object
@@ -724,7 +768,8 @@ export default function LocalPlayer({
       newUI.nearOwnedVehicleId !== cache.nearOwnedVehicleId ||
       newUI.nearDepot !== cache.nearDepot ||
       newUI.nearTaxiDepot !== cache.nearTaxiDepot ||
-      newUI.nearDeliveryHub !== cache.nearDeliveryHub;
+      newUI.nearDeliveryHub !== cache.nearDeliveryHub ||
+      newUI.nearMechanicGarage !== cache.nearMechanicGarage;
     const timeChanged = Math.abs(newUI.raceTime - cache.raceTime) > 100;
     const sinceLast = now - lastUIEmit.current;
     if (
@@ -1071,6 +1116,10 @@ export default function LocalPlayer({
         } else if (nearDeliveryHubRef.current) {
           // Phase 5B: clock in/out at Delivery Hub.
           emitToggleDuty?.("delivery_driver");
+          interactCooldown.current = 1.0;
+        } else if (nearMechanicGarageRef.current) {
+          // Phase 5C: clock in/out at Mechanic Garage.
+          emitToggleDuty?.("mechanic");
           interactCooldown.current = 1.0;
         } else if (nearDealershipRef.current) {
           // Phase 3: open dealership shop.

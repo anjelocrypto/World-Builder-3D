@@ -73,6 +73,11 @@ interface HUDProps {
    * Shows an E — Clock In/Out · Delivery Driver prompt.
    */
   nearDeliveryHub?: boolean;
+  /**
+   * Phase 5C: true when walking player is within Mechanic Garage radius.
+   * Shows an E — Clock In/Out · Mechanic prompt.
+   */
+  nearMechanicGarage?: boolean;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -437,6 +442,7 @@ export default function HUD({
   nearDepot,
   nearTaxiDepot,
   nearDeliveryHub,
+  nearMechanicGarage,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -1056,6 +1062,56 @@ export default function HUD({
               Clock In / Out
             </span>{" "}
             <span style={{ color: "#9bb", fontSize: 11 }}>· Delivery Driver</span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Mechanic Garage clock-in/out prompt (Phase 5C)
+          ============================================================ */}
+      {nearMechanicGarage && !inVehicle && !showInteract && !nearOffice && !nearDealership && !nearDepot && !nearTaxiDepot && !nearDeliveryHub && (
+        <div
+          style={{
+            position:             "absolute",
+            bottom:               130,
+            left:                 "50%",
+            transform:            "translateX(-50%)",
+            background:           PANEL_BG,
+            border:               "1px solid rgba(136, 153, 187, 0.65)",
+            borderRadius:         PANEL_RADIUS,
+            padding:              "8px 14px 8px 8px",
+            display:              "flex",
+            alignItems:           "center",
+            gap:                  12,
+            boxShadow:            `${PANEL_SHADOW}, 0 0 24px rgba(136,153,187,0.22)`,
+            backdropFilter:       "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width:          28,
+              height:         28,
+              borderRadius:   6,
+              background:     "rgba(136, 153, 187, 0.15)",
+              border:         "1px solid rgba(136, 153, 187, 0.7)",
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              fontSize:       13,
+              fontWeight:     "bold",
+              color:          "#8899bb",
+              boxShadow:      "inset 0 -2px 0 rgba(136,153,187,0.35)",
+            }}
+          >
+            E
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            🔧{" "}
+            <span style={{ color: "#8899bb", fontWeight: "bold" }}>
+              Clock In / Out
+            </span>{" "}
+            <span style={{ color: "#9bb", fontSize: 11 }}>· Mechanic</span>
           </div>
         </div>
       )}

@@ -24,6 +24,7 @@ import {
   CITY_WORKER_CHECKPOINTS,
   TAXI_DEPOT,
   DELIVERY_HUB,
+  MECHANIC_GARAGE,
 } from "../shared/rpTypes";
 
 interface RPMarkersProps {
@@ -83,6 +84,11 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
     useRef<THREE.MeshStandardMaterial>(null!),
     useRef<THREE.MeshStandardMaterial>(null!),
   ];
+  // Phase 5C: Mechanic Garage marker refs
+  const mechanicGarageRingRef = useRef<THREE.MeshStandardMaterial>(null!);
+  const mechanicGarageSignRef = useRef<THREE.MeshStandardMaterial>(null!);
+  // Phase 5C: mechanic service-call target ring (1 target, same position for both stages)
+  const mechanicCpRingRef = useRef<THREE.MeshStandardMaterial>(null!);
 
   useFrame(({ clock }) => {
     const t  = clock.getElapsedTime();
@@ -119,8 +125,24 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
     if (deliveryHubRingRef.current) deliveryHubRingRef.current.emissiveIntensity = deliveryHubPulse;
     if (deliveryHubSignRef.current) deliveryHubSignRef.current.emissiveIntensity = 0.7 + 0.2 * Math.sin(t * 2.7 + 0.9);
 
+    // Mechanic Garage — steel/industrial pulse
+    const mechanicGaragePulse = 0.4 + 0.3 * Math.sin(t * 2.1 + 0.6);
+    if (mechanicGarageRingRef.current) mechanicGarageRingRef.current.emissiveIntensity = mechanicGaragePulse;
+    if (mechanicGarageSignRef.current) mechanicGarageSignRef.current.emissiveIntensity = 0.7 + 0.2 * Math.sin(t * 2.9 + 0.2);
+
     // City Worker checkpoint rings — only animate when job is city_worker.
     const aj = activeJobRef.current;
+
+    // Mechanic service-call ring — only animate when job is mechanic.
+    if (aj?.job === "mechanic") {
+      if (mechanicCpRingRef.current) {
+        // When repairing (nextCp === 1), pulse fast red; when travelling (nextCp === 0), slow orange.
+        const isRepairing = aj.nextCp === 1;
+        mechanicCpRingRef.current.emissiveIntensity = isRepairing
+          ? 0.45 + 0.35 * Math.sin(t * 5.0)
+          : 0.35 + 0.25 * Math.sin(t * 2.5);
+      }
+    }
     if (aj?.job === "city_worker") {
       jobCpRingRefs.forEach((ref, i) => {
         if (!ref.current) return;
@@ -501,6 +523,112 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
             </mesh>
 
             <pointLight position={[0, 4, 0]} color="#c8884a" intensity={2.5} distance={14} decay={2} />
+          </group>
+        );
+      })()}
+
+      {/* ════ Mechanic Garage marker ══════════════════════════════════════════════ */}
+      {(() => {
+        const [mgx, , mgz] = MECHANIC_GARAGE;
+        return (
+          <group position={[mgx, 0, mgz]}>
+            {/* Ground ring — 5–6 m radius, steel/industrial gray */}
+            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[5, 6, 48]} />
+              <meshStandardMaterial
+                ref={mechanicGarageRingRef}
+                color="#1a1a2a"
+                emissive="#8899bb"
+                emissiveIntensity={0.4}
+                transparent
+                opacity={0.5}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+
+            {/* Sign post */}
+            <mesh position={[0, 1.8, -0.3]}>
+              <boxGeometry args={[0.12, 3.6, 0.12]} />
+              <meshStandardMaterial color="#222233" roughness={0.6} metalness={0.7} />
+            </mesh>
+
+            {/* Sign board */}
+            <mesh position={[0, 3.3, -0.3]}>
+              <boxGeometry args={[4.6, 0.8, 0.1]} />
+              <meshStandardMaterial
+                ref={mechanicGarageSignRef}
+                color="#0a0a14"
+                emissive="#8899bb"
+                emissiveIntensity={0.7}
+                roughness={0.3}
+                metalness={0.4}
+              />
+            </mesh>
+
+            {/* Sign text strip */}
+            <mesh position={[0, 3.6, -0.24]}>
+              <boxGeometry args={[4.2, 0.1, 0.01]} />
+              <meshStandardMaterial color="#ffffff" emissive="#ccddff" emissiveIntensity={2} />
+            </mesh>
+
+            <pointLight position={[0, 4, 0]} color="#8899bb" intensity={2.5} distance={14} decay={2} />
+          </group>
+        );
+      })()}
+
+      {/* ════ Mechanic service-call ring — only while mechanic route active ══════
+          Shows the single broken-vehicle target. Pulses orange when travelling
+          (nextCp===0), fast red when repairing (nextCp===1). */}
+      {activeJob?.job === "mechanic" && (() => {
+        const cp = activeJob.checkpoints[0];
+        if (!cp) return null;
+        const [cx, , cz] = cp;
+        const isRepairing = activeJob.nextCp === 1;
+        const emissiveColor = isRepairing ? "#ff4422" : "#ff9944";
+        const ringColor     = isRepairing ? "#3a0800" : "#3a1a00";
+        return (
+          <group position={[cx, 0, cz]}>
+            {/* Ground ring — 10–11 m (vehicle-scale) */}
+            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[10, 11, 48]} />
+              <meshStandardMaterial
+                ref={mechanicCpRingRef}
+                color={ringColor}
+                emissive={emissiveColor}
+                emissiveIntensity={0.35}
+                transparent
+                opacity={0.5}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+
+            {/* Pillar + cap + light */}
+            <mesh position={[0, 2, 0]}>
+              <cylinderGeometry args={[0.16, 0.16, 4, 8]} />
+              <meshStandardMaterial
+                color={emissiveColor}
+                emissive={emissiveColor}
+                emissiveIntensity={0.6}
+                roughness={0.3}
+              />
+            </mesh>
+            <mesh position={[0, 4.2, 0]}>
+              <sphereGeometry args={[0.28, 8, 8]} />
+              <meshStandardMaterial
+                color="#ffffff"
+                emissive={emissiveColor}
+                emissiveIntensity={1.2}
+              />
+            </mesh>
+            <pointLight
+              position={[0, 4.3, 0]}
+              color={emissiveColor}
+              intensity={2.0}
+              distance={16}
+              decay={2}
+            />
           </group>
         );
       })()}

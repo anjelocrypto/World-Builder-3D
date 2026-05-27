@@ -330,6 +330,55 @@ export const DELIVERY_MIN_STAGE_INTERVAL_MS = 5_000;
 /** Minimum ms between two completed Delivery routes (cooldown). */
 export const DELIVERY_ROUTE_COOLDOWN_MS = 60_000;
 
+// ── Phase 5C: Mechanic job ────────────────────────────────────────────────
+
+/**
+ * Mechanic Garage — player clocks in/out here.
+ * Off-road at [−68, 0, −28]; nearest parked car (car-5 at [−55, 0.6, −8]) ≈ 23.85 m.
+ */
+export const MECHANIC_GARAGE: [number, number, number] = [-68, 0, -28];
+
+/** Radius (m) within which the player can clock in/out at the Mechanic Garage. */
+export const MECHANIC_GARAGE_RADIUS = 6;
+
+/**
+ * Server-authoritative broken-vehicle service call positions.
+ * All are ON a road carriageway (validated at startup).
+ * They represent fictional broken-down vehicles — NOT entries in INITIAL_VEHICLES.
+ * The server picks one at random when the player clocks in.
+ *
+ * Geometry (verified programmatically):
+ *   T0 [45, 0.5, −5]   — x=45 N-S road; nearest parked car ≈ 16.4 m
+ *   T1 [−45, 0.5, 20]  — x=−45 N-S road; nearest parked car ≈ 18.0 m
+ *   T2 [0, 0.5, 40]    — x=0  N-S road;  nearest parked car ≈ 17.0 m
+ *   T3 [30, 0.5, −45]  — z=−45 E-W road; nearest parked car ≈ 11.2 m
+ *   T4 [−20, 0.5, 45]  — z=45  E-W road; nearest parked car ≈ 18.0 m
+ *   T5 [20, 0.5, −45]  — z=−45 E-W road; nearest parked car ≈ 18.0 m
+ */
+export const MECHANIC_TARGETS: [number, number, number][] = [
+  [  45, 0.5,  -5],  // T0 — x=45  N-S road, south of center
+  [ -45, 0.5,  20],  // T1 — x=−45 N-S road, north of center
+  [   0, 0.5,  40],  // T2 — x=0   N-S road, north block
+  [  30, 0.5, -45],  // T3 — z=−45 E-W road, east half
+  [ -20, 0.5,  45],  // T4 — z=45  E-W road, west half
+  [  20, 0.5, -45],  // T5 — z=−45 E-W road, east of center
+];
+
+/** Mechanic must stop within this distance (m) of the broken vehicle to begin/complete repair. */
+export const MECHANIC_SERVICE_RADIUS = 12;
+
+/** Server-side repair duration in ms. Client retries idx=1 every ~1s; server pays once elapsed. */
+export const MECHANIC_REPAIR_DURATION_MS = 8_000;
+
+/** Fixed pay for completing a mechanic service call. */
+export const MECHANIC_PAY = 180;
+
+/** Minimum ms between the travel arrival and subsequent repair-confirmation retries (not applied to repair stage). */
+export const MECHANIC_MIN_STAGE_INTERVAL_MS = 5_000;
+
+/** Minimum ms between two completed mechanic service calls (cooldown). */
+export const MECHANIC_ROUTE_COOLDOWN_MS = 60_000;
+
 // ── Licensing Office (Phase 2) ─────────────────────────────────────────────
 
 /** Entrance of the Licensing Office — SE inner block, east-facing sidewalk. */

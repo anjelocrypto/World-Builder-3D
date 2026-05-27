@@ -1,14 +1,18 @@
 /**
- * JobHUD — Phase 4/5A overlay shown during an active job route.
+ * JobHUD — Phase 4/5A/5B/5C overlay shown during an active job route.
  *
- * Phase 4: City Worker — progress bar of 4 walk checkpoints.
+ * Phase 4:  City Worker — progress bar of 4 walk checkpoints.
  * Phase 5A: Taxi Driver — two-stage HUD (pickup → dropoff) with fare display.
+ * Phase 5B: Delivery Driver — pickup + ordered stop segments.
+ * Phase 5C: Mechanic — travel to target + repair countdown.
  *
  * Branches on activeJob.job (or activeJob.mode) to render the correct layout.
  * Rendered outside the Canvas (plain React) so it sits above the 3D scene.
  */
 
+import { useEffect, useState } from "react";
 import type { ActiveJob } from "../shared/rpTypes";
+import { MECHANIC_REPAIR_DURATION_MS } from "../shared/rpTypes";
 
 interface JobHUDProps {
   activeJob: ActiveJob | null;
@@ -282,6 +286,132 @@ function DeliveryHUD({ activeJob }: { activeJob: ActiveJob }) {
   );
 }
 
+// ── Mechanic HUD ─────────────────────────────────────────────────────────────
+
+const MECHANIC_STEEL  = "#8899bb";
+const MECHANIC_RED    = "#ff4422";
+const MECHANIC_ORANGE = "#ff9944";
+
+function MechanicHUD({ activeJob }: { activeJob: ActiveJob }) {
+  const isRepairing = activeJob.nextCp === 1;
+
+  // Countdown — ticks every 100 ms while repairing
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (!isRepairing || !activeJob.repairStartedAt) {
+      setTimeLeft(null);
+      return;
+    }
+    const tick = () => {
+      const elapsed = Date.now() - (activeJob.repairStartedAt as number);
+      const remaining = Math.max(0, MECHANIC_REPAIR_DURATION_MS - elapsed);
+      setTimeLeft(remaining);
+    };
+    tick();
+    const id = setInterval(tick, 100);
+    return () => clearInterval(id);
+  }, [isRepairing, activeJob.repairStartedAt]);
+
+  const done = activeJob.nextCp >= 2;
+
+  const stageLabel = done
+    ? "Repair complete!"
+    : isRepairing
+    ? timeLeft !== null && timeLeft > 0
+      ? `Repairing… ${(timeLeft / 1000).toFixed(1)}s`
+      : "Repair done — collecting pay…"
+    : "Drive to broken vehicle";
+
+  const stageColor = done ? "#2ee07a" : isRepairing ? MECHANIC_RED : MECHANIC_ORANGE;
+  const borderColor = isRepairing ? "rgba(255,68,34,0.6)" : "rgba(136,153,187,0.55)";
+
+  // Progress bar: stage 0 = travel, stage 1 = repair
+  const travelDone  = activeJob.nextCp >= 1;
+  const repairDone  = done;
+
+  return (
+    <div
+      style={{
+        position:             "fixed",
+        top:                  64,
+        left:                 "50%",
+        transform:            "translateX(-50%)",
+        background:           PANEL_BG,
+        border:               `1px solid ${borderColor}`,
+        borderRadius:         PANEL_RADIUS,
+        padding:              "10px 24px",
+        display:              "flex",
+        flexDirection:        "column",
+        alignItems:           "center",
+        gap:                  6,
+        boxShadow:            PANEL_SHADOW,
+        backdropFilter:       "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        pointerEvents:        "none",
+        minWidth:             220,
+        fontFamily:           "'Courier New', monospace",
+        userSelect:           "none",
+        zIndex:               50,
+      }}
+    >
+      {/* Job label */}
+      <div style={{ fontSize: 10, color: MECHANIC_STEEL, letterSpacing: 3, fontWeight: "bold", textTransform: "uppercase" }}>
+        🔧 Mechanic
+      </div>
+
+      {/* Two-stage progress row: TRAVEL → REPAIR */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+        {/* Travel */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+          <div
+            style={{
+              width:        48,
+              height:       8,
+              borderRadius: 3,
+              background:   travelDone
+                ? MECHANIC_ORANGE
+                : !isRepairing
+                ? "rgba(255,153,68,0.5)"
+                : "rgba(255,255,255,0.1)",
+              boxShadow:    travelDone ? `0 0 6px rgba(255,153,68,0.6)` : "none",
+              transition:   "background 0.25s",
+            }}
+          />
+          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.5)", letterSpacing: 1 }}>TRAVEL</span>
+        </div>
+
+        {/* Arrow */}
+        <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 14 }}>→</span>
+
+        {/* Repair */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+          <div
+            style={{
+              width:        48,
+              height:       8,
+              borderRadius: 3,
+              background:   repairDone
+                ? MECHANIC_RED
+                : isRepairing
+                ? "rgba(255,68,34,0.5)"
+                : "rgba(255,255,255,0.1)",
+              boxShadow:    repairDone ? `0 0 6px rgba(255,68,34,0.6)` : "none",
+              transition:   "background 0.25s",
+            }}
+          />
+          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.5)", letterSpacing: 1 }}>REPAIR</span>
+        </div>
+      </div>
+
+      {/* Status line */}
+      <div style={{ fontSize: 12, color: stageColor, letterSpacing: 0.5 }}>
+        {stageLabel}{" "}
+        <span style={{ color: "#9bb", fontSize: 11 }}>· ${activeJob.pay} pay</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function JobHUD({ activeJob }: JobHUDProps) {
@@ -293,6 +423,10 @@ export default function JobHUD({ activeJob }: JobHUDProps) {
 
   if (activeJob.job === "delivery_driver") {
     return <DeliveryHUD activeJob={activeJob} />;
+  }
+
+  if (activeJob.job === "mechanic") {
+    return <MechanicHUD activeJob={activeJob} />;
   }
 
   // Default: city_worker (or any future walk job)

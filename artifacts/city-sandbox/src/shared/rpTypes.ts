@@ -41,6 +41,11 @@ export interface ActiveJob {
   checkpoints: [number, number, number][];
   nextCp:      number;
   pay:         number;
+  /**
+   * Phase 5C: Unix ms when the mechanic repair started (set when nextCp advances
+   * to 1). Null / undefined for all other jobs.
+   */
+  repairStartedAt?: number | null;
 }
 
 export interface RpProfile {
@@ -175,6 +180,21 @@ export const DELIVERY_HUB_RADIUS = 6;
 
 /** Acceptance radius (m) for delivery pickup/dropoff stages. */
 export const DELIVERY_CP_ACCEPT_RADIUS = 12;
+
+// ── Phase 5C: Mechanic job constants ──────────────────────────────────────
+// These MUST stay in sync with MECHANIC_* in api-server/src/socket/cityData.ts.
+
+/** Mechanic Garage position [x, y, z]. */
+export const MECHANIC_GARAGE: [number, number, number] = [-68, 0, -28];
+
+/** Radius (m) within which the player can clock in/out at the Mechanic Garage. */
+export const MECHANIC_GARAGE_RADIUS = 6;
+
+/** Acceptance radius (m) for mechanic service call targets. */
+export const MECHANIC_SERVICE_RADIUS = 12;
+
+/** Duration (ms) the player must stay near the broken vehicle for repair. */
+export const MECHANIC_REPAIR_DURATION_MS = 8_000;
 
 // ── Client-side optimistic license + lock check ────────────────────────────
 

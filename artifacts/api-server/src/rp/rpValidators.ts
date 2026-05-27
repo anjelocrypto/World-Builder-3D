@@ -25,6 +25,8 @@ import {
   DELIVERY_HUB,
   DELIVERY_PICKUPS,
   DELIVERY_DROPOFFS,
+  MECHANIC_GARAGE,
+  MECHANIC_TARGETS,
 } from "../socket/cityData";
 import type { RpCacheEntry, TestState } from "./rpCache";
 
@@ -139,6 +141,11 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     { label: "DELIVERY_HUB", x: DELIVERY_HUB[0], z: DELIVERY_HUB[2] },
   ];
 
+  // Phase 5C: Mechanic Garage must be off-road
+  const mechanicMarkers = [
+    { label: "MECHANIC_GARAGE", x: MECHANIC_GARAGE[0], z: MECHANIC_GARAGE[2] },
+  ];
+
   // Phase 5A: Taxi pickups + dropoffs must be on roads
   const taxiOnRoad = [
     ...TAXI_PICKUPS.map(([cx, , cz], i) => ({ label: `TAXI_PICKUP_${i}`, x: cx, z: cz })),
@@ -151,7 +158,12 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     ...DELIVERY_DROPOFFS.map(([cx, , cz], i) => ({ label: `DELIVERY_DROPOFF_${i}`, x: cx, z: cz })),
   ];
 
-  for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers, ...deliveryMarkers]) {
+  // Phase 5C: Mechanic targets must be on roads
+  const mechanicOnRoad = [
+    ...MECHANIC_TARGETS.map(([cx, , cz], i) => ({ label: `MECHANIC_TARGET_${i}`, x: cx, z: cz })),
+  ];
+
+  for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers, ...deliveryMarkers, ...mechanicMarkers]) {
     if (isInCarriageway(m.x, m.z))
       throw new Error(`[rp] marker "${m.label}" is inside road carriageway`);
     if (isInsideObstacle(m.x, m.z, obstacles))
@@ -159,7 +171,7 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     console.info(`[rp] marker OK: ${m.label} [${m.x}, ${m.z}]`);
   }
 
-  for (const cp of [...ON_ROAD, ...taxiOnRoad, ...deliveryOnRoad]) {
+  for (const cp of [...ON_ROAD, ...taxiOnRoad, ...deliveryOnRoad, ...mechanicOnRoad]) {
     if (!isOnRoad(cp.x, cp.z))
       throw new Error(`[rp] checkpoint "${cp.label}" is NOT on a road`);
     if (isInsideObstacle(cp.x, cp.z, obstacles))
@@ -211,6 +223,9 @@ export function validateRpMarkerVehicleClearance(vehicles: VehiclePos[]): void {
     { label: "DELIVERY_HUB",            x: DELIVERY_HUB[0],            z: DELIVERY_HUB[2] },
     ...DELIVERY_PICKUPS.map(([cx, , cz], i)  => ({ label: `DELIVERY_PICKUP_${i}`,   x: cx, z: cz })),
     ...DELIVERY_DROPOFFS.map(([cx, , cz], i) => ({ label: `DELIVERY_DROPOFF_${i}`,  x: cx, z: cz })),
+    // Phase 5C — mechanic garage + all service call targets
+    { label: "MECHANIC_GARAGE",         x: MECHANIC_GARAGE[0],         z: MECHANIC_GARAGE[2] },
+    ...MECHANIC_TARGETS.map(([cx, , cz], i)  => ({ label: `MECHANIC_TARGET_${i}`,   x: cx, z: cz })),
   ];
   for (const m of markers) {
     if (isNearParkedCar(m.x, m.z, vehicles)) {

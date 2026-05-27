@@ -26,6 +26,8 @@
  *   be within the correct depot radius before clock-out is accepted.
  * Phase 5B: delivery_driver — 3-stage vehicle route (pickup + 2-3 ordered dropoffs);
  *   driver license required; same server-authority rules as taxi; DB-first payment.
+ * Phase 5C: mechanic — 2-stage vehicle route (drive to broken car → repair 8 s);
+ *   driver license required; server-timed repair; DB-first payment; retryable on failure.
  */
 
 import { db, rpPlayers, rpWallets, rpTransactionLog } from "@workspace/db";
@@ -65,6 +67,14 @@ import {
   DELIVERY_CP_ACCEPT_RADIUS,
   DELIVERY_MIN_STAGE_INTERVAL_MS,
   DELIVERY_ROUTE_COOLDOWN_MS,
+  // Mechanic
+  MECHANIC_GARAGE,
+  MECHANIC_GARAGE_RADIUS,
+  MECHANIC_TARGETS,
+  MECHANIC_SERVICE_RADIUS,
+  MECHANIC_REPAIR_DURATION_MS,
+  MECHANIC_PAY,
+  MECHANIC_ROUTE_COOLDOWN_MS,
 } from "../socket/cityData";
 
 // ── Context ────────────────────────────────────────────────────────────────────
@@ -224,7 +234,7 @@ export async function toggleDuty(
   ctx:    JobContext,
   job:    string,
 ): Promise<void> {
-  if (job !== "city_worker" && job !== "taxi_driver" && job !== "delivery_driver") {
+  if (job !== "city_worker" && job !== "taxi_driver" && job !== "delivery_driver" && job !== "mechanic") {
     socket.emit("rp:toast", {
       msg:      "Unknown job.",
       color:    "red",
@@ -267,6 +277,10 @@ export async function toggleDuty(
       const dx = player.x - DELIVERY_HUB[0];
       const dz = player.z - DELIVERY_HUB[2];
       atDepot = dx * dx + dz * dz <= DELIVERY_HUB_RADIUS * DELIVERY_HUB_RADIUS;
+    } else if (activeState.job === "mechanic") {
+      const dx = player.x - MECHANIC_GARAGE[0];
+      const dz = player.z - MECHANIC_GARAGE[2];
+      atDepot = dx * dx + dz * dz <= MECHANIC_GARAGE_RADIUS * MECHANIC_GARAGE_RADIUS;
     }
 
     if (!atDepot) {
@@ -313,8 +327,10 @@ export async function toggleDuty(
     await clockInCityWorker(socket, ctx, entry, player);
   } else if (job === "taxi_driver") {
     await clockInTaxi(socket, ctx, entry, player);
-  } else {
+  } else if (job === "delivery_driver") {
     await clockInDelivery(socket, ctx, entry, player);
+  } else {
+    await clockInMechanic(socket, ctx, entry, player);
   }
 }
 
@@ -510,6 +526,8 @@ export async function handleJobCheckpoint(
     await handleTaxiCheckpoint(socket, ctx, entry, state, idx, now);
   } else if (state.job === "delivery_driver") {
     await handleDeliveryCheckpoint(socket, ctx, entry, state, idx, now);
+  } else if (state.job === "mechanic") {
+    await handleMechanicCheckpoint(socket, ctx, entry, state, idx, now);
   }
 }
 
@@ -1029,4 +1047,286 @@ async function handleDeliveryCheckpoint(
     duration: 6000,
   });
   logger.info({ socketId: socket.id, pay, newCash }, "[rp] delivery_driver route complete, paid");
+}
+
+// ── Mechanic helpers ───────────────────────────────────────────────────────────
+
+/**
+ * Builds the activeJob payload sent to the client for the mechanic job.
+ *
+ * The checkpoint list is [mechanicTarget, mechanicTarget] — two identical
+ * positions. This lets the standard client detection loop fire naturally for
+ * both stages without any special-casing in LocalPlayer:
+ *   idx 0 = "drive to the broken vehicle" (nextCp === 0)
+ *   idx 1 = "repair in progress / done"   (nextCp === 1, client retries each second)
+ */
+function buildMechanicJob(state: JobState): Record<string, unknown> {
+  return {
+    job:            "mechanic",
+    label:          "Mechanic",
+    mode:           "vehicle" as const,
+    checkpoints:    [state.mechanicTarget!, state.mechanicTarget!] as [number, number, number][],
+    nextCp:         state.nextCp,
+    pay:            state.mechanicPay!,
+    repairStartedAt: state.mechanicRepairStartedAt ?? null,
+  };
+}
+
+// ── Mechanic clock-in ──────────────────────────────────────────────────────────
+
+async function clockInMechanic(
+  socket: Socket,
+  ctx:    JobContext,
+  entry:  RpCacheEntry,
+  player: PlayerState,
+): Promise<void> {
+  // Requires driver license
+  if (!entry.driverLicense) {
+    socket.emit("rp:toast", {
+      msg:      "A driver license is required to work as a mechanic.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Must be at Mechanic Garage
+  const dx = player.x - MECHANIC_GARAGE[0];
+  const dz = player.z - MECHANIC_GARAGE[2];
+  if (dx * dx + dz * dz > MECHANIC_GARAGE_RADIUS * MECHANIC_GARAGE_RADIUS) {
+    socket.emit("rp:toast", {
+      msg:      "You must be at the Mechanic Garage to clock in.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Cooldown check — uses shared lastPaycheckAt
+  const now = Date.now();
+  if (entry.lastPaycheckAt !== null) {
+    const elapsed = now - entry.lastPaycheckAt;
+    if (elapsed < MECHANIC_ROUTE_COOLDOWN_MS) {
+      const waitSecs = Math.ceil((MECHANIC_ROUTE_COOLDOWN_MS - elapsed) / 1000);
+      socket.emit("rp:toast", {
+        msg:      `Service cooldown — wait ${waitSecs}s before taking another call.`,
+        color:    "yellow",
+        duration: 4000,
+      });
+      return;
+    }
+  }
+
+  // Server assigns a random target (client never chooses)
+  const target = pickRandom(MECHANIC_TARGETS);
+  const pay    = MECHANIC_PAY;
+
+  // DB-first (Fix 2 pattern)
+  try {
+    await db
+      .update(rpPlayers)
+      .set({ onDuty: true, currentJob: "mechanic" })
+      .where(eq(rpPlayers.id, entry.playerId));
+  } catch (err) {
+    logger.error({ err, socketId: socket.id }, "[rp] clockInMechanic: DB update failed");
+    socket.emit("rp:toast", {
+      msg:      "Clock-in failed — try again.",
+      color:    "red",
+      duration: 3000,
+    });
+    return;
+  }
+
+  const state: JobState = {
+    job:           "mechanic",
+    nextCp:        0,
+    startedAt:     now,
+    lastCpAt:      0,
+    mechanicTarget: target,
+    mechanicPay:    pay,
+  };
+  rpJobState.set(socket.id, state);
+  entry.onDuty     = true;
+  entry.currentJob = "mechanic";
+
+  socket.emit("rp:profileUpdate", {
+    onDuty:     true,
+    currentJob: "mechanic",
+    activeJob:  buildMechanicJob(state),
+  });
+  socket.emit("rp:toast", {
+    msg:      `Service call dispatched! Drive to the broken vehicle. Pay: $${pay}.`,
+    color:    "green",
+    duration: 6000,
+  });
+  logger.info({ socketId: socket.id, target, pay }, "[rp] mechanic clocked in");
+}
+
+// ── Mechanic checkpoint ────────────────────────────────────────────────────────
+
+/**
+ * idx === 0:  player arrived at the broken vehicle — starts the repair timer.
+ * idx === 1:  repair timer elapsed — pay atomically, clear state.
+ *             Client retries idx=1 every second until the timer passes.
+ *             On DB failure for idx=1, just return without touching state so
+ *             the client retries next second with the timer still elapsed.
+ *
+ * Server-authoritative: uses drivenVehicle.x/z only (no player.x/z fallback).
+ */
+async function handleMechanicCheckpoint(
+  socket: Socket,
+  ctx:    JobContext,
+  entry:  RpCacheEntry,
+  state:  JobState,
+  idx:    number,
+  now:    number,
+): Promise<void> {
+  if (!state.mechanicTarget || state.mechanicPay === undefined) {
+    logger.warn({ socketId: socket.id }, "[rp] handleMechanicCheckpoint: missing mechanic state");
+    socket.emit("rp:toast", {
+      msg:      "Service route error — please clock out and try again.",
+      color:    "red",
+      duration: 5000,
+    });
+    return;
+  }
+
+  // Reject wrong idx
+  if (idx !== state.nextCp) {
+    logger.debug(
+      { socketId: socket.id, idx, nextCp: state.nextCp },
+      "[rp] mechanic checkpoint out of order — ignored",
+    );
+    return;
+  }
+
+  // Require player to be in a vehicle (drivenVehicle only — no player.x/z fallback)
+  const drivenVehicle = [...ctx.vehicles.values()].find(v => v.driverId === socket.id);
+  if (!drivenVehicle) {
+    socket.emit("rp:toast", {
+      msg:      "You must be driving to reach the service call.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  const [tx, , tz] = state.mechanicTarget;
+  const vx = drivenVehicle.x;
+  const vz = drivenVehicle.z;
+  const distSq = (vx - tx) * (vx - tx) + (vz - tz) * (vz - tz);
+  const radiusSq = MECHANIC_SERVICE_RADIUS * MECHANIC_SERVICE_RADIUS;
+
+  // ── idx === 0: arrival at broken vehicle ─────────────────────────────────────
+  if (idx === 0) {
+    if (distSq > radiusSq) {
+      return; // not close enough yet — client retries each second
+    }
+
+    // Advance state — set repair start time
+    state.nextCp               = 1;
+    state.lastCpAt             = now;
+    state.mechanicRepairStartedAt = now;
+
+    socket.emit("rp:profileUpdate", { activeJob: buildMechanicJob(state) });
+    socket.emit("rp:toast", {
+      msg:      "Repairing vehicle… stay nearby for 8 seconds.",
+      color:    "cyan",
+      duration: 4000,
+    });
+    logger.debug({ socketId: socket.id }, "[rp] mechanic arrived at target, repair started");
+    return;
+  }
+
+  // ── idx === 1: repair timer check ─────────────────────────────────────────────
+  if (!state.mechanicRepairStartedAt) {
+    logger.warn({ socketId: socket.id }, "[rp] handleMechanicCheckpoint: idx=1 but no repairStartedAt");
+    return;
+  }
+
+  // Still within service radius?
+  if (distSq > radiusSq) {
+    socket.emit("rp:toast", {
+      msg:      "You moved too far — stay near the broken vehicle!",
+      color:    "yellow",
+      duration: 3000,
+    });
+    // Reset repair timer — player must start repair again
+    state.mechanicRepairStartedAt = undefined;
+    state.nextCp                  = 0;
+    state.lastCpAt                = 0;
+    socket.emit("rp:profileUpdate", { activeJob: buildMechanicJob(state) });
+    return;
+  }
+
+  // Timer still running?
+  if (now - state.mechanicRepairStartedAt < MECHANIC_REPAIR_DURATION_MS) {
+    return; // client retries next second
+  }
+
+  // ── Timer elapsed — pay atomically ───────────────────────────────────────────
+  const pay = state.mechanicPay;
+  let newCash = entry.cash;
+  try {
+    await db.transaction(async (tx) => {
+      const [wallet] = await tx
+        .select()
+        .from(rpWallets)
+        .where(eq(rpWallets.playerId, entry.playerId))
+        .for("update");
+      if (!wallet) throw new Error("no wallet row");
+
+      newCash = wallet.cash + pay;
+
+      await tx
+        .update(rpWallets)
+        .set({ cash: newCash, updatedAt: new Date() })
+        .where(eq(rpWallets.playerId, entry.playerId));
+
+      await tx.insert(rpTransactionLog).values({
+        playerId:  entry.playerId,
+        kind:      "job_pay",
+        cashDelta: pay,
+        bankDelta: 0,
+        cashAfter: newCash,
+        bankAfter: wallet.bank,
+        note:      "Mechanic service call complete",
+      });
+
+      await tx
+        .update(rpPlayers)
+        .set({ onDuty: false, currentJob: null, lastPaycheckAt: new Date(now) })
+        .where(eq(rpPlayers.id, entry.playerId));
+    });
+  } catch (err) {
+    // DB failed — leave state untouched; client retries idx=1 next second
+    // (repairStartedAt is still set and timer is still elapsed, so next retry will succeed)
+    logger.error({ err, socketId: socket.id }, "[rp] handleMechanicCheckpoint: payment tx failed");
+    socket.emit("rp:toast", {
+      msg:      "Payment failed — repair accepted, retrying…",
+      color:    "red",
+      duration: 4000,
+    });
+    return;
+  }
+
+  // DB committed — finalise state
+  rpJobState.delete(socket.id);
+  entry.cash           = newCash;
+  entry.onDuty         = false;
+  entry.currentJob     = null;
+  entry.lastPaycheckAt = now;
+
+  socket.emit("rp:profileUpdate", {
+    cash:       newCash,
+    onDuty:     false,
+    currentJob: null,
+    activeJob:  null,
+  });
+  socket.emit("rp:toast", {
+    msg:      `Repair complete! +$${pay} earned. Another call in 60 seconds.`,
+    color:    "green",
+    duration: 6000,
+  });
+  logger.info({ socketId: socket.id, pay, newCash }, "[rp] mechanic service call complete, paid");
 }
