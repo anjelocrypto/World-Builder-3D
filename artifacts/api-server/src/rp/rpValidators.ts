@@ -203,10 +203,14 @@ export function validateRpMarkerVehicleClearance(vehicles: VehiclePos[]): void {
     ...deliverySlotMarkers,
     // Phase 4 — city worker depot
     { label: "CITY_WORKER_DEPOT",       x: CITY_WORKER_DEPOT[0],      z: CITY_WORKER_DEPOT[2] },
-    // Phase 5A — taxi depot
+    // Phase 5A — taxi depot + all taxi pickup/dropoff route points
     { label: "TAXI_DEPOT",              x: TAXI_DEPOT[0],              z: TAXI_DEPOT[2] },
-    // Phase 5B — delivery hub
+    ...TAXI_PICKUPS.map(([cx, , cz], i)  => ({ label: `TAXI_PICKUP_${i}`,   x: cx, z: cz })),
+    ...TAXI_DROPOFFS.map(([cx, , cz], i) => ({ label: `TAXI_DROPOFF_${i}`,  x: cx, z: cz })),
+    // Phase 5B — delivery hub + all delivery pickup/dropoff route points
     { label: "DELIVERY_HUB",            x: DELIVERY_HUB[0],            z: DELIVERY_HUB[2] },
+    ...DELIVERY_PICKUPS.map(([cx, , cz], i)  => ({ label: `DELIVERY_PICKUP_${i}`,   x: cx, z: cz })),
+    ...DELIVERY_DROPOFFS.map(([cx, , cz], i) => ({ label: `DELIVERY_DROPOFF_${i}`,  x: cx, z: cz })),
   ];
   for (const m of markers) {
     if (isNearParkedCar(m.x, m.z, vehicles)) {
