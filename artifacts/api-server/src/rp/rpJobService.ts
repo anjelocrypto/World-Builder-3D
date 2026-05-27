@@ -20,6 +20,10 @@
  * Fix 2 (Phase 4): toggleDuty — DB update awaited BEFORE any in-memory mutation or emit.
  * Fix 3 (Phase 4): city_worker rejects checkpoint if player.isInVehicle === true.
  * Phase 5A: taxi_driver requires player.isInVehicle === true at each checkpoint.
+ * Audit fix A (5A): handleTaxiCheckpoint — hard-require server-registered drivenVehicle;
+ *   no fallback to player.x/z; reject if no vehicle with driverId===socket.id exists.
+ * Audit fix B (5A): toggleDuty clock-out — job slug must match active route; player must
+ *   be within the correct depot radius before clock-out is accepted.
  */
 
 import { db, rpPlayers, rpWallets, rpTransactionLog } from "@workspace/db";
@@ -144,9 +148,14 @@ function calcFare(
 /**
  * Handle `rp:toggleDuty { job }`.
  *
- * Dispatches to job-specific clock-in logic. Clock-out is universal.
+ * Dispatches to job-specific clock-in logic. Clock-out requires:
+ *   1. The requested job slug matches the active JobState slug (prevents
+ *      rp:toggleDuty { job:"taxi_driver" } from abandoning a city_worker route).
+ *   2. Player is within the correct depot radius for that job (server-authoritative
+ *      position; a hacked client cannot clock out from anywhere on the map).
  *
  * Fix 2: DB update awaited BEFORE any in-memory state mutation or emit.
+ * Audit fix: clock-out now validates job-slug match + depot proximity.
  */
 export async function toggleDuty(
   socket: Socket,
@@ -168,9 +177,41 @@ export async function toggleDuty(
   const player = ctx.players.get(socket.id);
   if (!player) return;
 
-  // ── Universal clock-out ───────────────────────────────────────────────────
-  const alreadyOnDuty = rpJobState.has(socket.id);
-  if (alreadyOnDuty) {
+  // ── Clock-out (job-matched + depot-proximity validated) ───────────────────
+  const activeState = rpJobState.get(socket.id);
+  if (activeState) {
+    // Audit fix 1: job slug must match the currently active route.
+    // Prevents rp:toggleDuty { job:"taxi_driver" } from abandoning a city_worker route.
+    if (activeState.job !== job) {
+      socket.emit("rp:toast", {
+        msg:      `You are on duty as ${activeState.job.replace("_", " ")} — go to that depot to clock out.`,
+        color:    "yellow",
+        duration: 3000,
+      });
+      return;
+    }
+
+    // Audit fix 2: player must be at the correct depot to clock out.
+    let atDepot = false;
+    if (activeState.job === "city_worker") {
+      const dx = player.x - CITY_WORKER_DEPOT[0];
+      const dz = player.z - CITY_WORKER_DEPOT[2];
+      atDepot = dx * dx + dz * dz <= CITY_WORKER_DEPOT_RADIUS * CITY_WORKER_DEPOT_RADIUS;
+    } else if (activeState.job === "taxi_driver") {
+      const dx = player.x - TAXI_DEPOT[0];
+      const dz = player.z - TAXI_DEPOT[2];
+      atDepot = dx * dx + dz * dz <= TAXI_DEPOT_RADIUS * TAXI_DEPOT_RADIUS;
+    }
+
+    if (!atDepot) {
+      socket.emit("rp:toast", {
+        msg:      "You must return to your depot to clock out.",
+        color:    "yellow",
+        duration: 3000,
+      });
+      return;
+    }
+
     // Fix 2: persist to DB first; only mutate cache + emit on success.
     try {
       await db
@@ -562,30 +603,29 @@ async function handleTaxiCheckpoint(
   const player = ctx.players.get(socket.id);
   if (!player) return;
 
-  // Must be in a vehicle
-  if (!player.isInVehicle) {
+  // Fix (5A audit): require a real server-registered driven vehicle.
+  // player.isInVehicle alone is client-reported; we must find the actual
+  // vehicle record with driverId === socket.id in the server map.
+  // If no such vehicle exists, reject hard — do NOT fall back to player position.
+  let drivenVehicle: VehicleState | undefined;
+  for (const v of ctx.vehicles.values()) {
+    if (v.driverId === socket.id) {
+      drivenVehicle = v;
+      break;
+    }
+  }
+  if (!drivenVehicle) {
     socket.emit("rp:toast", {
-      msg:      "You must be driving to complete a Taxi route.",
+      msg:      "You must be driving a vehicle to complete a Taxi route.",
       color:    "yellow",
       duration: 3000,
     });
     return;
   }
 
-  // Find the vehicle driven by this player — use its server-authoritative position
-  let vehicleX = player.x;
-  let vehicleZ = player.z;
-  for (const v of ctx.vehicles.values()) {
-    if (v.driverId === socket.id) {
-      vehicleX = v.x;
-      vehicleZ = v.z;
-      break;
-    }
-  }
-
-  // Target is pickup (idx=0) or dropoff (idx=1)
+  // Target is pickup (idx=0) or dropoff (idx=1). Use server vehicle position only.
   const target = idx === 0 ? state.taxiPickup : state.taxiDropoff;
-  if (dist2d(vehicleX, vehicleZ, target[0], target[2]) > TAXI_CP_ACCEPT_RADIUS) return;
+  if (dist2d(drivenVehicle.x, drivenVehicle.z, target[0], target[2]) > TAXI_CP_ACCEPT_RADIUS) return;
 
   // ── Stage accepted ────────────────────────────────────────────────────────
   state.nextCp  += 1;
