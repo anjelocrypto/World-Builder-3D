@@ -28,6 +28,7 @@ import {
   MEDIC_CENTER,
   MEDIC_ER_BAY,
   POLICE_STATION,
+  ATM_LOCATIONS,
 } from "../shared/rpTypes";
 
 interface RPMarkersProps {
@@ -108,6 +109,14 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
     useRef<THREE.MeshStandardMaterial>(null!),
     useRef<THREE.MeshStandardMaterial>(null!),
   ];
+  // Phase 5F: one ring ref per ATM (5 total — matches ATM_LOCATIONS.length).
+  const atmRingRefs = [
+    useRef<THREE.MeshStandardMaterial>(null!),
+    useRef<THREE.MeshStandardMaterial>(null!),
+    useRef<THREE.MeshStandardMaterial>(null!),
+    useRef<THREE.MeshStandardMaterial>(null!),
+    useRef<THREE.MeshStandardMaterial>(null!),
+  ];
 
   useFrame(({ clock }) => {
     const t  = clock.getElapsedTime();
@@ -172,6 +181,13 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
     const policeStationPulse = 0.4 + 0.3 * Math.sin(t * 2.0 + 0.7);
     if (policeStationRingRef.current) policeStationRingRef.current.emissiveIntensity = policeStationPulse;
     if (policeStationSignRef.current) policeStationSignRef.current.emissiveIntensity = 0.7 + 0.2 * Math.sin(t * 2.8 + 0.4);
+
+    // ATM markers — teal/money-green slow pulse
+    atmRingRefs.forEach((ref, i) => {
+      if (ref.current) {
+        ref.current.emissiveIntensity = 0.4 + 0.25 * Math.sin(t * 1.7 + i * 0.8);
+      }
+    });
 
     // Police patrol checkpoint rings — only animate when job is police_patrol.
     if (aj?.job === "police_patrol") {
@@ -1094,6 +1110,69 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
             </group>
           );
         })}
+
+      {/* ════ ATM markers — 5 walk-up kiosks (Phase 5F) ═══════════════════════
+          Teal/green color scheme. Small kiosk footprint (≈0.6 m × 0.3 m × 1.5 m).
+          Ground ring 3–4 m radius to indicate walk-up radius. */}
+      {ATM_LOCATIONS.map(({ id, pos }, i) => {
+        const [ax, , az] = pos;
+        return (
+          <group key={`atm-${id}`} position={[ax, 0, az]}>
+            {/* Ground ring — 3–4 m (walk-up scale) */}
+            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[3, 4, 32]} />
+              <meshStandardMaterial
+                ref={atmRingRefs[i]}
+                color="#003322"
+                emissive="#00cc88"
+                emissiveIntensity={0.4}
+                transparent
+                opacity={0.45}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+
+            {/* Kiosk body */}
+            <mesh position={[0, 0.75, 0]}>
+              <boxGeometry args={[0.6, 1.5, 0.3]} />
+              <meshStandardMaterial
+                color="#0a1a14"
+                emissive="#00cc88"
+                emissiveIntensity={0.2}
+                roughness={0.3}
+                metalness={0.6}
+              />
+            </mesh>
+
+            {/* Screen face */}
+            <mesh position={[0, 0.9, 0.155]}>
+              <boxGeometry args={[0.46, 0.5, 0.01]} />
+              <meshStandardMaterial
+                color="#001a0e"
+                emissive="#00ff99"
+                emissiveIntensity={1.0}
+                roughness={0.1}
+                metalness={0.2}
+              />
+            </mesh>
+
+            {/* $ sign strip */}
+            <mesh position={[0, 1.35, 0.156]}>
+              <boxGeometry args={[0.3, 0.12, 0.005]} />
+              <meshStandardMaterial color="#ffffff" emissive="#aaffdd" emissiveIntensity={2} />
+            </mesh>
+
+            <pointLight
+              position={[0, 1.6, 0]}
+              color="#00cc88"
+              intensity={1.8}
+              distance={10}
+              decay={2}
+            />
+          </group>
+        );
+      })}
 
       {/* ════ License-test checkpoint rings — only while test is active ════════
           Passed rings are dimmed. The next target pulses brightly.

@@ -482,6 +482,30 @@ export const POLICE_PATROL_MIN_STAGE_INTERVAL_MS = 5_000;
 /** Minimum ms between two completed Police Patrol routes (cooldown). */
 export const POLICE_PATROL_ROUTE_COOLDOWN_MS = 60_000;
 
+// ── Bank / ATM (Phase 5F) ──────────────────────────────────────────────────
+
+/**
+ * ATM machine world positions.  All five are verified off-road (≥10 m from any
+ * carriageway centre-line) and ≥8 m from every named landmark.
+ *
+ * Geometry audit results (run Node.js check before each commit):
+ *   atm-central    [ 18, 0, -30] ✅ off-road, clear
+ *   atm-station    [132, 0, -58] ✅ off-road, clear
+ *   atm-police     [-80, 0,  14] ✅ 12 m west of POLICE_STATION ([-68,0,14])
+ *   atm-medical    [-80, 0,  28] ✅ 12 m west of MEDIC_CENTER   ([-68,0,28])
+ *   atm-dealership [ 82, 0, -78] ✅ 12 m east of DEALERSHIP     ([ 70,0,-78])
+ */
+export const ATM_LOCATIONS: { id: string; pos: [number, number, number] }[] = [
+  { id: "atm-central",    pos: [  18, 0, -30] },
+  { id: "atm-station",    pos: [ 132, 0, -58] },
+  { id: "atm-police",     pos: [ -80, 0,  14] },
+  { id: "atm-medical",    pos: [ -80, 0,  28] },
+  { id: "atm-dealership", pos: [  82, 0, -78] },
+];
+
+/** Radius (m) within which a walking player (not in a vehicle) can use an ATM. */
+export const ATM_INTERACT_RADIUS = 4;
+
 // ── Licensing Office (Phase 2) ─────────────────────────────────────────────
 
 /** Entrance of the Licensing Office — SE inner block, east-facing sidewalk. */

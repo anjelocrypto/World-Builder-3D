@@ -35,6 +35,8 @@ export default function Game({ username }: GameProps) {
     emitToggleLock,
     emitToggleDuty,
     emitJobCheckpoint,
+    emitBankDeposit,
+    emitBankWithdraw,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -85,6 +87,8 @@ export default function Game({ username }: GameProps) {
       emitToggleLock={emitToggleLock}
       emitToggleDuty={emitToggleDuty}
       emitJobCheckpoint={emitJobCheckpoint}
+      emitBankDeposit={emitBankDeposit}
+      emitBankWithdraw={emitBankWithdraw}
     />
   );
 }

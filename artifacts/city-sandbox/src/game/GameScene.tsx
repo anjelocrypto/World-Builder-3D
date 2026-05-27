@@ -11,6 +11,7 @@ import LocalPlayer, { Controls } from "./LocalPlayer";
 import LicenseTestHUD from "./LicenseTestHUD";
 import JobHUD from "./JobHUD";
 import VehicleShopHUD from "./VehicleShopHUD";
+import ATMHUD from "./ATMHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -69,6 +70,10 @@ interface GameSceneProps {
   emitToggleDuty:  (job: string) => void;
   /** Phase 4: Emit rp:jobCheckpoint. From useRpSocket. */
   emitJobCheckpoint: (idx: number) => void;
+  /** Phase 5F: Emit rp:bankDeposit. From useRpSocket. */
+  emitBankDeposit: (amount: number) => void;
+  /** Phase 5F: Emit rp:bankWithdraw. From useRpSocket. */
+  emitBankWithdraw: (amount: number) => void;
 }
 
 export default function GameScene({
@@ -91,6 +96,8 @@ export default function GameScene({
   emitToggleLock,
   emitToggleDuty,
   emitJobCheckpoint,
+  emitBankDeposit,
+  emitBankWithdraw,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -112,10 +119,13 @@ export default function GameScene({
     nearMechanicGarage: false,
     nearMedicCenter: false,
     nearPoliceStation: false,
+    nearATM: false,
   });
 
   // Phase 3: dealership shop panel visibility
   const [showShop, setShowShop] = useState(false);
+  // Phase 5F: ATM panel visibility
+  const [showATM, setShowATM] = useState(false);
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -317,6 +327,7 @@ export default function GameScene({
             activeTest={rpProfile?.activeTest}
             emitToggleLock={emitToggleLock}
             onOpenShop={() => setShowShop(true)}
+            onOpenATM={() => setShowATM(true)}
             activeJob={rpProfile?.activeJob ?? null}
             emitToggleDuty={emitToggleDuty}
             emitJobCheckpoint={emitJobCheckpoint}
@@ -348,6 +359,17 @@ export default function GameScene({
         }}
       />
 
+      {/* Phase 5F: ATM panel */}
+      {showATM && (
+        <ATMHUD
+          cash={rpProfile?.cash ?? 0}
+          bank={rpProfile?.bank ?? 0}
+          onDeposit={(amount) => { emitBankDeposit(amount); }}
+          onWithdraw={(amount) => { emitBankWithdraw(amount); }}
+          onClose={() => setShowATM(false)}
+        />
+      )}
+
       <HUD
         health={uiState.health}
         speed={uiState.speed}
@@ -377,6 +399,7 @@ export default function GameScene({
         nearMechanicGarage={uiState.nearMechanicGarage}
         nearMedicCenter={uiState.nearMedicCenter}
         nearPoliceStation={uiState.nearPoliceStation}
+        nearATM={uiState.nearATM}
       />
     </div>
   );

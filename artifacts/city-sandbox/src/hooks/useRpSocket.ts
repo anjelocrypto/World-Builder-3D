@@ -148,6 +148,22 @@ export function useRpSocket(socket: Socket | null) {
     [socket],
   );
 
+  /** Phase 5F: emit rp:bankDeposit to move cash → bank at an ATM. */
+  const emitBankDeposit = useCallback(
+    (amount: number) => {
+      socket?.emit("rp:bankDeposit", { amount });
+    },
+    [socket],
+  );
+
+  /** Phase 5F: emit rp:bankWithdraw to move bank → cash at an ATM. */
+  const emitBankWithdraw = useCallback(
+    (amount: number) => {
+      socket?.emit("rp:bankWithdraw", { amount });
+    },
+    [socket],
+  );
+
   return {
     rpProfile,
     rpToasts,
@@ -160,5 +176,7 @@ export function useRpSocket(socket: Socket | null) {
     emitToggleLock,
     emitToggleDuty,
     emitJobCheckpoint,
+    emitBankDeposit,
+    emitBankWithdraw,
   };
 }

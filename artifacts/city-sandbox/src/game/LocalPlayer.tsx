@@ -26,6 +26,8 @@ import {
   POLICE_STATION,
   POLICE_STATION_RADIUS,
   POLICE_PATROL_ACCEPT_RADIUS,
+  ATM_LOCATIONS,
+  ATM_INTERACT_RADIUS,
 } from "../shared/rpTypes";
 import {
   SPAWN_POINTS,
@@ -161,6 +163,8 @@ interface LocalPlayerProps {
     nearMedicCenter: boolean;
     /** Phase 5E: true when walking player is within POLICE_STATION_RADIUS of the Police Station. */
     nearPoliceStation: boolean;
+    /** Phase 5F: true when walking player is within ATM_INTERACT_RADIUS of any ATM. */
+    nearATM: boolean;
   }) => void;
   playerPosRef: React.MutableRefObject<THREE.Vector3>;
   // Authoritative spawn from the server's gameState. Falls back to a
@@ -219,6 +223,11 @@ interface LocalPlayerProps {
    * Phase 4: Emit rp:jobCheckpoint when within range of the next job checkpoint.
    */
   emitJobCheckpoint?: (idx: number) => void;
+  /**
+   * Phase 5F: Called when player presses E near an ATM.
+   * GameScene uses this to open the ATMHUD panel.
+   */
+  onOpenATM?: () => void;
 }
 
 export default function LocalPlayer({
@@ -242,6 +251,7 @@ export default function LocalPlayer({
   activeJob,
   emitToggleDuty,
   emitJobCheckpoint,
+  onOpenATM,
 }: LocalPlayerProps) {
   const { camera, gl } = useThree();
   const [, getKeys] = useKeyboardControls<Controls>();
@@ -354,6 +364,8 @@ export default function LocalPlayer({
   const nearMedicCenterRef    = useRef(false);
   // Phase 5E: Police Station proximity ref — read by E key handler
   const nearPoliceStationRef  = useRef(false);
+  // Phase 5F: ATM proximity ref (walk-up; never true while in a vehicle)
+  const nearATMRef            = useRef(false);
   // Phase 4: job checkpoint retry state (same pattern as license-test cpRetryRef)
   const jobCpRetryRef = useRef<{ nextCp: number; lastAttemptAt: number } | null>(null);
 
@@ -377,6 +389,7 @@ export default function LocalPlayer({
     nearMechanicGarage: false,
     nearMedicCenter: false,
     nearPoliceStation: false,
+    nearATM: false,
   });
 
   // Pointer lock
@@ -787,6 +800,21 @@ export default function LocalPlayer({
       psdx * psdx + psdz * psdz < POLICE_STATION_RADIUS * POLICE_STATION_RADIUS;
     nearPoliceStationRef.current = nearPoliceStation;
 
+    // Phase 5F: ATM proximity — any ATM within ATM_INTERACT_RADIUS (walk-up only)
+    let nearATM = false;
+    if (!inVehicle.current) {
+      const r2 = ATM_INTERACT_RADIUS * ATM_INTERACT_RADIUS;
+      for (const { pos: aPos } of ATM_LOCATIONS) {
+        const adx = curPos.x - aPos[0];
+        const adz = curPos.z - aPos[2];
+        if (adx * adx + adz * adz < r2) {
+          nearATM = true;
+          break;
+        }
+      }
+    }
+    nearATMRef.current = nearATM;
+
     // Phase 3: nearest owned vehicle within 6 m (for lock/unlock prompt)
     let nearOwnedVehicleId: string | null = null;
     if (!inVehicle.current) {
@@ -824,6 +852,7 @@ export default function LocalPlayer({
       nearMechanicGarage,
       nearMedicCenter,
       nearPoliceStation,
+      nearATM,
     };
 
     // Throttled per-field UI diff. JSON.stringify on a 10-key object
@@ -851,7 +880,8 @@ export default function LocalPlayer({
       newUI.nearDeliveryHub !== cache.nearDeliveryHub ||
       newUI.nearMechanicGarage !== cache.nearMechanicGarage ||
       newUI.nearMedicCenter !== cache.nearMedicCenter ||
-      newUI.nearPoliceStation !== cache.nearPoliceStation;
+      newUI.nearPoliceStation !== cache.nearPoliceStation ||
+      newUI.nearATM !== cache.nearATM;
     const timeChanged = Math.abs(newUI.raceTime - cache.raceTime) > 100;
     const sinceLast = now - lastUIEmit.current;
     if (
@@ -1211,6 +1241,10 @@ export default function LocalPlayer({
           // Phase 5E: clock in/out at Police Station.
           emitToggleDuty?.("police_patrol");
           interactCooldown.current = 1.0;
+        } else if (nearATMRef.current) {
+          // Phase 5F: open ATM panel.
+          onOpenATM?.();
+          interactCooldown.current = 0.5;
         } else if (nearDealershipRef.current) {
           // Phase 3: open dealership shop.
           onOpenShop?.();

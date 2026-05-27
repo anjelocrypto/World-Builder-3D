@@ -231,6 +231,24 @@ export const POLICE_STATION_RADIUS = 6;
 /** Acceptance radius (m) for patrol checkpoint stages. */
 export const POLICE_PATROL_ACCEPT_RADIUS = 12;
 
+// ── Phase 5F: Bank / ATM constants ────────────────────────────────────────
+// These MUST stay in sync with ATM_* in api-server/src/socket/cityData.ts.
+
+/**
+ * ATM machine world positions — used by RPMarkers and LocalPlayer proximity.
+ * Must match ATM_LOCATIONS in api-server/src/socket/cityData.ts exactly.
+ */
+export const ATM_LOCATIONS: { id: string; pos: [number, number, number] }[] = [
+  { id: "atm-central",    pos: [  18, 0, -30] },
+  { id: "atm-station",    pos: [ 132, 0, -58] },
+  { id: "atm-police",     pos: [ -80, 0,  14] },
+  { id: "atm-medical",    pos: [ -80, 0,  28] },
+  { id: "atm-dealership", pos: [  82, 0, -78] },
+];
+
+/** Radius (m) within which a walking player can interact with an ATM. */
+export const ATM_INTERACT_RADIUS = 4;
+
 // ── Client-side optimistic license + lock check ────────────────────────────
 
 /**

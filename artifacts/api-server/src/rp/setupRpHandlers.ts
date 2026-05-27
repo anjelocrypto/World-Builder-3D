@@ -25,6 +25,10 @@ import {
   toggleDuty,
   handleJobCheckpoint,
 } from "./rpJobService";
+import {
+  bankDeposit,
+  bankWithdraw,
+} from "./rpWalletService";
 
 export type { LicenseContext };
 
@@ -179,6 +183,42 @@ export function setupRpHandlers(
         logger.error({ err, socketId: socket.id, idx }, "[rp] handleJobCheckpoint threw");
         socket.emit("rp:toast", {
           msg:      "Server error processing checkpoint — walk through again.",
+          color:    "red",
+          duration: 4000,
+        });
+      });
+    },
+  );
+
+  // ── rp:bankDeposit ────────────────────────────────────────────────────────
+  // Phase 5F: client emits { amount } to deposit cash → bank at an ATM.
+  // Server validates proximity, vehicle state, balance, and runs DB-first tx.
+  socket.on(
+    "rp:bankDeposit",
+    (data: { amount?: unknown } | null | undefined) => {
+      const rawAmount = data?.amount;
+      bankDeposit(socket, ctx, rawAmount).catch((err) => {
+        logger.error({ err, socketId: socket.id }, "[rp] bankDeposit threw");
+        socket.emit("rp:toast", {
+          msg:      "Server error — deposit failed. Try again.",
+          color:    "red",
+          duration: 4000,
+        });
+      });
+    },
+  );
+
+  // ── rp:bankWithdraw ───────────────────────────────────────────────────────
+  // Phase 5F: client emits { amount } to withdraw bank → cash at an ATM.
+  // Server validates proximity, vehicle state, balance, and runs DB-first tx.
+  socket.on(
+    "rp:bankWithdraw",
+    (data: { amount?: unknown } | null | undefined) => {
+      const rawAmount = data?.amount;
+      bankWithdraw(socket, ctx, rawAmount).catch((err) => {
+        logger.error({ err, socketId: socket.id }, "[rp] bankWithdraw threw");
+        socket.emit("rp:toast", {
+          msg:      "Server error — withdrawal failed. Try again.",
           color:    "red",
           duration: 4000,
         });
