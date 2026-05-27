@@ -4,8 +4,39 @@ import type { GameState, PlayerState, VehicleState } from "../shared/types";
 import { INITIAL_VEHICLES } from "../shared/cityData";
 import { setServerTimeOffset } from "../shared/timeOfDay";
 
+// ── Stable player token ────────────────────────────────────────────────────
+
+const TOKEN_KEY = "nemoverse_player_token";
+
+/**
+ * Returns the player's stable identity token from localStorage, generating
+ * and persisting a new UUID if one doesn't exist yet.
+ *
+ * This token is sent with every `join` event so the server can upsert
+ * `rp_players` and maintain persistent wallet / license state across sessions.
+ * The token is never broadcast to other players.
+ */
+function getOrCreateToken(): string {
+  try {
+    const existing = localStorage.getItem(TOKEN_KEY);
+    if (existing) return existing;
+    const fresh = crypto.randomUUID();
+    localStorage.setItem(TOKEN_KEY, fresh);
+    return fresh;
+  } catch {
+    // localStorage unavailable (e.g. sandboxed iframe) — use an in-memory UUID.
+    // This means RP state won't persist across page reloads in that context.
+    return crypto.randomUUID();
+  }
+}
+
+// ── Hook ───────────────────────────────────────────────────────────────────
+
 export function useSocket(username: string) {
   const socketRef = useRef<Socket | null>(null);
+  // Reactive copy of the socket instance so hooks that need to attach their
+  // own listeners (e.g. useRpSocket) can use it as a useEffect dependency.
+  const [socket, setSocket] = useState<Socket | null>(null);
   const [myId, setMyId] = useState<string>("");
   const [connected, setConnected] = useState(false);
   const [playerCount, setPlayerCount] = useState(1);
@@ -20,23 +51,28 @@ export function useSocket(username: string) {
   useEffect(() => {
     if (!username) return;
 
-    const socket = io({
+    const token = getOrCreateToken();
+
+    const sock = io({
       path: "/api/socket.io",
       transports: ["websocket", "polling"],
     });
 
-    socketRef.current = socket;
+    socketRef.current = sock;
+    setSocket(sock);
 
-    socket.on("connect", () => {
+    sock.on("connect", () => {
       setConnected(true);
-      socket.emit("join", { username });
+      // Include the stable token so the server can upsert rp_players and
+      // send back rp:profile (cash, bank, driverLicense, etc.).
+      sock.emit("join", { username, token });
     });
 
-    socket.on("disconnect", () => {
+    sock.on("disconnect", () => {
       setConnected(false);
     });
 
-    socket.on("gameState", (data: { myId: string; serverNow?: number; players: Record<string, PlayerState>; vehicles: Record<string, VehicleState> }) => {
+    sock.on("gameState", (data: { myId: string; serverNow?: number; players: Record<string, PlayerState>; vehicles: Record<string, VehicleState> }) => {
       // Capture clock offset BEFORE setting state so the very first
       // useFrame in DayNightController reads a correct world time.
       // serverNow is optional in case an older server is talking to a
@@ -49,7 +85,7 @@ export function useSocket(username: string) {
       setPlayerCount(Object.keys(data.players).length);
     });
 
-    socket.on("playerJoined", (player: PlayerState) => {
+    sock.on("playerJoined", (player: PlayerState) => {
       setGameState(prev => ({
         ...prev,
         players: { ...prev.players, [player.id]: player },
@@ -57,7 +93,7 @@ export function useSocket(username: string) {
       setPlayerCount(c => c + 1);
     });
 
-    socket.on("playerMoved", (data: { id: string } & Partial<PlayerState>) => {
+    sock.on("playerMoved", (data: { id: string } & Partial<PlayerState>) => {
       setGameState(prev => {
         if (!prev.players[data.id]) return prev;
         return {
@@ -70,7 +106,7 @@ export function useSocket(username: string) {
       });
     });
 
-    socket.on("playerLeft", (id: string) => {
+    sock.on("playerLeft", (id: string) => {
       setGameState(prev => {
         const players = { ...prev.players };
         delete players[id];
@@ -79,7 +115,7 @@ export function useSocket(username: string) {
       setPlayerCount(c => Math.max(1, c - 1));
     });
 
-    socket.on("vehicleMoved", (data: { id: string } & Partial<VehicleState>) => {
+    sock.on("vehicleMoved", (data: { id: string } & Partial<VehicleState>) => {
       setGameState(prev => {
         if (!prev.vehicles[data.id]) return prev;
         return {
@@ -92,12 +128,13 @@ export function useSocket(username: string) {
       });
     });
 
-    socket.on("playerCount", (count: number) => {
+    sock.on("playerCount", (count: number) => {
       setPlayerCount(count);
     });
 
     return () => {
-      socket.disconnect();
+      sock.disconnect();
+      setSocket(null);
     };
   }, [username]);
 
@@ -110,7 +147,8 @@ export function useSocket(username: string) {
   }, []);
 
   return {
-    socket: socketRef.current,
+    // Reactive socket instance — use as dependency in useRpSocket / other hooks.
+    socket,
     myId,
     connected,
     playerCount,

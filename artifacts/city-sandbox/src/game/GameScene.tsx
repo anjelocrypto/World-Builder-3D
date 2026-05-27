@@ -11,12 +11,15 @@ import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
 import HUD from "./HUD";
+import RPMarkers from "./RPMarkers";
+import RPHud from "./RPHud";
 import NPCs from "./NPCs";
 import AmbientTraffic from "./AmbientTraffic";
 import BiomeRender from "./BiomeRender";
 import DayNightController from "./DayNightController";
 import { PerfMonitor, PerfOverlay } from "./PerfHUD";
 import { dayNightRuntime, type DayPhase } from "../shared/timeOfDay";
+import { useRpSocket } from "../hooks/useRpSocket";
 
 const KEY_MAP = [
   { name: Controls.forward,      keys: ["ArrowUp",    "KeyW"] },
@@ -42,6 +45,8 @@ interface GameSceneProps {
   setGameState: React.Dispatch<React.SetStateAction<{ players: Record<string, import("../shared/types").PlayerState>; vehicles: Record<string, VehicleState> }>>;
   emitPlayerUpdate: (data: object) => void;
   emitVehicleUpdate: (data: object) => void;
+  /** Reactive socket instance from useSocket — passed to useRpSocket. */
+  socket: import("socket.io-client").Socket | null;
 }
 
 export default function GameScene({
@@ -53,6 +58,7 @@ export default function GameScene({
   setGameState,
   emitPlayerUpdate,
   emitVehicleUpdate,
+  socket,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -69,6 +75,12 @@ export default function GameScene({
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
+
+  // ── RP layer ─────────────────────────────────────────────────────────────
+  // socket is the reactive Socket instance returned by the parent's useSocket.
+  // useRpSocket attaches rp:* listeners and provides the canDriveVehicle check.
+  const { rpProfile, rpToasts, dismissToast, canDriveVehicle } =
+    useRpSocket(socket);
 
   // World clock for the HUD chip. DayNightController writes to a
   // module-level runtime ref every frame; we poll it once a second
@@ -242,6 +254,9 @@ export default function GameScene({
             raceActive={uiState.raceActive}
           />
 
+          {/* RP world markers — station platform, future: licensing office */}
+          <RPMarkers />
+
           {/* Local player (manages its own mesh + camera) */}
           <LocalPlayer
             myId={myId}
@@ -254,6 +269,7 @@ export default function GameScene({
             onUIUpdate={setUIState}
             playerPosRef={playerPosRef}
             initialSpawn={initialSpawn}
+            canDriveVehicle={canDriveVehicle}
           />
 
           <PerfMonitor />
@@ -261,6 +277,9 @@ export default function GameScene({
       </KeyboardControls>
 
       <PerfOverlay />
+
+      {/* RP toast overlay — ephemeral rp:toast messages */}
+      <RPHud toasts={rpToasts} onDismissToast={dismissToast} />
 
       <HUD
         health={uiState.health}
@@ -279,6 +298,9 @@ export default function GameScene({
         connected={connected}
         clockLabel={clock.label}
         clockPhase={clock.phase}
+        cash={rpProfile?.cash}
+        bank={rpProfile?.bank}
+        driverLicense={rpProfile?.driverLicense}
       />
     </div>
   );

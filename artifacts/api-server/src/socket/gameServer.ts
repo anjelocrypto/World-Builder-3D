@@ -1,7 +1,16 @@
 import { Server, Socket } from "socket.io";
 import type { Server as HttpServer } from "http";
 import { logger } from "../lib/logger";
-import { INITIAL_VEHICLES, SPAWN_POINTS, WORLD_HALF } from "./cityData";
+import { INITIAL_VEHICLES, WORLD_HALF } from "./cityData";
+import {
+  validateRpMarkers,
+  validateRpMarkerVehicleClearance,
+  canDriveVehicle,
+  safeStationSpawn,
+} from "../rp/rpValidators";
+import { rpCache, rpTestState, buildProfile } from "../rp/rpCache";
+import { upsertPlayer } from "../rp/rpPlayerService";
+import { setupRpHandlers } from "../rp/setupRpHandlers";
 
 // Clamp a horizontal world coordinate so a hacked client cannot push a
 // player or vehicle outside the playable map. The margin keeps the
@@ -79,12 +88,15 @@ const vehicles = new Map<string, VehicleState>(
   INITIAL_VEHICLES.map((v) => [v.id, { ...v }])
 );
 
-let spawnIndex = 0;
-
+/**
+ * Phase 1B: all players spawn at Central Station with per-connection jitter.
+ * safeStationSpawn() tries 10 random positions within ±JITTER bounds and
+ * returns the first that clears roads + obstacles; falls back to exact centre.
+ * Pass [] for obstacles — positions were pre-validated; Phase 2 will wire in
+ * the full static obstacle list.
+ */
 function getSpawn(): [number, number, number] {
-  const sp = SPAWN_POINTS[spawnIndex % SPAWN_POINTS.length];
-  spawnIndex++;
-  return sp;
+  return safeStationSpawn([]);
 }
 
 function getGameStateSnapshot() {
@@ -96,6 +108,18 @@ function getGameStateSnapshot() {
 }
 
 export function setupGameServer(httpServer: HttpServer) {
+  // ── Startup validation ─────────────────────────────────────────────────
+  // Throw early if any RP marker coordinate is invalid. This prevents a bad
+  // position from slipping into production unnoticed. Pass [] for obstacles
+  // in Phase 1B — pre-validated manually. Wire in STATIC_OBSTACLES in Phase 2.
+  try {
+    validateRpMarkers([]);
+    validateRpMarkerVehicleClearance(Array.from(vehicles.values()));
+  } catch (err) {
+    logger.error({ err }, "[rp] startup validation FAILED — fix RP marker positions");
+    throw err;
+  }
+
   const io = new Server(httpServer, {
     path: "/api/socket.io",
     cors: { origin: "*", methods: ["GET", "POST"] },
@@ -104,8 +128,11 @@ export function setupGameServer(httpServer: HttpServer) {
   io.on("connection", (socket: Socket) => {
     logger.info({ socketId: socket.id }, "Player connected");
 
-    socket.on("join", (data: { username: string }) => {
+    socket.on("join", async (data: { username: string; token?: string }) => {
       const username = (data?.username ?? "Player").slice(0, 20);
+      // token is a client-generated UUID stored in localStorage. Slice to 36
+      // chars (UUID length) so an oversized value is safely ignored.
+      const token = typeof data?.token === "string" ? data.token.slice(0, 36) : "";
       const [sx, sy, sz] = getSpawn();
       const player: PlayerState = {
         id: socket.id,
@@ -142,6 +169,28 @@ export function setupGameServer(httpServer: HttpServer) {
       io.emit("playerCount", players.size);
 
       logger.info({ socketId: socket.id, username }, "Player joined");
+
+      // ── RP layer — DB upsert + profile emit ─────────────────────────────
+      // Only run when the client sent a token (new clients always do; old or
+      // test clients may not). Failures are non-fatal — the player joins with
+      // a null RP profile and the HUD simply hides the wallet display.
+      if (token) {
+        upsertPlayer(token, username)
+          .then((rpEntry) => {
+            rpCache.set(socket.id, rpEntry);
+            socket.emit("rp:profile", buildProfile(rpEntry));
+            logger.info(
+              { socketId: socket.id, playerId: rpEntry.playerId },
+              "[rp] profile loaded",
+            );
+          })
+          .catch((err) => {
+            logger.error({ err, socketId: socket.id }, "[rp] upsertPlayer failed");
+          });
+      }
+
+      // Register per-socket RP event listeners (rp:interact stub, etc.)
+      setupRpHandlers(socket, io);
     });
 
     socket.on("playerUpdate", (data: Partial<PlayerState>) => {
@@ -252,6 +301,24 @@ export function setupGameServer(httpServer: HttpServer) {
         return;
       }
 
+      // ── License gate (Phase 1B) ──────────────────────────────────────────
+      // Block vehicle entry for players without a driver license. Only applies
+      // when the client is claiming the car (driverId = socket.id). Releasing
+      // (driverId = null) and pure position updates are always allowed.
+      // canDriveVehicle() also passes for players in an active license test
+      // driving their assigned test vehicle (Phase 2 — testState always empty
+      // in Phase 1B).
+      if (data.driverId === socket.id) {
+        if (!canDriveVehicle(socket.id, data.id, rpCache, rpTestState)) {
+          socket.emit("rp:toast", {
+            msg:      "You need a Driver License to drive. Visit the Licensing Office.",
+            color:    "red",
+            duration: 4000,
+          });
+          return;
+        }
+      }
+
       // `variant` and `color` are visual-only fields established by the
       // server's INITIAL_VEHICLES on boot and must NEVER be mutated from
       // the client. Stripping them here prevents a malicious client from
@@ -272,6 +339,10 @@ export function setupGameServer(httpServer: HttpServer) {
     });
 
     socket.on("disconnect", () => {
+      // Clean up RP cache entries first (before player record is deleted).
+      rpCache.delete(socket.id);
+      rpTestState.delete(socket.id);
+
       const player = players.get(socket.id);
       if (player) {
         // Release any vehicle the player was driving

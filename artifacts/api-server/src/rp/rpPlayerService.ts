@@ -1,0 +1,68 @@
+/**
+ * Player DB service — upsert on stable token, ensure wallet row exists,
+ * return an RpCacheEntry ready to store in rpCache.
+ */
+
+import { db, rpPlayers, rpWallets } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import type { RpCacheEntry } from "./rpCache";
+
+/**
+ * Upsert a player by token and return a populated RpCacheEntry.
+ *
+ * - If the token is new: inserts rp_players + rp_wallets (cash=500, bank=0).
+ * - If the token exists: updates username + last_seen_at, leaves wallet alone.
+ * - Always loads the wallet row and builds the full cache entry.
+ *
+ * Throws if the DB is unreachable.
+ */
+export async function upsertPlayer(
+  token:    string,
+  username: string,
+): Promise<RpCacheEntry> {
+  // Upsert the player row. On conflict (same token) update mutable fields.
+  const [player] = await db
+    .insert(rpPlayers)
+    .values({ token, username })
+    .onConflictDoUpdate({
+      target: rpPlayers.token,
+      set: {
+        username,
+        lastSeenAt: new Date(),
+      },
+    })
+    .returning();
+
+  if (!player) {
+    throw new Error(`[rp] upsertPlayer returned no row for token=${token}`);
+  }
+
+  // Ensure the wallet row exists. Column defaults supply cash=500, bank=0.
+  await db
+    .insert(rpWallets)
+    .values({ playerId: player.id })
+    .onConflictDoNothing();
+
+  // Load the wallet (always present after the insert above).
+  const [wallet] = await db
+    .select()
+    .from(rpWallets)
+    .where(eq(rpWallets.playerId, player.id));
+
+  return {
+    playerId:      player.id,
+    cash:          wallet?.cash  ?? 500,
+    bank:          wallet?.bank  ?? 0,
+    driverLicense: player.driverLicenseAt !== null,
+    weaponLicense: player.weaponLicenseAt !== null,
+    jailUntil:     player.jailUntil ?? null,
+    factionId:     player.factionId ?? null,
+    // Phase 2: JOIN to rp_factions to populate factionSlug.
+    factionSlug:   null,
+    factionRank:   player.factionRank,
+    currentJob:    player.currentJob ?? null,
+    onDuty:        player.onDuty,
+    // Phase 2: query rp_warrants WHERE cleared_at IS NULL to populate wantedStars.
+    wantedStars:   0,
+  };
+}

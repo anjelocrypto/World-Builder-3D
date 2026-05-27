@@ -37,6 +37,13 @@ interface HUDProps {
   clockLabel: string;
   /** "DAWN" | "DAY" | "SUNSET" | "NIGHT" — drives the chip color. */
   clockPhase: string;
+  // ── RP wallet / license (Phase 1B) ─────────────────────────────────────
+  /** Cash on hand (server-authoritative). Omitted until rp:profile arrives. */
+  cash?: number;
+  /** Bank balance (server-authoritative). */
+  bank?: number;
+  /** True once the player has passed the driver license test. */
+  driverLicense?: boolean;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -392,6 +399,9 @@ export default function HUD({
   connected,
   clockLabel,
   clockPhase,
+  cash,
+  bank,
+  driverLicense,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -832,6 +842,78 @@ export default function HUD({
       >
         Click to capture mouse
       </div>
+
+      {/* ============================================================
+          BOTTOM-RIGHT — RP wallet panel (Phase 1B)
+          Only rendered once rp:profile has been received (cash != null).
+          ============================================================ */}
+      {cash != null && (
+        <div
+          style={{
+            position:       "absolute",
+            bottom:         88,
+            right:          16,
+            display:        "flex",
+            flexDirection:  "column",
+            alignItems:     "flex-end",
+            gap:            4,
+            fontFamily:     "'Courier New', Courier, monospace",
+            userSelect:     "none",
+            pointerEvents:  "none",
+          }}
+        >
+          {/* Cash on hand */}
+          <div
+            style={{
+              background:   PANEL_BG,
+              border:       "1px solid rgba(76, 255, 122, 0.35)",
+              borderRadius: PANEL_RADIUS,
+              padding:      "4px 10px",
+              fontSize:     14,
+              color:        "#4cff7a",
+              textShadow:   "0 0 8px rgba(76,255,122,0.5)",
+              letterSpacing: 0.5,
+            }}
+          >
+            💵 ${(cash).toLocaleString()}
+          </div>
+
+          {/* Bank balance */}
+          {bank != null && (
+            <div
+              style={{
+                background:   PANEL_BG,
+                border:       "1px solid rgba(100, 180, 255, 0.35)",
+                borderRadius: PANEL_RADIUS,
+                padding:      "4px 10px",
+                fontSize:     14,
+                color:        "#88ccff",
+                textShadow:   "0 0 8px rgba(100,180,255,0.4)",
+                letterSpacing: 0.5,
+              }}
+            >
+              🏦 ${(bank).toLocaleString()}
+            </div>
+          )}
+
+          {/* Driver license badge */}
+          <div
+            style={{
+              background:    PANEL_BG,
+              border:        driverLicense
+                ? "1px solid rgba(170, 255, 136, 0.4)"
+                : "1px solid rgba(255, 136, 68, 0.4)",
+              borderRadius:  PANEL_RADIUS,
+              padding:       "3px 10px",
+              fontSize:      12,
+              color:         driverLicense ? "#aaffaa" : "#ff8844",
+              letterSpacing: 0.5,
+            }}
+          >
+            {driverLicense ? "🪪 Licensed" : "🚫 No License"}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

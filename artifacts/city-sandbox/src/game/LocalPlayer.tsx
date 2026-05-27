@@ -126,6 +126,15 @@ interface LocalPlayerProps {
   // Authoritative spawn from the server's gameState. Falls back to a
   // deterministic local pick when not provided (e.g. server-disconnected).
   initialSpawn?: [number, number, number];
+  /**
+   * Optimistic client-side license check. Returns true when the player is
+   * allowed to drive `vehicleId` (licensed, or in an active test with that
+   * specific vehicle). The server enforces this independently — this prop
+   * only prevents the optimistic `enterVehicle()` call to avoid a brief
+   * visual glitch. Omit to disable the gate (e.g. when rp:profile hasn't
+   * arrived yet — default behaviour is to allow entry until told otherwise).
+   */
+  canDriveVehicle?: (vehicleId: string) => boolean;
 }
 
 export default function LocalPlayer({
@@ -139,6 +148,7 @@ export default function LocalPlayer({
   onUIUpdate,
   playerPosRef,
   initialSpawn,
+  canDriveVehicle,
 }: LocalPlayerProps) {
   const { camera, gl } = useThree();
   const [, getKeys] = useKeyboardControls<Controls>();
@@ -712,8 +722,17 @@ export default function LocalPlayer({
     if (keys.interact && interactCooldown.current <= 0) {
       const near = findNearestVehicle(pos.current);
       if (near && !near.driverId) {
-        enterVehicle(near);
-        interactCooldown.current = 0.5;
+        // Optimistic license gate (Phase 1B). If canDriveVehicle is not yet
+        // provided (rp:profile hasn't arrived) we allow entry — the server
+        // will reject and send rp:toast if the player isn't licensed.
+        if (canDriveVehicle && !canDriveVehicle(near.id)) {
+          // Blocked — server will also send rp:toast. Apply a short cooldown
+          // so rapid E-key taps don't flood the server with rejected packets.
+          interactCooldown.current = 1.0;
+        } else {
+          enterVehicle(near);
+          interactCooldown.current = 0.5;
+        }
       }
     }
 

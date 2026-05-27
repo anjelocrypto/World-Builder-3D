@@ -8,6 +8,7 @@ interface GameProps {
 
 export default function Game({ username }: GameProps) {
   const {
+    socket,
     myId,
     connected,
     playerCount,
@@ -54,6 +55,7 @@ export default function Game({ username }: GameProps) {
       setGameState={setGameState}
       emitPlayerUpdate={emitPlayerUpdate}
       emitVehicleUpdate={emitVehicleUpdate}
+      socket={socket}
     />
   );
 }

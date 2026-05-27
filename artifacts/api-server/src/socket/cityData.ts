@@ -51,6 +51,9 @@ export const INITIAL_VEHICLES = [
 
 // Spawn points placed inside the central plaza (cx=0, cz=0 block has no
 // generated buildings). Must match the client SPAWN_POINTS array.
+// NOTE: Phase 1B replaces the random-round-robin spawn with safeStationSpawn().
+// SPAWN_POINTS is kept exported so client code that imports it for the
+// deterministic offline fallback continues to compile.
 export const SPAWN_POINTS: [number, number, number][] = [
   [0,   1, -12],
   [12,  1,  0 ],
@@ -61,3 +64,24 @@ export const SPAWN_POINTS: [number, number, number][] = [
   [15,  1, -15],
   [-15, 1, -15],
 ];
+
+// ── Central Station spawn (Phase 1B) ──────────────────────────────────────
+// All players now spawn here instead of the rotating SPAWN_POINTS array.
+// Positions validated against buildings, roads, cars, and obstacles in
+// NEMOVERSE_RP_PLAN.md §5.3–§5.4.
+
+/** Platform center of Central Loop Station exterior (visual marker position). */
+export const STATION_MARKER_POS: [number, number, number] = [132, 0, -65];
+
+/**
+ * Primary spawn point — ground-level exterior east of the station stair foot
+ * at x=122. Both jitter extremes (x ∈ [124, 132], z ∈ [−68, −62]) clear
+ * all buildings, roads, and parked cars.
+ */
+export const STATION_SPAWN: [number, number, number] = [128, 1, -65];
+
+/** Jitter half-width on X: final x ∈ [STATION_SPAWN[0]−4, STATION_SPAWN[0]+4]. */
+export const STATION_SPAWN_JITTER_X = 4;
+
+/** Jitter half-depth on Z: final z ∈ [STATION_SPAWN[2]−3, STATION_SPAWN[2]+3]. */
+export const STATION_SPAWN_JITTER_Z = 3;
