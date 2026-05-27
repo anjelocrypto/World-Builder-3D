@@ -58,6 +58,7 @@ export enum Controls {
   interact = "interact",
   attackLight = "attackLight",
   attackHeavy = "attackHeavy",
+  lockVehicle = "lockVehicle",
 }
 
 // Module-level scratch reused by updateCamera every frame. Avoids a
@@ -239,6 +240,7 @@ export default function LocalPlayer({
   const lastHeavyAtRef = useRef(0);
   const prevAttackLightKey = useRef(false);
   const prevAttackHeavyKey = useRef(false);
+  const prevLockVehicleKey = useRef(false);
   // Fight combo: clicking "fight" while fight1 (light) is in progress
   // queues fight2 (heavy) to fire the moment fight1's window closes.
   // A second queued click during fight1 is a no-op (only one chained
@@ -373,6 +375,22 @@ export default function LocalPlayer({
     if (wantHeavy && !prevAttackHeavyKey.current) tryAttack("heavy");
     prevAttackLightKey.current = wantLight;
     prevAttackHeavyKey.current = wantHeavy;
+
+    // KeyL — lock / unlock nearest owned vehicle (rising-edge, outside vehicle only).
+    const wantLock = keys.lockVehicle;
+    if (
+      wantLock &&
+      !prevLockVehicleKey.current &&
+      !inVehicle.current &&
+      interactCooldown.current <= 0
+    ) {
+      const ownedVId = nearOwnedVehicleIdRef.current;
+      if (ownedVId) {
+        emitToggleLock?.(ownedVId);
+        interactCooldown.current = 1.0;
+      }
+    }
+    prevLockVehicleKey.current = wantLock;
 
     // Release the queued fight2 the moment fight1's window closes.
     if (
@@ -878,24 +896,17 @@ export default function LocalPlayer({
           interactCooldown.current = 0.5;
         }
       } else {
-        // No unoccupied vehicle nearby — check Phase 3: lock/unlock owned vehicle.
-        const ownedVId = nearOwnedVehicleIdRef.current;
-        if (ownedVId) {
-          emitToggleLock?.(ownedVId);
+        // No unoccupied vehicle nearby — check Licensing Office (Phase 2) or dealership (Phase 3).
+        const [offX2, , offZ2] = LICENSING_OFFICE_POS;
+        const odx2 = pos.current.x - offX2;
+        const odz2 = pos.current.z - offZ2;
+        if (odx2 * odx2 + odz2 * odz2 < 6 * 6) {
+          emitRpInteract?.("licensing_office", "start_driver_test");
           interactCooldown.current = 1.0;
-        } else {
-          // Check for Licensing Office (Phase 2).
-          const [offX2, , offZ2] = LICENSING_OFFICE_POS;
-          const odx2 = pos.current.x - offX2;
-          const odz2 = pos.current.z - offZ2;
-          if (odx2 * odx2 + odz2 * odz2 < 6 * 6) {
-            emitRpInteract?.("licensing_office", "start_driver_test");
-            interactCooldown.current = 1.0;
-          } else if (nearDealershipRef.current) {
-            // Phase 3: open dealership shop.
-            onOpenShop?.();
-            interactCooldown.current = 0.5;
-          }
+        } else if (nearDealershipRef.current) {
+          // Phase 3: open dealership shop.
+          onOpenShop?.();
+          interactCooldown.current = 0.5;
         }
       }
     }

@@ -105,6 +105,33 @@ export const DEALERSHIP_DELIVERY_PAD: [number, number, number] = [68, 0.6, -68];
 export const DEALERSHIP_INTERACT_RADIUS = 8;
 
 /**
+ * Delivery slot offsets [dx, dz] relative to DEALERSHIP_DELIVERY_PAD.
+ * All slots validated road-clear at startup (see rpValidators + gameServer).
+ *
+ *   Absolute positions (base x=68, z=−68):
+ *   slot 0:  x=68,  z=−68  (base pad)
+ *   slot 1:  x=72,  z=−68  (+4 east)
+ *   slot 2:  x=64,  z=−68  (−4 west)
+ *   slot 3:  x=76,  z=−68  (+8 east)
+ *   slot 4:  x=60,  z=−68  (−8 west)
+ *   slot 5:  x=68,  z=−64  (+4 south)
+ *   slot 6:  x=72,  z=−64  (SE)
+ *   slot 7:  x=64,  z=−64  (SW)
+ *
+ * All clear of every NS road (|x−45|≥10, |x−0|≥10) and EW road (|z+45|≥10).
+ */
+export const DELIVERY_SLOT_OFFSETS: [number, number][] = [
+  [  0,  0 ],  // slot 0 — base pad
+  [  4,  0 ],  // slot 1
+  [ -4,  0 ],  // slot 2
+  [  8,  0 ],  // slot 3
+  [ -8,  0 ],  // slot 4
+  [  0,  4 ],  // slot 5
+  [  4,  4 ],  // slot 6
+  [ -4,  4 ],  // slot 7
+];
+
+/**
  * Server-authoritative vehicle purchase catalog.
  * model+variant uniquely identify a vehicle body.
  * colors is the allowlist the server accepts — client cannot send other values.

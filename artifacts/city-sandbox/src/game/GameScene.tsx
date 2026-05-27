@@ -36,6 +36,7 @@ const KEY_MAP = [
   // LocalPlayer's pointer-lock effect.
   { name: Controls.attackLight,  keys: ["KeyF"] },
   { name: Controls.attackHeavy,  keys: ["KeyR"] },
+  { name: Controls.lockVehicle,  keys: ["KeyL"] },
 ];
 
 interface GameSceneProps {

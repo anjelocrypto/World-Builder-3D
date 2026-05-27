@@ -14,6 +14,9 @@ import {
   STATION_SPAWN,
   STATION_SPAWN_JITTER_X,
   STATION_SPAWN_JITTER_Z,
+  DEALERSHIP_POS,
+  DEALERSHIP_DELIVERY_PAD,
+  DELIVERY_SLOT_OFFSETS,
 } from "../socket/cityData";
 import type { RpCacheEntry, TestState } from "./rpCache";
 
@@ -86,14 +89,21 @@ export function isInsideObstacle(
  * Phase 2: wire in the server-side static obstacle list when available.
  */
 export function validateRpMarkers(obstacles: StaticObstacle[]): void {
+  // Build delivery slot entries from DELIVERY_SLOT_OFFSETS
+  const deliverySlotMarkers = DELIVERY_SLOT_OFFSETS.map(([dx, dz], i) => ({
+    label: `DELIVERY_SLOT_${i}`,
+    x: DEALERSHIP_DELIVERY_PAD[0] + dx,
+    z: DEALERSHIP_DELIVERY_PAD[2] + dz,
+  }));
+
   const OFF_ROAD = [
-    { label: "STATION_SPAWN",           x: 128, z: -65 },
-    { label: "LICENSING_OFFICE_POS",    x:  14, z: -30 },
-    { label: "TEST_VEHICLE_SPAWN",      x:  13, z: -30 },
-    { label: "CP3_FINISH",              x:  14, z: -26 },
+    { label: "STATION_SPAWN",           x: 128,                       z: -65 },
+    { label: "LICENSING_OFFICE_POS",    x:  14,                       z: -30 },
+    { label: "TEST_VEHICLE_SPAWN",      x:  13,                       z: -30 },
+    { label: "CP3_FINISH",              x:  14,                       z: -26 },
     // Phase 3
-    { label: "DEALERSHIP_POS",          x:  68, z: -72 },
-    { label: "DEALERSHIP_DELIVERY_PAD", x:  68, z: -68 },
+    { label: "DEALERSHIP_POS",          x: DEALERSHIP_POS[0],         z: DEALERSHIP_POS[2] },
+    ...deliverySlotMarkers,
   ];
   const ON_ROAD = [
     { label: "CP0", x:  2, z: -40 },
@@ -138,10 +148,19 @@ export function isNearParkedCar(
  * Startup assertion — throws if any RP marker is within 8 m of a parked car.
  */
 export function validateRpMarkerVehicleClearance(vehicles: VehiclePos[]): void {
+  const deliverySlotMarkers = DELIVERY_SLOT_OFFSETS.map(([dx, dz], i) => ({
+    label: `DELIVERY_SLOT_${i}`,
+    x: DEALERSHIP_DELIVERY_PAD[0] + dx,
+    z: DEALERSHIP_DELIVERY_PAD[2] + dz,
+  }));
+
   const markers = [
-    { label: "LICENSING_OFFICE_POS", x:  14, z: -30 },
-    { label: "TEST_VEHICLE_SPAWN",   x:  13, z: -30 },
-    { label: "STATION_SPAWN",        x: 128, z: -65 },
+    { label: "LICENSING_OFFICE_POS",    x:  14,                       z: -30 },
+    { label: "TEST_VEHICLE_SPAWN",      x:  13,                       z: -30 },
+    { label: "STATION_SPAWN",           x: 128,                       z: -65 },
+    // Phase 3 — dealership entrance + all delivery slots
+    { label: "DEALERSHIP_POS",          x: DEALERSHIP_POS[0],         z: DEALERSHIP_POS[2] },
+    ...deliverySlotMarkers,
   ];
   for (const m of markers) {
     if (isNearParkedCar(m.x, m.z, vehicles)) {

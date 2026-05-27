@@ -1,7 +1,7 @@
 import { Server, Socket } from "socket.io";
 import type { Server as HttpServer } from "http";
 import { logger } from "../lib/logger";
-import { INITIAL_VEHICLES, WORLD_HALF, DEALERSHIP_DELIVERY_PAD } from "./cityData";
+import { INITIAL_VEHICLES, WORLD_HALF, DEALERSHIP_DELIVERY_PAD, DELIVERY_SLOT_OFFSETS } from "./cityData";
 import {
   validateRpMarkers,
   validateRpMarkerVehicleClearance,
@@ -13,10 +13,7 @@ import { rpCache, rpTestState, buildProfile } from "../rp/rpCache";
 import { upsertPlayer } from "../rp/rpPlayerService";
 import { setupRpHandlers, type LicenseContext } from "../rp/setupRpHandlers";
 import { failTest, cleanupOnDisconnect } from "../rp/rpLicenseService";
-import {
-  loadAndSpawnOwnedVehicles,
-  despawnOwnedVehicles,
-} from "../rp/rpVehicleService";
+import { loadAndSpawnOwnedVehicles } from "../rp/rpVehicleService";
 
 // Clamp a horizontal world coordinate so a hacked client cannot push a
 // player or vehicle outside the playable map. The margin keeps the
@@ -143,17 +140,21 @@ export function setupGameServer(httpServer: HttpServer) {
       `[rp] TEST_VEHICLE_SPAWN OBB OK — all 4 body corners clear all carriageways`,
     );
 
-    // Phase 3: dealership delivery pad OBB check.
-    const DLVR_X = DEALERSHIP_DELIVERY_PAD[0];
-    const DLVR_Z = DEALERSHIP_DELIVERY_PAD[2];
-    if (!validateVehicleSpawnOBB(DLVR_X, DLVR_Z)) {
-      throw new Error(
-        `[rp] DEALERSHIP_DELIVERY_PAD OBB (x=${DLVR_X}, z=${DLVR_Z}) ` +
-        `clips a road carriageway — update DEALERSHIP_DELIVERY_PAD`,
-      );
+    // Phase 3: OBB check for every delivery slot.
+    const [bx, , bz] = DEALERSHIP_DELIVERY_PAD;
+    for (let i = 0; i < DELIVERY_SLOT_OFFSETS.length; i++) {
+      const [dx, dz] = DELIVERY_SLOT_OFFSETS[i];
+      const sx = bx + dx;
+      const sz = bz + dz;
+      if (!validateVehicleSpawnOBB(sx, sz)) {
+        throw new Error(
+          `[rp] DELIVERY_SLOT_${i} OBB (x=${sx}, z=${sz}) ` +
+          `clips a road carriageway — adjust DELIVERY_SLOT_OFFSETS`,
+        );
+      }
     }
     logger.info(
-      `[rp] DEALERSHIP_DELIVERY_PAD OBB OK — all 4 body corners clear all carriageways`,
+      `[rp] All ${DELIVERY_SLOT_OFFSETS.length} delivery slot OBBs OK`,
     );
   } catch (err) {
     logger.error({ err }, "[rp] startup validation FAILED — fix RP marker positions");
@@ -382,11 +383,7 @@ export function setupGameServer(httpServer: HttpServer) {
         cleanupOnDisconnect(socket.id, ctx);
       }
 
-      // Phase 3: despawn owned vehicles BEFORE clearing rpCache so
-      // despawnOwnedVehicles can still read the owned vehicle list.
-      despawnOwnedVehicles(socket.id, ctx);
-
-      // Clear RP cache (after test cleanup + owned vehicle despawn).
+      // Clear RP cache (after test cleanup).
       rpCache.delete(socket.id);
 
       const player = players.get(socket.id);

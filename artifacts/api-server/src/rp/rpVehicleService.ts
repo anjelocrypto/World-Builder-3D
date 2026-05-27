@@ -2,29 +2,39 @@
  * Vehicle Ownership Service — Phase 3.
  *
  * Handles:
- *   buyVehicle()                — validate + charge + insert DB row + spawn
- *   loadAndSpawnOwnedVehicles() — load from DB on join, spawn each in-world
- *   despawnOwnedVehicles()      — remove in-world vehicles on disconnect
+ *   buyVehicle()                — atomic DB transaction: lock wallet → validate
+ *                                 cash → plate insert (SAVEPOINT retry) → deduct
+ *                                 → log → spawn → emit
+ *   loadAndSpawnOwnedVehicles() — load from DB on join, spawn into free delivery
+ *                                 slots; skip vehicles already present in-world
  *   toggleLock()                — flip locked flag in DB + cache + emit update
  *
  * Server-authoritative rules (enforced here and in gameServer vehicleUpdate):
  *   - Client never sends price, ownerId, plate, or locked.
  *   - Server validates model/variant against VEHICLE_SHOP_CATALOG allowlist.
- *   - Plate is generated server-side (NEM-XXXX); retried on UNIQUE conflict.
- *   - Owned+locked vehicle may only be unlocked by its ownerId.
- *   - Licensed player required to buy AND to drive.
+ *   - Plate is generated server-side (NEM-XXXX); retried via SAVEPOINT on
+ *     UNIQUE conflict — all within a single DB transaction so no partial
+ *     state is ever committed.
+ *   - Owned+locked vehicle may only be entered/unlocked by its ownerId.
+ *   - Driver License required to buy and to drive.
+ *
+ * Disconnect policy (Phase 3 simplest-acceptable):
+ *   Owned vehicles are NOT despawned on disconnect. They remain in the world
+ *   so other clients keep seeing them. On reconnect, loadAndSpawnOwnedVehicles
+ *   skips vehicles whose id is already in the vehicles map.
  */
 
-import { db, rpOwnedVehicles } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, rpOwnedVehicles, rpWallets, rpTransactionLog } from "@workspace/db";
+import { eq, sql } from "drizzle-orm";
 import type { Server, Socket } from "socket.io";
 import { logger } from "../lib/logger";
 import type { RpCacheEntry, OwnedVehicleSummary } from "./rpCache";
-import { walletTransfer, RpError } from "./rpWalletService";
+import { RpError } from "./rpWalletService";
 import {
   DEALERSHIP_POS,
   DEALERSHIP_INTERACT_RADIUS,
   DEALERSHIP_DELIVERY_PAD,
+  DELIVERY_SLOT_OFFSETS,
   VEHICLE_SHOP_CATALOG,
 } from "../socket/cityData";
 
@@ -52,7 +62,7 @@ interface PlayerState {
   z: number;
 }
 
-// ── Context (shared with LicenseContext in setupRpHandlers) ───────────────
+// ── Context ────────────────────────────────────────────────────────────────────
 
 export interface VehicleContext {
   players:     Map<string, PlayerState>;
@@ -61,7 +71,7 @@ export interface VehicleContext {
   io:          Server;
 }
 
-// ── Helpers ────────────────────────────────────────────────────────────────
+// ── Helpers ────────────────────────────────────────────────────────────────────
 
 function dist2d(ax: number, az: number, bx: number, bz: number): number {
   const dx = ax - bx;
@@ -70,8 +80,9 @@ function dist2d(ax: number, az: number, bx: number, bz: number): number {
 }
 
 /**
- * Generate a plate in NEM-XXXX format where XXXX is 4 uppercase alphanumeric
- * characters. Collision is resolved by the caller (retry on UNIQUE violation).
+ * Generate a plate in NEM-XXXX format (4 uppercase alphanumeric chars).
+ * Collision on the UNIQUE constraint is resolved via SAVEPOINT retry in the
+ * caller — this function just picks a random suffix each call.
  */
 function generatePlate(): string {
   const chars = "ABCDEFGHJKLMNPRSTUVWXYZ0123456789";
@@ -82,7 +93,7 @@ function generatePlate(): string {
   return `NEM-${suffix}`;
 }
 
-/** Unique in-world vehicle id from the DB row id. */
+/** Deterministic in-world vehicle id from the DB row id. */
 function ownedVehicleId(dbId: string): string {
   return `ov-${dbId}`;
 }
@@ -93,20 +104,49 @@ function spawnVehicle(v: VehicleState, ctx: VehicleContext): void {
   ctx.io.emit("vehicleAdded", v);
 }
 
-/** Remove vehicle from server map and notify all clients. */
-function despawnVehicle(vehicleId: string, ctx: VehicleContext): void {
-  ctx.vehicles.delete(vehicleId);
-  ctx.io.emit("vehicleRemoved", { id: vehicleId });
+/**
+ * Find the first delivery slot position that is not already occupied by
+ * another vehicle (within 1.5 m of the slot centre). Falls back to the
+ * last slot if all are taken.
+ */
+function findFreeSlot(ctx: VehicleContext): [number, number, number] {
+  const [bx, by, bz] = DEALERSHIP_DELIVERY_PAD;
+  for (const [dx, dz] of DELIVERY_SLOT_OFFSETS) {
+    const sx = bx + dx;
+    const sz = bz + dz;
+    let occupied = false;
+    for (const v of ctx.vehicles.values()) {
+      if (Math.abs(v.x - sx) < 1.5 && Math.abs(v.z - sz) < 1.5) {
+        occupied = true;
+        break;
+      }
+    }
+    if (!occupied) return [sx, by, sz];
+  }
+  // All slots occupied — fall back to base pad (shouldn't happen in practice
+  // with 8 slots; vehicles will overlap but won't corrupt state)
+  return [bx, by, bz];
 }
 
-// ── Public API ─────────────────────────────────────────────────────────────
+// ── Public API ─────────────────────────────────────────────────────────────────
 
 /**
  * Handle `rp:buyVehicle { model, variant, color }`.
  *
- * Validates: player has license, is near dealership, passes catalog allowlist,
- * has sufficient cash. Then: deducts cash, inserts DB row (retrying plate on
- * UNIQUE conflict), spawns vehicle at delivery pad, updates cache, emits events.
+ * Everything from cash deduction to DB insert happens inside a single
+ * serializable transaction so no partial state can be committed:
+ *
+ *   BEGIN
+ *     SELECT rp_wallets WHERE playerId FOR UPDATE   ← row-lock
+ *     validate cash >= price
+ *     SAVEPOINT plate_try
+ *       INSERT rp_owned_vehicles (plate = generatePlate())
+ *     RELEASE SAVEPOINT plate_try           ← or ROLLBACK on 23505 + retry
+ *     UPDATE rp_wallets SET cash = cash - price
+ *     INSERT rp_transaction_log
+ *   COMMIT
+ *
+ * After commit: update in-memory cache, spawn vehicle, emit profile + toast.
  */
 export async function buyVehicle(
   socket:  Socket,
@@ -125,7 +165,7 @@ export async function buyVehicle(
     return;
   }
 
-  // Must have driver license
+  // ── Fast-fail pre-condition checks (outside transaction) ─────────────────
   if (!entry.driverLicense) {
     socket.emit("rp:toast", {
       msg:      "You need a Driver License to buy a vehicle.",
@@ -135,7 +175,6 @@ export async function buyVehicle(
     return;
   }
 
-  // Validate model/variant/color against catalog
   const catalogEntry = VEHICLE_SHOP_CATALOG.find(
     (c) => c.model === model && c.variant === variant,
   );
@@ -148,16 +187,12 @@ export async function buyVehicle(
     return;
   }
 
-  // Player proximity check (server-authoritative position)
   const player = ctx.players.get(socket.id);
   if (!player) {
     logger.warn({ socketId: socket.id }, "[rp] buyVehicle: player not in map");
     return;
   }
-  const distToDealer = dist2d(
-    player.x, player.z,
-    DEALERSHIP_POS[0], DEALERSHIP_POS[2],
-  );
+  const distToDealer = dist2d(player.x, player.z, DEALERSHIP_POS[0], DEALERSHIP_POS[2]);
   if (distToDealer > DEALERSHIP_INTERACT_RADIUS) {
     socket.emit("rp:toast", {
       msg:      "You need to be closer to the Dealership.",
@@ -167,7 +202,7 @@ export async function buyVehicle(
     return;
   }
 
-  // Sufficient cash
+  // Optimistic cash check before hitting the DB (saves a round-trip on obvious failures)
   if (entry.cash < catalogEntry.price) {
     socket.emit("rp:toast", {
       msg:      `Need $${catalogEntry.price} to buy this vehicle. You have $${entry.cash}.`,
@@ -177,17 +212,88 @@ export async function buyVehicle(
     return;
   }
 
-  // Deduct cash (with SELECT FOR UPDATE to prevent double-spend)
-  let newCash: number;
+  // ── Single atomic transaction ─────────────────────────────────────────────
+  let txResult: { ownedRow: typeof rpOwnedVehicles.$inferSelect; newCash: number } | null = null;
+
   try {
-    const result = await walletTransfer({
-      playerId:  entry.playerId,
-      cashDelta: -catalogEntry.price,
-      kind:      "vehicle_purchase",
-      note:      `Bought ${model} (${color})`,
+    txResult = await db.transaction(async (tx) => {
+      // 1. Lock the wallet row — prevents concurrent purchases from racing
+      const [wallet] = await tx
+        .select()
+        .from(rpWallets)
+        .where(eq(rpWallets.playerId, entry.playerId))
+        .for("update");
+
+      if (!wallet) {
+        throw new Error(`[rp] buyVehicle: no wallet for playerId=${entry.playerId}`);
+      }
+
+      const newCash = wallet.cash - catalogEntry.price;
+      if (newCash < 0) {
+        throw new RpError(
+          "insufficient_cash",
+          `Need $${catalogEntry.price}, have $${wallet.cash}`,
+        );
+      }
+
+      // 2. Insert owned vehicle row — retry plate on UNIQUE conflict via SAVEPOINT
+      let ownedRow: typeof rpOwnedVehicles.$inferSelect | undefined;
+      for (let attempt = 0; attempt < 5; attempt++) {
+        const plate = generatePlate();
+        try {
+          await tx.execute(sql`SAVEPOINT plate_try`);
+          const [row] = await tx
+            .insert(rpOwnedVehicles)
+            .values({
+              ownerId:  entry.playerId,
+              model,
+              variant,
+              color,
+              plate,
+              locked:   true,
+              fuel:     100,
+            })
+            .returning();
+          await tx.execute(sql`RELEASE SAVEPOINT plate_try`);
+          ownedRow = row;
+          break;
+        } catch (insertErr: unknown) {
+          const pgCode =
+            (insertErr as { cause?: { code?: string } })?.cause?.code ??
+            (insertErr as { code?: string })?.code;
+          if (pgCode === "23505") {
+            // Plate collision — roll back just the insert, keep the transaction alive
+            await tx.execute(sql`ROLLBACK TO SAVEPOINT plate_try`);
+            logger.debug({ attempt }, "[rp] buyVehicle: plate collision, retrying in tx");
+            continue;
+          }
+          throw insertErr;
+        }
+      }
+
+      if (!ownedRow) {
+        throw new Error("[rp] buyVehicle: plate_exhausted — 5 consecutive plate collisions");
+      }
+
+      // 3. Deduct cash
+      await tx
+        .update(rpWallets)
+        .set({ cash: newCash, updatedAt: new Date() })
+        .where(eq(rpWallets.playerId, entry.playerId));
+
+      // 4. Audit log
+      await tx.insert(rpTransactionLog).values({
+        playerId:  entry.playerId,
+        kind:      "vehicle_purchase",
+        cashDelta: -catalogEntry.price,
+        bankDelta: 0,
+        cashAfter: newCash,
+        bankAfter: wallet.bank,
+        note:      `Bought ${model} (${color}) plate=${ownedRow.plate}`,
+      });
+
+      return { ownedRow, newCash };
     });
-    newCash = result.cash;
-    entry.cash = newCash;
   } catch (err) {
     if (err instanceof RpError && err.code === "insufficient_cash") {
       socket.emit("rp:toast", {
@@ -196,9 +302,9 @@ export async function buyVehicle(
         duration: 4000,
       });
     } else {
-      logger.error({ err, socketId: socket.id }, "[rp] walletTransfer failed in buyVehicle");
+      logger.error({ err, socketId: socket.id }, "[rp] buyVehicle: transaction failed");
       socket.emit("rp:toast", {
-        msg:      "Server error — could not process payment. Try again.",
+        msg:      "Server error — could not process purchase. Try again.",
         color:    "red",
         duration: 4000,
       });
@@ -206,87 +312,30 @@ export async function buyVehicle(
     return;
   }
 
-  // Insert DB row (retry up to 5 times on UNIQUE plate collision)
-  let dbId: string | undefined;
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const plate = generatePlate();
-    try {
-      const [row] = await db
-        .insert(rpOwnedVehicles)
-        .values({
-          ownerId:  entry.playerId,
-          model,
-          variant,
-          color,
-          plate,
-          locked:   true,
-          fuel:     100,
-        })
-        .returning({ id: rpOwnedVehicles.id });
-      if (row) {
-        dbId = row.id;
-        break;
-      }
-    } catch (err: unknown) {
-      // Drizzle wraps the PG unique_violation as a native error with code "23505"
-      const pgCode = (err as { cause?: { code?: string } })?.cause?.code
-                  ?? (err as { code?: string })?.code;
-      if (pgCode === "23505") {
-        logger.debug({ attempt }, "[rp] buyVehicle: plate collision, retrying");
-        continue;
-      }
-      logger.error({ err, socketId: socket.id }, "[rp] buyVehicle: DB insert failed");
-      socket.emit("rp:toast", {
-        msg:      "Server error registering vehicle — contact support.",
-        color:    "red",
-        duration: 5000,
-      });
-      return;
-    }
-  }
+  // ── Transaction committed — update cache, spawn, emit ────────────────────
+  const { ownedRow, newCash } = txResult;
 
-  if (!dbId) {
-    logger.error({ socketId: socket.id }, "[rp] buyVehicle: could not generate unique plate after 5 attempts");
-    socket.emit("rp:toast", {
-      msg:      "Server error — try again.",
-      color:    "red",
-      duration: 4000,
-    });
-    return;
-  }
-
-  // Load the full row to get the plate we generated
-  const [ownedRow] = await db
-    .select()
-    .from(rpOwnedVehicles)
-    .where(eq(rpOwnedVehicles.id, dbId));
-
-  if (!ownedRow) {
-    logger.error({ dbId, socketId: socket.id }, "[rp] buyVehicle: could not reload owned row");
-    socket.emit("rp:toast", { msg: "Server error — contact support.", color: "red", duration: 5000 });
-    return;
-  }
-
-  const vehicleId = ownedVehicleId(dbId);
+  const vehicleId = ownedVehicleId(ownedRow.id);
   const summary: OwnedVehicleSummary = {
-    dbId,
+    dbId:      ownedRow.id,
     vehicleId,
     model,
     variant,
     color,
-    plate: ownedRow.plate,
+    plate:  ownedRow.plate,
     locked: true,
   };
 
-  // Update in-memory cache
+  entry.cash = newCash;
   entry.ownedVehicles.push(summary);
 
-  // Spawn vehicle at delivery pad
+  // Spawn at the first free delivery slot
+  const [sx, sy, sz] = findFreeSlot(ctx);
   const v: VehicleState = {
     id:       vehicleId,
-    x:        DEALERSHIP_DELIVERY_PAD[0],
-    y:        DEALERSHIP_DELIVERY_PAD[1],
-    z:        DEALERSHIP_DELIVERY_PAD[2],
+    x:        sx,
+    y:        sy,
+    z:        sz,
     rotY:     0,
     speed:    0,
     driverId: null,
@@ -299,26 +348,28 @@ export async function buyVehicle(
   };
   spawnVehicle(v, ctx);
 
-  // Notify client
   socket.emit("rp:profileUpdate", {
     cash:          newCash,
     ownedVehicles: entry.ownedVehicles,
   });
   socket.emit("rp:toast", {
-    msg:      `${model.charAt(0).toUpperCase() + model.slice(1)} purchased! Plate: ${ownedRow.plate}. It's parked at the Dealership — go unlock it.`,
+    msg:      `${model.charAt(0).toUpperCase() + model.slice(1)} purchased! Plate: ${ownedRow.plate}. Find it at the Dealership — unlock with L.`,
     color:    "green",
     duration: 6000,
   });
 
   logger.info(
     { socketId: socket.id, vehicleId, plate: ownedRow.plate },
-    "[rp] vehicle PURCHASED",
+    "[rp] vehicle PURCHASED (atomic tx)",
   );
 }
 
 /**
- * Load all owned vehicles for a player from DB, add to in-memory cache,
- * and spawn them in the world.
+ * Load all owned vehicles for a player from DB, spawn into free delivery slots.
+ *
+ * Skips any vehicle whose id is already in `ctx.vehicles` (in-world from a
+ * previous session or another concurrent socket). This ensures reconnects
+ * never move or duplicate an already-parked owned vehicle.
  *
  * Called after upsertPlayer resolves in the `join` handler.
  */
@@ -341,6 +392,8 @@ export async function loadAndSpawnOwnedVehicles(
   }
 
   const summaries: OwnedVehicleSummary[] = [];
+  let spawned = 0;
+
   for (const row of rows) {
     const vehicleId = ownedVehicleId(row.id);
     const summary: OwnedVehicleSummary = {
@@ -354,11 +407,19 @@ export async function loadAndSpawnOwnedVehicles(
     };
     summaries.push(summary);
 
+    // Skip spawn if already in world (from a prior session / disconnect-without-despawn)
+    if (ctx.vehicles.has(vehicleId)) {
+      logger.debug({ vehicleId }, "[rp] loadAndSpawnOwnedVehicles: vehicle already in world, skipping");
+      continue;
+    }
+
+    // Spawn into the first unoccupied delivery slot
+    const [sx, sy, sz] = findFreeSlot(ctx);
     const v: VehicleState = {
       id:       vehicleId,
-      x:        DEALERSHIP_DELIVERY_PAD[0],
-      y:        DEALERSHIP_DELIVERY_PAD[1],
-      z:        DEALERSHIP_DELIVERY_PAD[2],
+      x:        sx,
+      y:        sy,
+      z:        sz,
       rotY:     0,
       speed:    0,
       driverId: null,
@@ -370,11 +431,11 @@ export async function loadAndSpawnOwnedVehicles(
       owned:    true,
     };
     spawnVehicle(v, ctx);
+    spawned++;
   }
 
   entry.ownedVehicles = summaries;
 
-  // Emit profile update so the client's shop/garage UI reflects owned vehicles
   if (summaries.length > 0) {
     const sock = ctx.io.sockets.sockets.get(socketId);
     if (sock) {
@@ -383,29 +444,8 @@ export async function loadAndSpawnOwnedVehicles(
   }
 
   logger.info(
-    { socketId, count: rows.length },
-    "[rp] owned vehicles loaded + spawned",
-  );
-}
-
-/**
- * Remove all owned vehicles belonging to a player from the world on disconnect.
- * Does NOT touch the DB — vehicles are re-spawned at the delivery pad on next join.
- */
-export function despawnOwnedVehicles(
-  socketId: string,
-  ctx:      VehicleContext,
-): void {
-  const entry = ctx.rpCache.get(socketId);
-  if (!entry || entry.ownedVehicles.length === 0) return;
-
-  for (const summary of entry.ownedVehicles) {
-    despawnVehicle(summary.vehicleId, ctx);
-  }
-
-  logger.info(
-    { socketId, count: entry.ownedVehicles.length },
-    "[rp] owned vehicles despawned (disconnect)",
+    { socketId, total: rows.length, spawned },
+    "[rp] owned vehicles loaded (skipped already-in-world)",
   );
 }
 
@@ -413,7 +453,7 @@ export function despawnOwnedVehicles(
  * Handle `rp:toggleLock { vehicleId }`.
  *
  * Only the vehicle's ownerId may toggle the lock.
- * Player must be within 6 m of the vehicle (server-authoritative position).
+ * Player must be within 8 m of the vehicle (server-authoritative position).
  * Persists new locked state to DB, then emits vehicleMoved with updated locked field.
  */
 export async function toggleLock(
@@ -434,7 +474,6 @@ export async function toggleLock(
     return;
   }
 
-  // Only owner may toggle
   if (vehicle.ownerId !== entry.playerId) {
     socket.emit("rp:toast", {
       msg:      "That's not your vehicle.",
@@ -444,7 +483,6 @@ export async function toggleLock(
     return;
   }
 
-  // Proximity check (player must be near vehicle)
   const player = ctx.players.get(socket.id);
   if (!player) return;
   const distToVehicle = dist2d(player.x, player.z, vehicle.x, vehicle.z);
@@ -457,13 +495,11 @@ export async function toggleLock(
     return;
   }
 
-  // Find summary in cache
   const summary = entry.ownedVehicles.find((s) => s.vehicleId === vehicleId);
   if (!summary) return;
 
   const newLocked = !summary.locked;
 
-  // Persist to DB
   try {
     await db
       .update(rpOwnedVehicles)
@@ -479,15 +515,11 @@ export async function toggleLock(
     return;
   }
 
-  // Update cache + in-world state
-  summary.locked = newLocked;
-  vehicle.locked = newLocked;
+  summary.locked  = newLocked;
+  vehicle.locked  = newLocked;
   ctx.vehicles.set(vehicleId, vehicle);
 
-  // Update owned vehicles summary in profile
   socket.emit("rp:profileUpdate", { ownedVehicles: entry.ownedVehicles });
-
-  // Broadcast vehicle state change (locked field) to all clients
   ctx.io.emit("vehicleMoved", { id: vehicleId, locked: newLocked });
 
   socket.emit("rp:toast", {

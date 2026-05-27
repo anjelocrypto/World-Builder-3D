@@ -930,7 +930,7 @@ export default function HUD({
               boxShadow: "inset 0 -2px 0 rgba(100,181,246,0.35)",
             }}
           >
-            E
+            L
           </div>
           <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
             🔑{" "}
