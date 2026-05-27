@@ -60,6 +60,7 @@ interface PlayerState {
   x: number;
   y: number;
   z: number;
+  isInVehicle: boolean;
 }
 
 // ── Context ────────────────────────────────────────────────────────────────────

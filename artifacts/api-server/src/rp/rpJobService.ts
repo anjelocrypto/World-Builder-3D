@@ -14,6 +14,16 @@
  *   - Cash is credited only after a full DB transaction commits.
  *   - 60-second cooldown (lastPaycheckAt) survives reconnects (persisted in DB).
  *   - 3-second minimum between consecutive checkpoint hits (anti-farm).
+ *
+ * Fix 1 (audit): handleJobCheckpoint final-CP path — DB transaction runs FIRST;
+ *   rpJobState/entry/emit are only mutated after a successful commit.
+ *   On failure the route stays alive and the client retries the last checkpoint.
+ *
+ * Fix 2 (audit): toggleDuty — DB update is awaited BEFORE any in-memory
+ *   mutation or socket emit so a DB failure cannot leave cache/DB out of sync.
+ *
+ * Fix 3 (audit): handleJobCheckpoint rejects checkpoint hits from players who
+ *   are currently in a vehicle (isInVehicle === true on their server state).
  */
 
 import { db, rpPlayers, rpWallets, rpTransactionLog } from "@workspace/db";
@@ -34,7 +44,14 @@ import {
 
 // ── Context ────────────────────────────────────────────────────────────────────
 
-interface PlayerState { x: number; y: number; z: number; }
+/** Minimal player fields the job service needs from the authoritative player map. */
+interface PlayerState {
+  x: number;
+  y: number;
+  z: number;
+  /** Fix 3: used to reject checkpoint hits from players currently in a vehicle. */
+  isInVehicle: boolean;
+}
 
 export interface JobContext {
   players: Map<string, PlayerState>;
@@ -70,6 +87,8 @@ function buildActiveJob(state: JobState) {
  *
  * If the player is already on duty with the same job: clock them out.
  * Clocking out mid-route discards progress (no pay).
+ *
+ * Fix 2: DB update is awaited BEFORE any in-memory state mutation or emit.
  */
 export async function toggleDuty(
   socket: Socket,
@@ -106,10 +125,7 @@ export async function toggleDuty(
 
   if (alreadyOnDuty) {
     // ── Clock out (route abandoned) ───────────────────────────────────────
-    rpJobState.delete(socket.id);
-    entry.onDuty     = false;
-    entry.currentJob = null;
-
+    // Fix 2: persist to DB first; only mutate cache + emit on success.
     try {
       await db
         .update(rpPlayers)
@@ -117,7 +133,18 @@ export async function toggleDuty(
         .where(eq(rpPlayers.id, entry.playerId));
     } catch (err) {
       logger.error({ err, socketId: socket.id }, "[rp] toggleDuty: DB update failed on clock-out");
+      socket.emit("rp:toast", {
+        msg:      "Clock-out failed — try again.",
+        color:    "red",
+        duration: 3000,
+      });
+      return;
     }
+
+    // DB committed — now mutate in-memory state and notify client.
+    rpJobState.delete(socket.id);
+    entry.onDuty     = false;
+    entry.currentJob = null;
 
     socket.emit("rp:profileUpdate", { onDuty: false, currentJob: null, activeJob: null });
     socket.emit("rp:toast", {
@@ -145,6 +172,23 @@ export async function toggleDuty(
   }
 
   // ── Clock in (start route) ────────────────────────────────────────────────
+  // Fix 2: persist to DB first; only set rpJobState + emit on success.
+  try {
+    await db
+      .update(rpPlayers)
+      .set({ onDuty: true, currentJob: "city_worker" })
+      .where(eq(rpPlayers.id, entry.playerId));
+  } catch (err) {
+    logger.error({ err, socketId: socket.id }, "[rp] toggleDuty: DB update failed on clock-in");
+    socket.emit("rp:toast", {
+      msg:      "Clock-in failed — try again.",
+      color:    "red",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // DB committed — now create in-memory route state and notify client.
   const state: JobState = {
     job:       "city_worker",
     nextCp:    0,
@@ -154,15 +198,6 @@ export async function toggleDuty(
   rpJobState.set(socket.id, state);
   entry.onDuty     = true;
   entry.currentJob = "city_worker";
-
-  try {
-    await db
-      .update(rpPlayers)
-      .set({ onDuty: true, currentJob: "city_worker" })
-      .where(eq(rpPlayers.id, entry.playerId));
-  } catch (err) {
-    logger.error({ err, socketId: socket.id }, "[rp] toggleDuty: DB update failed on clock-in");
-  }
 
   socket.emit("rp:profileUpdate", {
     onDuty:     true,
@@ -183,10 +218,14 @@ export async function toggleDuty(
  * Validates (in order):
  *   1. Player is on duty (rpJobState has an entry)
  *   2. idx matches the expected next checkpoint (nextCp)
- *   3. Player is within JOB_CP_ACCEPT_RADIUS of that checkpoint (server position)
- *   4. At least JOB_MIN_CP_INTERVAL_MS since the previous checkpoint hit
+ *   3. Anti-farm: at least JOB_MIN_CP_INTERVAL_MS since the previous hit
+ *   4. Server-authoritative proximity
+ *   5. Fix 3: player must not be in a vehicle
  *
- * On route completion: credits cash atomically and resets duty state.
+ * On route completion (Fix 1):
+ *   - Run the DB transaction first (wallet + log + rpPlayers).
+ *   - Only after commit: delete rpJobState, update entry, emit success.
+ *   - On DB failure: leave route active; emit a retry toast (client retries ~1 s).
  */
 export async function handleJobCheckpoint(
   socket: Socket,
@@ -221,6 +260,16 @@ export async function handleJobCheckpoint(
   const player = ctx.players.get(socket.id);
   if (!player) return;
 
+  // Fix 3: City Worker route must be completed on foot.
+  if (player.isInVehicle) {
+    socket.emit("rp:toast", {
+      msg:      "City Worker route must be completed on foot.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
   const [cpx, , cpz] = CITY_WORKER_CHECKPOINTS[idx];
   if (dist2d(player.x, player.z, cpx, cpz) > JOB_CP_ACCEPT_RADIUS) {
     // Out of range — silently ignore; client will retry on next proximity tick
@@ -232,7 +281,7 @@ export async function handleJobCheckpoint(
   state.lastCpAt = now;
 
   if (state.nextCp < CITY_WORKER_CHECKPOINTS.length) {
-    // Route still in progress
+    // Route still in progress — update client HUD and continue.
     socket.emit("rp:profileUpdate", { activeJob: buildActiveJob(state) });
     socket.emit("rp:toast", {
       msg:      `Checkpoint ${idx + 1} / ${CITY_WORKER_CHECKPOINTS.length} — keep going!`,
@@ -244,11 +293,9 @@ export async function handleJobCheckpoint(
   }
 
   // ── Route complete — pay the player ───────────────────────────────────────
-  rpJobState.delete(socket.id);
-  entry.onDuty     = false;
-  entry.currentJob = null;
-  entry.lastPaycheckAt = now;
-
+  // Fix 1: run the DB transaction FIRST. Do not mutate rpJobState or entry
+  // until the commit succeeds. On failure the route stays alive; the client
+  // retries the final checkpoint every ~1 s.
   let newCash = entry.cash;
   try {
     await db.transaction(async (tx) => {
@@ -286,18 +333,25 @@ export async function handleJobCheckpoint(
         })
         .where(eq(rpPlayers.id, entry.playerId));
     });
-
-    entry.cash = newCash;
   } catch (err) {
+    // Fix 1: DB failed — roll back state.nextCp so the final CP is retryable.
+    state.nextCp  -= 1;
+    state.lastCpAt = 0; // reset anti-farm timer so retry isn't blocked
     logger.error({ err, socketId: socket.id }, "[rp] handleJobCheckpoint: payment transaction failed");
     socket.emit("rp:toast", {
-      msg:      "Route complete but payment failed — please report this bug.",
+      msg:      "Payment failed — walk through the final checkpoint again.",
       color:    "red",
-      duration: 6000,
+      duration: 5000,
     });
-    socket.emit("rp:profileUpdate", { onDuty: false, currentJob: null, activeJob: null });
     return;
   }
+
+  // DB committed — now finalize in-memory state and notify client.
+  rpJobState.delete(socket.id);
+  entry.cash           = newCash;
+  entry.onDuty         = false;
+  entry.currentJob     = null;
+  entry.lastPaycheckAt = now;
 
   socket.emit("rp:profileUpdate", {
     cash:       newCash,
