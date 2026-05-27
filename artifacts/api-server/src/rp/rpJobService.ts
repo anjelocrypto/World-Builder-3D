@@ -24,6 +24,8 @@
  *   no fallback to player.x/z; reject if no vehicle with driverId===socket.id exists.
  * Audit fix B (5A): toggleDuty clock-out — job slug must match active route; player must
  *   be within the correct depot radius before clock-out is accepted.
+ * Phase 5B: delivery_driver — 3-stage vehicle route (pickup + 2-3 ordered dropoffs);
+ *   driver license required; same server-authority rules as taxi; DB-first payment.
  */
 
 import { db, rpPlayers, rpWallets, rpTransactionLog } from "@workspace/db";
@@ -52,6 +54,17 @@ import {
   TAXI_CP_ACCEPT_RADIUS,
   TAXI_MIN_STAGE_INTERVAL_MS,
   TAXI_ROUTE_COOLDOWN_MS,
+  // Delivery Driver
+  DELIVERY_HUB,
+  DELIVERY_HUB_RADIUS,
+  DELIVERY_PICKUPS,
+  DELIVERY_DROPOFFS,
+  DELIVERY_PAY_MIN,
+  DELIVERY_PAY_MAX,
+  DELIVERY_PAY_PER_M,
+  DELIVERY_CP_ACCEPT_RADIUS,
+  DELIVERY_MIN_STAGE_INTERVAL_MS,
+  DELIVERY_ROUTE_COOLDOWN_MS,
 } from "../socket/cityData";
 
 // ── Context ────────────────────────────────────────────────────────────────────
@@ -143,6 +156,55 @@ function calcFare(
   return Math.round(raw / 10) * 10;
 }
 
+/** Build the delivery activeJob payload. checkpoints = [pickup, ...dropoffs]. */
+function buildDeliveryJob(state: JobState) {
+  if (!state.deliveryPickup || !state.deliveryDropoffs || state.deliveryPay === undefined) {
+    throw new Error("[rp] buildDeliveryJob called without delivery state fields");
+  }
+  return {
+    job:         "delivery_driver",
+    label:       "Delivery Driver",
+    mode:        "vehicle" as const,
+    checkpoints: [state.deliveryPickup, ...state.deliveryDropoffs] as [number, number, number][],
+    nextCp:      state.nextCp,
+    pay:         state.deliveryPay,
+  };
+}
+
+/**
+ * Sample `count` unique items from `arr` without replacement.
+ * If count >= arr.length, returns a shuffled copy of the whole array.
+ */
+function sampleWithoutReplacement<T>(arr: T[], count: number): T[] {
+  const copy = [...arr];
+  const out: T[] = [];
+  for (let i = 0; i < Math.min(count, copy.length); i++) {
+    const idx = Math.floor(Math.random() * (copy.length - i));
+    out.push(copy[idx]);
+    copy[idx] = copy[copy.length - 1 - i];
+  }
+  return out;
+}
+
+/**
+ * Calculate delivery pay: sum of consecutive segment distances across the full
+ * route (hub → pickup → drop1 → … → dropN), clamped and rounded to nearest $10.
+ */
+function calcDeliveryPay(
+  hub:     [number, number, number],
+  pickup:  [number, number, number],
+  dropoffs: [number, number, number][],
+): number {
+  let total = dist3d(hub[0], hub[1], hub[2], pickup[0], pickup[1], pickup[2]);
+  let prev  = pickup;
+  for (const d of dropoffs) {
+    total += dist3d(prev[0], prev[1], prev[2], d[0], d[1], d[2]);
+    prev   = d;
+  }
+  const raw = Math.max(DELIVERY_PAY_MIN, Math.min(DELIVERY_PAY_MAX, total * DELIVERY_PAY_PER_M));
+  return Math.round(raw / 10) * 10;
+}
+
 // ── Public API ─────────────────────────────────────────────────────────────────
 
 /**
@@ -162,7 +224,7 @@ export async function toggleDuty(
   ctx:    JobContext,
   job:    string,
 ): Promise<void> {
-  if (job !== "city_worker" && job !== "taxi_driver") {
+  if (job !== "city_worker" && job !== "taxi_driver" && job !== "delivery_driver") {
     socket.emit("rp:toast", {
       msg:      "Unknown job.",
       color:    "red",
@@ -201,6 +263,10 @@ export async function toggleDuty(
       const dx = player.x - TAXI_DEPOT[0];
       const dz = player.z - TAXI_DEPOT[2];
       atDepot = dx * dx + dz * dz <= TAXI_DEPOT_RADIUS * TAXI_DEPOT_RADIUS;
+    } else if (activeState.job === "delivery_driver") {
+      const dx = player.x - DELIVERY_HUB[0];
+      const dz = player.z - DELIVERY_HUB[2];
+      atDepot = dx * dx + dz * dz <= DELIVERY_HUB_RADIUS * DELIVERY_HUB_RADIUS;
     }
 
     if (!atDepot) {
@@ -245,8 +311,10 @@ export async function toggleDuty(
   // ── Job-specific clock-in ─────────────────────────────────────────────────
   if (job === "city_worker") {
     await clockInCityWorker(socket, ctx, entry, player);
-  } else {
+  } else if (job === "taxi_driver") {
     await clockInTaxi(socket, ctx, entry, player);
+  } else {
+    await clockInDelivery(socket, ctx, entry, player);
   }
 }
 
@@ -440,6 +508,8 @@ export async function handleJobCheckpoint(
     await handleCityWorkerCheckpoint(socket, ctx, entry, state, idx, now);
   } else if (state.job === "taxi_driver") {
     await handleTaxiCheckpoint(socket, ctx, entry, state, idx, now);
+  } else if (state.job === "delivery_driver") {
+    await handleDeliveryCheckpoint(socket, ctx, entry, state, idx, now);
   }
 }
 
@@ -709,4 +779,254 @@ async function handleTaxiCheckpoint(
     duration: 6000,
   });
   logger.info({ socketId: socket.id, fare, newCash }, "[rp] taxi_driver fare complete, paid");
+}
+
+// ── Delivery Driver clock-in ───────────────────────────────────────────────────
+
+async function clockInDelivery(
+  socket: Socket,
+  ctx:    JobContext,
+  entry:  RpCacheEntry,
+  player: PlayerState,
+): Promise<void> {
+  // Driver license required
+  if (!entry.driverLicense) {
+    socket.emit("rp:toast", {
+      msg:      "You need a Driver License to work as a Delivery Driver.",
+      color:    "yellow",
+      duration: 4000,
+    });
+    return;
+  }
+
+  // Must be at Delivery Hub
+  const dx = player.x - DELIVERY_HUB[0];
+  const dz = player.z - DELIVERY_HUB[2];
+  if (dx * dx + dz * dz > DELIVERY_HUB_RADIUS * DELIVERY_HUB_RADIUS) {
+    socket.emit("rp:toast", {
+      msg:      "You must be at the Delivery Hub to clock in.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Cooldown check
+  const now = Date.now();
+  if (entry.lastPaycheckAt !== null) {
+    const elapsed = now - entry.lastPaycheckAt;
+    if (elapsed < DELIVERY_ROUTE_COOLDOWN_MS) {
+      const waitSecs = Math.ceil((DELIVERY_ROUTE_COOLDOWN_MS - elapsed) / 1000);
+      socket.emit("rp:toast", {
+        msg:      `Route cooldown — wait ${waitSecs}s before starting another route.`,
+        color:    "yellow",
+        duration: 4000,
+      });
+      return;
+    }
+  }
+
+  // Assign route (server-authoritative — client never sees or chooses these)
+  const pickup   = pickRandom(DELIVERY_PICKUPS);
+  // 2 or 3 stops, sampled without replacement from DELIVERY_DROPOFFS
+  const numStops = Math.random() < 0.5 ? 2 : 3;
+  const dropoffs = sampleWithoutReplacement(DELIVERY_DROPOFFS, numStops);
+  const pay      = calcDeliveryPay(DELIVERY_HUB, pickup, dropoffs);
+
+  // DB-first (Fix 2 pattern)
+  try {
+    await db
+      .update(rpPlayers)
+      .set({ onDuty: true, currentJob: "delivery_driver" })
+      .where(eq(rpPlayers.id, entry.playerId));
+  } catch (err) {
+    logger.error({ err, socketId: socket.id }, "[rp] clockInDelivery: DB update failed");
+    socket.emit("rp:toast", {
+      msg:      "Clock-in failed — try again.",
+      color:    "red",
+      duration: 3000,
+    });
+    return;
+  }
+
+  const state: JobState = {
+    job:              "delivery_driver",
+    nextCp:           0,
+    startedAt:        now,
+    lastCpAt:         0,
+    deliveryPickup:   pickup,
+    deliveryDropoffs: dropoffs,
+    deliveryPay:      pay,
+  };
+  rpJobState.set(socket.id, state);
+  entry.onDuty     = true;
+  entry.currentJob = "delivery_driver";
+
+  socket.emit("rp:profileUpdate", {
+    onDuty:     true,
+    currentJob: "delivery_driver",
+    activeJob:  buildDeliveryJob(state),
+  });
+  socket.emit("rp:toast", {
+    msg:      `Delivery shift started! Drive to the loading bay, then make ${numStops} deliveries. Pay: $${pay}.`,
+    color:    "green",
+    duration: 6000,
+  });
+  logger.info({ socketId: socket.id, pickup, numStops, pay }, "[rp] delivery_driver clocked in");
+}
+
+// ── Delivery Driver checkpoint ─────────────────────────────────────────────────
+
+/**
+ * idx === 0:          drive to pickup/loading bay.
+ * idx === 1..N:       drive to deliveryDropoffs[idx-1] in order.
+ * Final idx === N:    route complete — pay atomically then clear state.
+ *
+ * Server-authoritative: uses drivenVehicle.x/z only (no player.x/z fallback).
+ */
+async function handleDeliveryCheckpoint(
+  socket: Socket,
+  ctx:    JobContext,
+  entry:  RpCacheEntry,
+  state:  JobState,
+  idx:    number,
+  now:    number,
+): Promise<void> {
+  if (
+    !state.deliveryPickup ||
+    !state.deliveryDropoffs ||
+    state.deliveryPay === undefined
+  ) {
+    logger.warn({ socketId: socket.id }, "[rp] handleDeliveryCheckpoint: missing delivery state");
+    socket.emit("rp:toast", {
+      msg:      "Route data lost — clocking you out. Sorry!",
+      color:    "red",
+      duration: 4000,
+    });
+    rpJobState.delete(socket.id);
+    return;
+  }
+
+  // Anti-farm: minimum interval between stages
+  if (state.lastCpAt > 0 && now - state.lastCpAt < DELIVERY_MIN_STAGE_INTERVAL_MS) {
+    socket.emit("rp:toast", {
+      msg:      "Drive a little further between stops.",
+      color:    "yellow",
+      duration: 2000,
+    });
+    return;
+  }
+
+  // Require a real server-registered driven vehicle (no player.x/z fallback)
+  let drivenVehicle: VehicleState | undefined;
+  for (const v of ctx.vehicles.values()) {
+    if (v.driverId === socket.id) {
+      drivenVehicle = v;
+      break;
+    }
+  }
+  if (!drivenVehicle) {
+    socket.emit("rp:toast", {
+      msg:      "You must be driving a vehicle to complete a Delivery route.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Determine target: idx=0 → pickup; idx>=1 → dropoffs[idx-1]
+  const target: [number, number, number] =
+    idx === 0 ? state.deliveryPickup : state.deliveryDropoffs[idx - 1];
+
+  if (dist2d(drivenVehicle.x, drivenVehicle.z, target[0], target[2]) > DELIVERY_CP_ACCEPT_RADIUS) return;
+
+  // ── Stage accepted ────────────────────────────────────────────────────────
+  state.nextCp  += 1;
+  state.lastCpAt = now;
+
+  const totalStages = 1 + state.deliveryDropoffs.length; // pickup + N dropoffs
+  const isFinal     = idx === totalStages - 1;
+
+  if (!isFinal) {
+    const remaining = totalStages - state.nextCp;
+    const stageLabel = idx === 0
+      ? "Loaded up! Drive to your first delivery stop."
+      : `Delivery ${idx} done! ${remaining} stop${remaining !== 1 ? "s" : ""} remaining.`;
+
+    socket.emit("rp:profileUpdate", { activeJob: buildDeliveryJob(state) });
+    socket.emit("rp:toast", {
+      msg:      stageLabel,
+      color:    "green",
+      duration: 3000,
+    });
+    logger.debug({ socketId: socket.id, idx, nextCp: state.nextCp }, "[rp] delivery stage accepted");
+    return;
+  }
+
+  // ── Final stop — pay atomically ───────────────────────────────────────────
+  const pay = state.deliveryPay;
+  let newCash = entry.cash;
+  try {
+    await db.transaction(async (tx) => {
+      const [wallet] = await tx
+        .select()
+        .from(rpWallets)
+        .where(eq(rpWallets.playerId, entry.playerId))
+        .for("update");
+      if (!wallet) throw new Error("no wallet row");
+
+      newCash = wallet.cash + pay;
+
+      await tx
+        .update(rpWallets)
+        .set({ cash: newCash, updatedAt: new Date() })
+        .where(eq(rpWallets.playerId, entry.playerId));
+
+      await tx.insert(rpTransactionLog).values({
+        playerId:  entry.playerId,
+        kind:      "job_pay",
+        cashDelta: pay,
+        bankDelta: 0,
+        cashAfter: newCash,
+        bankAfter: wallet.bank,
+        note:      `Delivery Driver route complete (${state.deliveryDropoffs?.length ?? 0} stops)`,
+      });
+
+      await tx
+        .update(rpPlayers)
+        .set({ onDuty: false, currentJob: null, lastPaycheckAt: new Date(now) })
+        .where(eq(rpPlayers.id, entry.playerId));
+    });
+  } catch (err) {
+    // DB failed — roll back so final stop is retryable
+    state.nextCp  -= 1;
+    state.lastCpAt = 0;
+    logger.error({ err, socketId: socket.id }, "[rp] handleDeliveryCheckpoint: payment tx failed");
+    socket.emit("rp:toast", {
+      msg:      "Payment failed — drive through the final stop again.",
+      color:    "red",
+      duration: 5000,
+    });
+    return;
+  }
+
+  // DB committed — finalise state
+  rpJobState.delete(socket.id);
+  entry.cash           = newCash;
+  entry.onDuty         = false;
+  entry.currentJob     = null;
+  entry.lastPaycheckAt = now;
+
+  socket.emit("rp:profileUpdate", {
+    cash:       newCash,
+    onDuty:     false,
+    currentJob: null,
+    activeJob:  null,
+  });
+  socket.emit("rp:toast", {
+    msg:      `All deliveries complete! +$${pay} earned. You can start another route in 60 seconds.`,
+    color:    "green",
+    duration: 6000,
+  });
+  logger.info({ socketId: socket.id, pay, newCash }, "[rp] delivery_driver route complete, paid");
 }

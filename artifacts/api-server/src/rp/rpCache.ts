@@ -63,13 +63,25 @@ export interface JobState {
   startedAt: number;   // Unix ms — when the player clocked in
   lastCpAt:  number;   // Unix ms — last accepted checkpoint hit; 0 = none yet
 
-  // Phase 5A — Taxi Driver extras (undefined for city_worker)
+  // Phase 5A — Taxi Driver extras (undefined for other jobs)
   /** Server-assigned pickup position [x, y, z]. */
   taxiPickup?:  [number, number, number];
   /** Server-assigned dropoff position [x, y, z]. */
   taxiDropoff?: [number, number, number];
   /** Calculated fare in $, rounded to nearest $10. */
   taxiFare?:    number;
+
+  // Phase 5B — Delivery Driver extras (undefined for other jobs)
+  /** Server-assigned loading/pickup position [x, y, z]. */
+  deliveryPickup?:  [number, number, number];
+  /**
+   * Ordered list of delivery stop positions [x, y, z].
+   * The route is: deliveryPickup → deliveryDropoffs[0] → … → deliveryDropoffs[N-1].
+   * nextCp 0 = drive to pickup; nextCp 1..N = drive to deliveryDropoffs[nextCp-1].
+   */
+  deliveryDropoffs?: [number, number, number][];
+  /** Calculated pay in $, rounded to nearest $10. */
+  deliveryPay?:     number;
 }
 
 // ── Module-level maps ──────────────────────────────────────────────────────

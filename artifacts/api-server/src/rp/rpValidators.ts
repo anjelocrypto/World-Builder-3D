@@ -22,6 +22,9 @@ import {
   TAXI_DEPOT,
   TAXI_PICKUPS,
   TAXI_DROPOFFS,
+  DELIVERY_HUB,
+  DELIVERY_PICKUPS,
+  DELIVERY_DROPOFFS,
 } from "../socket/cityData";
 import type { RpCacheEntry, TestState } from "./rpCache";
 
@@ -131,13 +134,24 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     { label: "TAXI_DEPOT", x: TAXI_DEPOT[0], z: TAXI_DEPOT[2] },
   ];
 
+  // Phase 5B: Delivery Hub must be off-road
+  const deliveryMarkers = [
+    { label: "DELIVERY_HUB", x: DELIVERY_HUB[0], z: DELIVERY_HUB[2] },
+  ];
+
   // Phase 5A: Taxi pickups + dropoffs must be on roads
   const taxiOnRoad = [
     ...TAXI_PICKUPS.map(([cx, , cz], i) => ({ label: `TAXI_PICKUP_${i}`, x: cx, z: cz })),
     ...TAXI_DROPOFFS.map(([cx, , cz], i) => ({ label: `TAXI_DROPOFF_${i}`, x: cx, z: cz })),
   ];
 
-  for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers]) {
+  // Phase 5B: Delivery pickups + dropoffs must be on roads
+  const deliveryOnRoad = [
+    ...DELIVERY_PICKUPS.map(([cx, , cz], i) => ({ label: `DELIVERY_PICKUP_${i}`, x: cx, z: cz })),
+    ...DELIVERY_DROPOFFS.map(([cx, , cz], i) => ({ label: `DELIVERY_DROPOFF_${i}`, x: cx, z: cz })),
+  ];
+
+  for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers, ...deliveryMarkers]) {
     if (isInCarriageway(m.x, m.z))
       throw new Error(`[rp] marker "${m.label}" is inside road carriageway`);
     if (isInsideObstacle(m.x, m.z, obstacles))
@@ -145,7 +159,7 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     console.info(`[rp] marker OK: ${m.label} [${m.x}, ${m.z}]`);
   }
 
-  for (const cp of [...ON_ROAD, ...taxiOnRoad]) {
+  for (const cp of [...ON_ROAD, ...taxiOnRoad, ...deliveryOnRoad]) {
     if (!isOnRoad(cp.x, cp.z))
       throw new Error(`[rp] checkpoint "${cp.label}" is NOT on a road`);
     if (isInsideObstacle(cp.x, cp.z, obstacles))
@@ -191,6 +205,8 @@ export function validateRpMarkerVehicleClearance(vehicles: VehiclePos[]): void {
     { label: "CITY_WORKER_DEPOT",       x: CITY_WORKER_DEPOT[0],      z: CITY_WORKER_DEPOT[2] },
     // Phase 5A — taxi depot
     { label: "TAXI_DEPOT",              x: TAXI_DEPOT[0],              z: TAXI_DEPOT[2] },
+    // Phase 5B — delivery hub
+    { label: "DELIVERY_HUB",            x: DELIVERY_HUB[0],            z: DELIVERY_HUB[2] },
   ];
   for (const m of markers) {
     if (isNearParkedCar(m.x, m.z, vehicles)) {

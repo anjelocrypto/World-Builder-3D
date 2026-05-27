@@ -261,6 +261,75 @@ export const TAXI_MIN_STAGE_INTERVAL_MS = 5_000;
 /** Minimum ms between two completed Taxi routes (cooldown). */
 export const TAXI_ROUTE_COOLDOWN_MS = 60_000;
 
+// ── Delivery Driver job (Phase 5B) ────────────────────────────────────────
+
+/**
+ * Delivery Hub — east outer block, clear of all roads and parked cars.
+ * x=58: |58−45|=13>10 (x=45 road), |58−0|=58>10 (x=0 road);
+ * z=−28: |−28−(−45)|=17>10 (z=−45 road), |−28−0|=28>10 (z=0 road).
+ * Nearest parked car (car-4 at 55,8): dist≈36 m > 8 m.
+ *
+ * MUST stay in sync with DELIVERY_HUB in city-sandbox/shared/rpTypes.ts.
+ */
+export const DELIVERY_HUB: [number, number, number] = [58, 0, -28];
+
+/** Radius (m) player must be within to clock in/out at the Delivery Hub. */
+export const DELIVERY_HUB_RADIUS = 6;
+
+/**
+ * Server-authoritative delivery pickup/loading locations.
+ * All points are ON a road carriageway (validated at startup).
+ * The server picks one at random when the player clocks in.
+ *
+ * MUST stay in sync with DELIVERY_PICKUPS in city-sandbox/shared/rpTypes.ts.
+ */
+export const DELIVERY_PICKUPS: [number, number, number][] = [
+  [  45, 0.5, -10],  // P0 — x=45 N-S road, center-south block
+  [   0, 0.5, -20],  // P1 — x=0  N-S road, south block
+  [ -45, 0.5,  10],  // P2 — x=−45 N-S road, north of center
+  [  20, 0.5,  45],  // P3 — z=45  E-W road, east of center
+];
+
+/**
+ * Server-authoritative delivery dropoff locations (used to build stop sequences).
+ * All points are ON a road carriageway (validated at startup).
+ * Routes use 2 or 3 stops sampled without replacement.
+ *
+ * MUST stay in sync with DELIVERY_DROPOFFS in city-sandbox/shared/rpTypes.ts.
+ */
+export const DELIVERY_DROPOFFS: [number, number, number][] = [
+  [  42, 0.5,  30],  // D0 — x=45  N-S road, north half
+  [ -42, 0.5, -30],  // D1 — x=−45 N-S road, south half
+  [   5, 0.5,  44],  // D2 — z=45  E-W road, near center
+  [  -5, 0.5, -44],  // D3 — z=−45 E-W road, near center
+  [  42, 0.5, -40],  // D4 — x=45  N-S road, south
+  [ -42, 0.5,  40],  // D5 — x=−45 N-S road, north
+  [   0, 0.5,  35],  // D6 — x=0   N-S road, north
+  [   0, 0.5, -35],  // D7 — x=0   N-S road, south
+];
+
+/** Minimum pay for a completed Delivery route. */
+export const DELIVERY_PAY_MIN = 150;
+
+/** Maximum pay for a completed Delivery route. */
+export const DELIVERY_PAY_MAX = 280;
+
+/**
+ * Distance factor for pay calculation.
+ * pay = clamp(totalRouteDist * DELIVERY_PAY_PER_M, MIN, MAX), rounded to $10.
+ * Total route distance = hub→pickup + pickup→drop1 + drop1→drop2 [+ drop2→drop3].
+ */
+export const DELIVERY_PAY_PER_M = 0.9;
+
+/** Vehicle must be within this distance (m) of a delivery stage target to trigger it. */
+export const DELIVERY_CP_ACCEPT_RADIUS = 12;
+
+/** Minimum ms between consecutive delivery stages (anti-teleport). */
+export const DELIVERY_MIN_STAGE_INTERVAL_MS = 5_000;
+
+/** Minimum ms between two completed Delivery routes (cooldown). */
+export const DELIVERY_ROUTE_COOLDOWN_MS = 60_000;
+
 // ── Licensing Office (Phase 2) ─────────────────────────────────────────────
 
 /** Entrance of the Licensing Office — SE inner block, east-facing sidewalk. */

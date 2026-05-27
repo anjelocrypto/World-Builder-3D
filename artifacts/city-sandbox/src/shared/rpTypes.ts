@@ -164,6 +164,18 @@ export const TAXI_DEPOT_RADIUS = 6;
 /** Acceptance radius (m) for taxi pickup/dropoff stages. */
 export const TAXI_CP_ACCEPT_RADIUS = 12;
 
+// ── Phase 5B: Delivery Driver job constants ───────────────────────────────
+// These MUST stay in sync with DELIVERY_* in api-server/src/socket/cityData.ts.
+
+/** Delivery Hub position [x, y, z]. */
+export const DELIVERY_HUB: [number, number, number] = [58, 0, -28];
+
+/** Radius (m) within which the player can clock in/out at the Delivery Hub. */
+export const DELIVERY_HUB_RADIUS = 6;
+
+/** Acceptance radius (m) for delivery pickup/dropoff stages. */
+export const DELIVERY_CP_ACCEPT_RADIUS = 12;
+
 // ── Client-side optimistic license + lock check ────────────────────────────
 
 /**

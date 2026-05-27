@@ -68,6 +68,11 @@ interface HUDProps {
    * Shows an E — Clock In/Out · Taxi Driver prompt.
    */
   nearTaxiDepot?: boolean;
+  /**
+   * Phase 5B: true when walking player is within Delivery Hub radius.
+   * Shows an E — Clock In/Out · Delivery Driver prompt.
+   */
+  nearDeliveryHub?: boolean;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -431,6 +436,7 @@ export default function HUD({
   nearOwnedVehicleId,
   nearDepot,
   nearTaxiDepot,
+  nearDeliveryHub,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -1000,6 +1006,56 @@ export default function HUD({
               Clock In / Out
             </span>{" "}
             <span style={{ color: "#9bb", fontSize: 11 }}>· Taxi Driver</span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Delivery Hub clock-in/out prompt (Phase 5B)
+          ============================================================ */}
+      {nearDeliveryHub && !inVehicle && !showInteract && !nearOffice && !nearDealership && !nearDepot && !nearTaxiDepot && (
+        <div
+          style={{
+            position:             "absolute",
+            bottom:               130,
+            left:                 "50%",
+            transform:            "translateX(-50%)",
+            background:           PANEL_BG,
+            border:               "1px solid rgba(200, 136, 74, 0.65)",
+            borderRadius:         PANEL_RADIUS,
+            padding:              "8px 14px 8px 8px",
+            display:              "flex",
+            alignItems:           "center",
+            gap:                  12,
+            boxShadow:            `${PANEL_SHADOW}, 0 0 24px rgba(200,136,74,0.22)`,
+            backdropFilter:       "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width:        28,
+              height:       28,
+              borderRadius: 6,
+              background:   "rgba(200, 136, 74, 0.15)",
+              border:       "1px solid rgba(200, 136, 74, 0.7)",
+              display:      "flex",
+              alignItems:   "center",
+              justifyContent: "center",
+              fontSize:     13,
+              fontWeight:   "bold",
+              color:        "#c8884a",
+              boxShadow:    "inset 0 -2px 0 rgba(200,136,74,0.35)",
+            }}
+          >
+            E
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            📦{" "}
+            <span style={{ color: "#c8884a", fontWeight: "bold" }}>
+              Clock In / Out
+            </span>{" "}
+            <span style={{ color: "#9bb", fontSize: 11 }}>· Delivery Driver</span>
           </div>
         </div>
       )}

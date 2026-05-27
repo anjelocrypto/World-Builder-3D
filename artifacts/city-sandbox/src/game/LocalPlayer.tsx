@@ -14,6 +14,9 @@ import {
   TAXI_DEPOT,
   TAXI_DEPOT_RADIUS,
   TAXI_CP_ACCEPT_RADIUS,
+  DELIVERY_HUB,
+  DELIVERY_HUB_RADIUS,
+  DELIVERY_CP_ACCEPT_RADIUS,
 } from "../shared/rpTypes";
 import {
   SPAWN_POINTS,
@@ -141,6 +144,8 @@ interface LocalPlayerProps {
     nearDepot: boolean;
     /** Phase 5A: true when walking player is within TAXI_DEPOT_RADIUS of the Taxi Depot. */
     nearTaxiDepot: boolean;
+    /** Phase 5B: true when walking player is within DELIVERY_HUB_RADIUS of the Delivery Hub. */
+    nearDeliveryHub: boolean;
   }) => void;
   playerPosRef: React.MutableRefObject<THREE.Vector3>;
   // Authoritative spawn from the server's gameState. Falls back to a
@@ -326,6 +331,8 @@ export default function LocalPlayer({
   const nearDepotRef          = useRef(false);
   // Phase 5A: Taxi Depot proximity ref — read by E key handler
   const nearTaxiDepotRef      = useRef(false);
+  // Phase 5B: Delivery Hub proximity ref — read by E key handler
+  const nearDeliveryHubRef    = useRef(false);
   // Phase 4: job checkpoint retry state (same pattern as license-test cpRetryRef)
   const jobCpRetryRef = useRef<{ nextCp: number; lastAttemptAt: number } | null>(null);
 
@@ -345,6 +352,7 @@ export default function LocalPlayer({
     nearOwnedVehicleId: null as string | null,
     nearDepot: false,
     nearTaxiDepot: false,
+    nearDeliveryHub: false,
   });
 
   // Pointer lock
@@ -577,8 +585,30 @@ export default function LocalPlayer({
           }
         }
       }
+    } else if (activeJob.job === "delivery_driver" && inVehicle.current) {
+      // Phase 5B: delivery uses vehicle position — pickup(idx=0) + dropoffs(idx=1..N)
+      const nextCpIdx = activeJob.nextCp;
+      if (nextCpIdx < activeJob.checkpoints.length) {
+        const [cpx, , cpz] = activeJob.checkpoints[nextCpIdx];
+        const ddx = vehiclePos.current.x - cpx;
+        const ddz = vehiclePos.current.z - cpz;
+        const inRange = ddx * ddx + ddz * ddz < DELIVERY_CP_ACCEPT_RADIUS * DELIVERY_CP_ACCEPT_RADIUS;
+
+        const dRetry = jobCpRetryRef.current;
+        if (!dRetry || dRetry.nextCp !== nextCpIdx) {
+          jobCpRetryRef.current = null;
+        }
+
+        if (inRange) {
+          const r = jobCpRetryRef.current;
+          if (!r || now - r.lastAttemptAt >= 1000) {
+            jobCpRetryRef.current = { nextCp: nextCpIdx, lastAttemptAt: now };
+            emitJobCheckpoint?.(nextCpIdx);
+          }
+        }
+      }
     } else {
-      // Mismatched mode (taxi on foot, city_worker in vehicle) — reset retry
+      // Mismatched mode — reset retry
       jobCpRetryRef.current = null;
     }
 
@@ -627,6 +657,15 @@ export default function LocalPlayer({
       tdepdx * tdepdx + tdepdz * tdepdz < TAXI_DEPOT_RADIUS * TAXI_DEPOT_RADIUS;
     nearTaxiDepotRef.current = nearTaxiDepot;
 
+    // Phase 5B: Delivery Hub proximity (also writes to ref for E key handler)
+    const [dhubX, , dhubZ] = DELIVERY_HUB;
+    const dhubdx = curPos.x - dhubX;
+    const dhubdz = curPos.z - dhubZ;
+    const nearDeliveryHub =
+      !inVehicle.current &&
+      dhubdx * dhubdx + dhubdz * dhubdz < DELIVERY_HUB_RADIUS * DELIVERY_HUB_RADIUS;
+    nearDeliveryHubRef.current = nearDeliveryHub;
+
     // Phase 3: nearest owned vehicle within 6 m (for lock/unlock prompt)
     let nearOwnedVehicleId: string | null = null;
     if (!inVehicle.current) {
@@ -660,6 +699,7 @@ export default function LocalPlayer({
       nearOwnedVehicleId,
       nearDepot,
       nearTaxiDepot,
+      nearDeliveryHub,
     };
 
     // Throttled per-field UI diff. JSON.stringify on a 10-key object
@@ -683,7 +723,8 @@ export default function LocalPlayer({
       newUI.nearDealership !== cache.nearDealership ||
       newUI.nearOwnedVehicleId !== cache.nearOwnedVehicleId ||
       newUI.nearDepot !== cache.nearDepot ||
-      newUI.nearTaxiDepot !== cache.nearTaxiDepot;
+      newUI.nearTaxiDepot !== cache.nearTaxiDepot ||
+      newUI.nearDeliveryHub !== cache.nearDeliveryHub;
     const timeChanged = Math.abs(newUI.raceTime - cache.raceTime) > 100;
     const sinceLast = now - lastUIEmit.current;
     if (
@@ -1026,6 +1067,10 @@ export default function LocalPlayer({
         } else if (nearTaxiDepotRef.current) {
           // Phase 5A: clock in/out at Taxi Depot.
           emitToggleDuty?.("taxi_driver");
+          interactCooldown.current = 1.0;
+        } else if (nearDeliveryHubRef.current) {
+          // Phase 5B: clock in/out at Delivery Hub.
+          emitToggleDuty?.("delivery_driver");
           interactCooldown.current = 1.0;
         } else if (nearDealershipRef.current) {
           // Phase 3: open dealership shop.
