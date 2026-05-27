@@ -148,10 +148,10 @@ function isNearAtm(x: number, z: number): boolean {
 
 function parseAmount(raw: unknown): number | null {
   if (typeof raw !== "number") return null;
-  if (!Number.isFinite(raw))   return null;
-  const n = Math.trunc(raw);
-  if (n <= 0 || n > ATM_MAX_AMOUNT) return null;
-  return n;
+  if (!Number.isFinite(raw)) return null;
+  if (!Number.isInteger(raw)) return null;
+  if (raw <= 0 || raw > ATM_MAX_AMOUNT) return null;
+  return raw;
 }
 
 // ── bankDeposit ────────────────────────────────────────────────────────────────

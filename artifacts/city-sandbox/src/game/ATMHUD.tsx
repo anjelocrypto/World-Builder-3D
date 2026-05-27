@@ -50,8 +50,10 @@ export default function ATMHUD({
   }, [onClose]);
 
   const parsedAmount = (() => {
-    const n = parseInt(rawInput, 10);
-    if (!Number.isFinite(n) || n <= 0) return null;
+    const trimmed = rawInput.trim();
+    if (!/^[0-9]+$/.test(trimmed)) return null;
+    const n = Number(trimmed);
+    if (!Number.isSafeInteger(n) || n <= 0) return null;
     return Math.min(n, MAX_AMOUNT);
   })();
 
