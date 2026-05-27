@@ -397,6 +397,33 @@ export async function handleArrest(
   targetEntry.jailUntil   = jailUntil;
   targetEntry.jailReason  = reason;
 
+  // ── Server-authoritative teleport to jail cell ────────────────────────────
+  // Update the players Map so the confinement logic sees the correct position
+  // immediately, and broadcast so all clients move the target instantly.
+  const jailedPlayer = ctx.players.get(targetSocketId);
+  if (jailedPlayer) {
+    const teleported = {
+      ...jailedPlayer,
+      x:          POLICE_JAIL_CELL[0],
+      y:          POLICE_JAIL_CELL[1],
+      z:          POLICE_JAIL_CELL[2],
+      isInVehicle: false,
+      vehicleId:   null,
+      speed:       0,
+    };
+    ctx.players.set(targetSocketId, teleported);
+    ctx.io.emit("playerMoved", teleported);
+  }
+
+  // ── Release any vehicle the target was driving ────────────────────────────
+  ctx.vehicles.forEach((v, vid) => {
+    if (v.driverId === targetSocketId) {
+      const released = { ...v, driverId: null as null, speed: 0 };
+      ctx.vehicles.set(vid, released);
+      ctx.io.emit("vehicleMoved", released);
+    }
+  });
+
   // ── Emit to target ───────────────────────────────────────────────────────
   const targetSocket = ctx.io.sockets.sockets.get(targetSocketId);
   targetSocket?.emit("rp:jailStatus", {
@@ -475,37 +502,56 @@ export async function releaseFromJail(
           ),
         );
     });
+
+    // DB committed — update cache.
+    entry.jailUntil   = null;
+    entry.jailReason  = null;
+    entry.wantedStars = 0;
+
+    // ── Server-authoritative teleport to release position ─────────────────
+    // Move the player out of the jail zone in the authoritative Map so the
+    // confinement logic in playerUpdate never re-clamps them, then broadcast
+    // so all clients see the immediate position change.
+    const releasedPlayer = ctx.players.get(socketId);
+    if (releasedPlayer) {
+      const teleported = {
+        ...releasedPlayer,
+        x:          POLICE_RELEASE_POS[0],
+        y:          POLICE_RELEASE_POS[1],
+        z:          POLICE_RELEASE_POS[2],
+        isInVehicle: false,
+        vehicleId:   null,
+        speed:       0,
+      };
+      ctx.players.set(socketId, teleported);
+      ctx.io.emit("playerMoved", teleported);
+    }
+
+    const socket = ctx.io.sockets.sockets.get(socketId);
+    socket?.emit("rp:jailStatus", {
+      jailed:     false,
+      releasePos: POLICE_RELEASE_POS,
+    });
+    socket?.emit("rp:profileUpdate", {
+      jailUntil:   null,
+      jailReason:  null,
+      wantedStars: 0,
+    });
+    socket?.emit("rp:toast", {
+      msg:      "You have been released from jail. Stay out of trouble.",
+      color:    "green",
+      duration: 5000,
+    });
+
+    logger.info(
+      { socketId, playerId: entry.playerId },
+      "[rp] player released from jail",
+    );
   } catch (err) {
     logger.error({ err, socketId, playerId: entry.playerId }, "[rp] releaseFromJail: tx failed");
+  } finally {
+    // Always clear the guard — even if a later emit/Map update throws,
+    // the guard cannot get permanently stuck.
     jailReleaseInProgress.delete(socketId);
-    return;
   }
-
-  // DB committed — update cache.
-  entry.jailUntil   = null;
-  entry.jailReason  = null;
-  entry.wantedStars = 0;
-
-  const socket = ctx.io.sockets.sockets.get(socketId);
-  socket?.emit("rp:jailStatus", {
-    jailed:     false,
-    releasePos: POLICE_RELEASE_POS,
-  });
-  socket?.emit("rp:profileUpdate", {
-    jailUntil:   null,
-    jailReason:  null,
-    wantedStars: 0,
-  });
-  socket?.emit("rp:toast", {
-    msg:      "You have been released from jail. Stay out of trouble.",
-    color:    "green",
-    duration: 5000,
-  });
-
-  jailReleaseInProgress.delete(socketId);
-
-  logger.info(
-    { socketId, playerId: entry.playerId },
-    "[rp] player released from jail",
-  );
 }
