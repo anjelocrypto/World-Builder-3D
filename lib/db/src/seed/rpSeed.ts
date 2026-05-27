@@ -10,76 +10,85 @@
  *       2. The migration (0001_rp_foundation.sql) has been reviewed and applied.
  *
  * Run with:
- *   cd lib/db && pnpm tsx src/seed/rpSeed.ts
+ *   cd lib/db && pnpm seed:rp
  */
 
-import { db } from "../index";
+import { db, pool } from "../index";
 import { rpFactions, rpJobs } from "../schema/rp";
 
-// ── Factions ──────────────────────────────────────────────────────────────────
-await db.insert(rpFactions).values([
-  {
-    slug:  "police",
-    name:  "Nemoverse Police Department",
-    type:  "police",
-    color: "#3060ff",
-  },
-  {
-    slug:  "medic",
-    name:  "Nemoverse Medical Service",
-    type:  "medic",
-    color: "#ff4444",
-  },
-  {
-    slug:  "government",
-    name:  "City Government",
-    type:  "government",
-    color: "#d4aa00",
-  },
-]).onConflictDoNothing();
+async function main(): Promise<void> {
+  // ── Factions ────────────────────────────────────────────────────────────────
+  await db.insert(rpFactions).values([
+    {
+      slug:  "police",
+      name:  "Nemoverse Police Department",
+      type:  "police",
+      color: "#3060ff",
+    },
+    {
+      slug:  "medic",
+      name:  "Nemoverse Medical Service",
+      type:  "medic",
+      color: "#ff4444",
+    },
+    {
+      slug:  "government",
+      name:  "City Government",
+      type:  "government",
+      color: "#d4aa00",
+    },
+  ]).onConflictDoNothing();
 
-// ── Jobs ──────────────────────────────────────────────────────────────────────
-await db.insert(rpJobs).values([
-  {
-    slug:          "taxi",
-    name:          "Taxi Driver",
-    startBuilding: "taxi_depot",
-    payPerRoute:   120,
-    cooldownSecs:  60,
-    maxOnDuty:     8,
-  },
-  {
-    slug:          "delivery",
-    name:          "Delivery Driver",
-    startBuilding: "delivery_hub",
-    payPerRoute:   150,
-    cooldownSecs:  90,
-    maxOnDuty:     6,
-  },
-  {
-    slug:          "mechanic",
-    name:          "Mechanic",
-    startBuilding: "auto_shop",
-    payPerRoute:   180,
-    cooldownSecs:  120,
-    maxOnDuty:     4,
-  },
-  {
-    slug:          "medic",
-    name:          "Paramedic",
-    startBuilding: "medical_center",
-    payPerRoute:   200,
-    cooldownSecs:  180,
-    maxOnDuty:     4,
-  },
-  {
-    slug:          "citywork",
-    name:          "City Worker",
-    startBuilding: "city_hall",
-    payPerRoute:   100,
-    cooldownSecs:  60,
-    maxOnDuty:     10,
-  },
-]).onConflictDoNothing();
+  // ── Jobs ────────────────────────────────────────────────────────────────────
+  await db.insert(rpJobs).values([
+    {
+      slug:          "taxi",
+      name:          "Taxi Driver",
+      startBuilding: "taxi_depot",
+      payPerRoute:   120,
+      cooldownSecs:  60,
+      maxOnDuty:     8,
+    },
+    {
+      slug:          "delivery",
+      name:          "Delivery Driver",
+      startBuilding: "delivery_hub",
+      payPerRoute:   150,
+      cooldownSecs:  90,
+      maxOnDuty:     6,
+    },
+    {
+      slug:          "mechanic",
+      name:          "Mechanic",
+      startBuilding: "auto_shop",
+      payPerRoute:   180,
+      cooldownSecs:  120,
+      maxOnDuty:     4,
+    },
+    {
+      slug:          "medic",
+      name:          "Paramedic",
+      startBuilding: "medical_center",
+      payPerRoute:   200,
+      cooldownSecs:  180,
+      maxOnDuty:     4,
+    },
+    {
+      slug:          "citywork",
+      name:          "City Worker",
+      startBuilding: "city_hall",
+      payPerRoute:   100,
+      cooldownSecs:  60,
+      maxOnDuty:     10,
+    },
+  ]).onConflictDoNothing();
 
-console.log("[rpSeed] done — factions and jobs seeded.");
+  console.log("[rpSeed] done — factions and jobs seeded.");
+}
+
+main()
+  .catch((err) => {
+    console.error("[rpSeed] error:", err);
+    process.exitCode = 1;
+  })
+  .finally(() => pool.end());
