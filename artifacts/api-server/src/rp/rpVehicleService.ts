@@ -80,6 +80,25 @@ function dist2d(ax: number, az: number, bx: number, bz: number): number {
 }
 
 /**
+ * Module-level slot reservation set. Keys are "x,z" strings.
+ *
+ * A slot is reserved from the moment buyVehicle picks it (before the DB
+ * transaction starts) until the transaction either fails (finally-release)
+ * or the vehicle is successfully spawned. This prevents two concurrent
+ * purchases from targeting the same empty slot, which would result in one
+ * vehicle being charged and the slot appearing full to the other.
+ *
+ * Node.js is single-threaded: between two awaits nothing else can interleave,
+ * so add/delete on this Set is safe without a mutex.
+ */
+const reservedDeliverySlots = new Set<string>();
+
+/** Stable key for a delivery slot position. */
+function slotKey(x: number, z: number): string {
+  return `${x},${z}`;
+}
+
+/**
  * Generate a plate in NEM-XXXX format (4 uppercase alphanumeric chars).
  * Collision on the UNIQUE constraint is resolved via SAVEPOINT retry in the
  * caller — this function just picks a random suffix each call.
@@ -105,15 +124,16 @@ function spawnVehicle(v: VehicleState, ctx: VehicleContext): void {
 }
 
 /**
- * Find the first delivery slot position that is not already occupied by
- * another vehicle (within 1.5 m of the slot centre).
- * Returns null when all slots are taken — callers must not spawn.
+ * Find the first delivery slot that is neither physically occupied (within
+ * 1.5 m of an existing vehicle) nor reserved by a concurrent purchase.
+ * Returns null when every slot is taken or reserved — callers must not spawn.
  */
 function findFreeSlot(ctx: VehicleContext): [number, number, number] | null {
   const [bx, by, bz] = DEALERSHIP_DELIVERY_PAD;
   for (const [dx, dz] of DELIVERY_SLOT_OFFSETS) {
     const sx = bx + dx;
     const sz = bz + dz;
+    if (reservedDeliverySlots.has(slotKey(sx, sz))) continue;
     let occupied = false;
     for (const v of ctx.vehicles.values()) {
       if (Math.abs(v.x - sx) < 1.5 && Math.abs(v.z - sz) < 1.5) {
@@ -210,6 +230,23 @@ export async function buyVehicle(
     return;
   }
 
+  // ── Reserve delivery slot BEFORE touching the DB ──────────────────────────
+  // This guarantees: if no slot is free, the player is never charged.
+  // The reservation also prevents two concurrent purchases from racing to the
+  // same empty slot (reservedDeliverySlots is checked by findFreeSlot).
+  const preSlot = findFreeSlot(ctx);
+  if (!preSlot) {
+    socket.emit("rp:toast", {
+      msg:      "Dealership delivery area is full. Try again later.",
+      color:    "yellow",
+      duration: 5000,
+    });
+    return;
+  }
+  const [rsx, , rsz] = preSlot;
+  const reserved = slotKey(rsx, rsz);
+  reservedDeliverySlots.add(reserved);
+
   // ── Single atomic transaction ─────────────────────────────────────────────
   let txResult: { ownedRow: typeof rpOwnedVehicles.$inferSelect; newCash: number } | null = null;
 
@@ -293,6 +330,8 @@ export async function buyVehicle(
       return { ownedRow, newCash };
     });
   } catch (err) {
+    // Release reservation on any failure — player was never charged
+    reservedDeliverySlots.delete(reserved);
     if (err instanceof RpError && err.code === "insufficient_cash") {
       socket.emit("rp:toast", {
         msg:      `Insufficient cash: need $${catalogEntry.price}.`,
@@ -309,6 +348,9 @@ export async function buyVehicle(
     }
     return;
   }
+
+  // Release slot reservation — transaction committed, vehicle about to spawn
+  reservedDeliverySlots.delete(reserved);
 
   // ── Transaction committed — update cache, spawn, emit ────────────────────
   const { ownedRow, newCash } = txResult;
@@ -327,24 +369,39 @@ export async function buyVehicle(
   entry.cash = newCash;
   entry.ownedVehicles.push(summary);
 
-  // Spawn at the first free delivery slot — abort if area is full
-  const slot = findFreeSlot(ctx);
-  if (!slot) {
-    socket.emit("rp:toast", {
-      msg:      "Dealership delivery area is full. Try again later.",
-      color:    "yellow",
-      duration: 5000,
-    });
-    logger.warn({ socketId: socket.id, vehicleId }, "[rp] buyVehicle: all delivery slots occupied, vehicle purchased but not spawned");
-    // Still update profile so the player's wallet reflects the purchase
-    socket.emit("rp:profileUpdate", {
-      cash:          newCash,
-      ownedVehicles: entry.ownedVehicles,
-    });
-    return;
+  // Re-confirm the pre-reserved slot is still clear (covers the extremely rare
+  // case where the slot was taken between reservation-release and this line).
+  // If it is taken, fall back to any remaining free slot.
+  // No await between here and spawnVehicle — Node.js single-threaded, no race.
+  let spawnSlot: [number, number, number] = preSlot;
+  {
+    const [ox, oy, oz] = preSlot;
+    let stillFree = true;
+    for (const v of ctx.vehicles.values()) {
+      if (Math.abs(v.x - ox) < 1.5 && Math.abs(v.z - oz) < 1.5) {
+        stillFree = false;
+        break;
+      }
+    }
+    if (!stillFree) {
+      const fallback = findFreeSlot(ctx);
+      if (fallback) {
+        spawnSlot = fallback;
+      } else {
+        // Truly no slot — purchased but can't spawn. Extremely rare.
+        logger.error({ socketId: socket.id, vehicleId }, "[rp] buyVehicle: committed but no delivery slot available");
+        socket.emit("rp:profileUpdate", { cash: newCash, ownedVehicles: entry.ownedVehicles });
+        socket.emit("rp:toast", {
+          msg:      "Vehicle purchased but delivery is delayed — it will appear when a slot opens.",
+          color:    "yellow",
+          duration: 7000,
+        });
+        return;
+      }
+    }
   }
 
-  const [sx, sy, sz] = slot;
+  const [sx, sy, sz] = spawnSlot;
   const v: VehicleState = {
     id:       vehicleId,
     x:        sx,
