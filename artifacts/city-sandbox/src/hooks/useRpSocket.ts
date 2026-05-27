@@ -57,6 +57,21 @@ export function useRpSocket(socket: Socket | null) {
   }, []);
 
   /**
+   * Push a locally-generated toast (e.g. blocked vehicle entry) without
+   * waiting for a server rp:toast event. Uses the same stack cap as the
+   * server-driven path (max 5 items).
+   */
+  const pushToast = useCallback(
+    (msg: string, color: string, duration = 3000) => {
+      setRpToasts((prev) => [
+        ...prev.slice(-4),
+        { msg, color, duration, id: Date.now() },
+      ]);
+    },
+    [],
+  );
+
+  /**
    * Returns true if the local player is allowed to drive `vehicleId`.
    * This is an OPTIMISTIC check — the server enforces it in vehicleUpdate.
    * Use this to skip the emitVehicleUpdate call and avoid a brief visual glitch.
@@ -66,5 +81,5 @@ export function useRpSocket(socket: Socket | null) {
     [rpProfile],
   );
 
-  return { rpProfile, rpToasts, dismissToast, canDriveVehicle };
+  return { rpProfile, rpToasts, dismissToast, pushToast, canDriveVehicle };
 }

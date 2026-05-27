@@ -5,6 +5,7 @@ import * as THREE from "three";
 import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
+import type { RpProfile, RpToast } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
 import RemotePlayer from "./RemotePlayer";
@@ -19,7 +20,6 @@ import BiomeRender from "./BiomeRender";
 import DayNightController from "./DayNightController";
 import { PerfMonitor, PerfOverlay } from "./PerfHUD";
 import { dayNightRuntime, type DayPhase } from "../shared/timeOfDay";
-import { useRpSocket } from "../hooks/useRpSocket";
 
 const KEY_MAP = [
   { name: Controls.forward,      keys: ["ArrowUp",    "KeyW"] },
@@ -45,8 +45,14 @@ interface GameSceneProps {
   setGameState: React.Dispatch<React.SetStateAction<{ players: Record<string, import("../shared/types").PlayerState>; vehicles: Record<string, VehicleState> }>>;
   emitPlayerUpdate: (data: object) => void;
   emitVehicleUpdate: (data: object) => void;
-  /** Reactive socket instance from useSocket — passed to useRpSocket. */
-  socket: import("socket.io-client").Socket | null;
+  // RP layer — provided by Game.tsx via useRpSocket, which attaches listeners
+  // before the myId/ready guard so rp:profile is never missed on join.
+  rpProfile:       RpProfile | null;
+  rpToasts:        RpToast[];
+  dismissToast:    (id: number) => void;
+  /** Push a local toast without a server round-trip (e.g. blocked vehicle entry). */
+  pushToast:       (msg: string, color: string, duration?: number) => void;
+  canDriveVehicle: (vehicleId: string) => boolean;
 }
 
 export default function GameScene({
@@ -58,7 +64,11 @@ export default function GameScene({
   setGameState,
   emitPlayerUpdate,
   emitVehicleUpdate,
-  socket,
+  rpProfile,
+  rpToasts,
+  dismissToast,
+  pushToast,
+  canDriveVehicle,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -75,12 +85,6 @@ export default function GameScene({
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
-
-  // ── RP layer ─────────────────────────────────────────────────────────────
-  // socket is the reactive Socket instance returned by the parent's useSocket.
-  // useRpSocket attaches rp:* listeners and provides the canDriveVehicle check.
-  const { rpProfile, rpToasts, dismissToast, canDriveVehicle } =
-    useRpSocket(socket);
 
   // World clock for the HUD chip. DayNightController writes to a
   // module-level runtime ref every frame; we poll it once a second
@@ -270,6 +274,7 @@ export default function GameScene({
             playerPosRef={playerPosRef}
             initialSpawn={initialSpawn}
             canDriveVehicle={canDriveVehicle}
+            pushToast={pushToast}
           />
 
           <PerfMonitor />

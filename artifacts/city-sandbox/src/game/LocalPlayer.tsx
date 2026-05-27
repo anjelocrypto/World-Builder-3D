@@ -135,6 +135,13 @@ interface LocalPlayerProps {
    * arrived yet — default behaviour is to allow entry until told otherwise).
    */
   canDriveVehicle?: (vehicleId: string) => boolean;
+  /**
+   * Show an ephemeral toast without a server round-trip. Used to give
+   * immediate feedback when the local license gate blocks vehicle entry
+   * (the client intentionally does NOT emit vehicleUpdate in that case,
+   * so the server never sends its own rp:toast).
+   */
+  pushToast?: (msg: string, color: string, duration?: number) => void;
 }
 
 export default function LocalPlayer({
@@ -149,6 +156,7 @@ export default function LocalPlayer({
   playerPosRef,
   initialSpawn,
   canDriveVehicle,
+  pushToast,
 }: LocalPlayerProps) {
   const { camera, gl } = useThree();
   const [, getKeys] = useKeyboardControls<Controls>();
@@ -726,8 +734,14 @@ export default function LocalPlayer({
         // provided (rp:profile hasn't arrived) we allow entry — the server
         // will reject and send rp:toast if the player isn't licensed.
         if (canDriveVehicle && !canDriveVehicle(near.id)) {
-          // Blocked — server will also send rp:toast. Apply a short cooldown
-          // so rapid E-key taps don't flood the server with rejected packets.
+          // Blocked by the optimistic license gate. The client intentionally
+          // does NOT emit vehicleUpdate, so the server never sends rp:toast —
+          // show feedback locally instead.
+          pushToast?.(
+            "Driver License required. Visit the Licensing Office.",
+            "red",
+            4000,
+          );
           interactCooldown.current = 1.0;
         } else {
           enterVehicle(near);

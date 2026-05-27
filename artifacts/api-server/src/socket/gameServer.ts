@@ -5,6 +5,7 @@ import { INITIAL_VEHICLES, WORLD_HALF } from "./cityData";
 import {
   validateRpMarkers,
   validateRpMarkerVehicleClearance,
+  validateVehicleSpawnOBB,
   canDriveVehicle,
   safeStationSpawn,
 } from "../rp/rpValidators";
@@ -115,6 +116,28 @@ export function setupGameServer(httpServer: HttpServer) {
   try {
     validateRpMarkers([]);
     validateRpMarkerVehicleClearance(Array.from(vehicles.values()));
+
+    // OBB check: all four corners of the test-vehicle body must clear every
+    // road carriageway (3 N-S at x ∈ {−45,0,45}, 3 E-W at z ∈ {−45,0,45},
+    // each 20 m wide). This proves the car does not spawn clipping live traffic
+    // lanes — not just the centre point.
+    //
+    // Static building obstacles (STATIC_OBSTACLES in city-sandbox/shared/
+    // collision.ts) are NOT available server-side in Phase 1B; they are pure
+    // client geometry.  Those clearances were pre-validated manually in
+    // NEMOVERSE_RP_PLAN.md §5.3.  Wire in the static-obstacle list in Phase 2
+    // once a shared obstacle catalogue exists in lib/db or a shared package.
+    const TEST_VEH_X = 13;  // centre x of TEST_VEHICLE_SPAWN
+    const TEST_VEH_Z = -30; // centre z of TEST_VEHICLE_SPAWN
+    if (!validateVehicleSpawnOBB(TEST_VEH_X, TEST_VEH_Z)) {
+      throw new Error(
+        `[rp] TEST_VEHICLE_SPAWN OBB (x=${TEST_VEH_X}, z=${TEST_VEH_Z}) ` +
+        `clips a road carriageway — update TEST_VEHICLE_SPAWN`,
+      );
+    }
+    logger.info(
+      `[rp] TEST_VEHICLE_SPAWN OBB OK — all 4 body corners clear all carriageways`,
+    );
   } catch (err) {
     logger.error({ err }, "[rp] startup validation FAILED — fix RP marker positions");
     throw err;
@@ -301,14 +324,24 @@ export function setupGameServer(httpServer: HttpServer) {
         return;
       }
 
-      // ── License gate (Phase 1B) ──────────────────────────────────────────
-      // Block vehicle entry for players without a driver license. Only applies
-      // when the client is claiming the car (driverId = socket.id). Releasing
-      // (driverId = null) and pure position updates are always allowed.
-      // canDriveVehicle() also passes for players in an active license test
-      // driving their assigned test vehicle (Phase 2 — testState always empty
-      // in Phase 1B).
-      if (data.driverId === socket.id) {
+      // ── Unoccupied-car gate + license check (Phase 1B) ──────────────────
+      //
+      // An unoccupied vehicle (vehicle.driverId === null) may ONLY be updated
+      // by a packet that simultaneously claims it (data.driverId === socket.id)
+      // AND passes the license check.  Motion-only packets (x/z/speed/rotY
+      // with no driverId claim) on an unoccupied car are rejected — the driver
+      // must claim first, not just move.
+      //
+      // Once the car is occupied by this socket (vehicle.driverId === socket.id)
+      // all movement packets and the release packet (data.driverId: null) flow
+      // through without a further license re-check.
+      if (vehicle.driverId === null) {
+        if (data.driverId !== socket.id) {
+          // Motion-only packet on an unoccupied car, or driverId not set — reject.
+          // No toast: a legitimate client never sends this; a hacked one gets silence.
+          return;
+        }
+        // Valid claim form — enforce license.
         if (!canDriveVehicle(socket.id, data.id, rpCache, rpTestState)) {
           socket.emit("rp:toast", {
             msg:      "You need a Driver License to drive. Visit the Licensing Office.",
