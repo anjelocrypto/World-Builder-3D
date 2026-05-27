@@ -27,6 +27,7 @@ import {
   MECHANIC_GARAGE,
   MEDIC_CENTER,
   MEDIC_ER_BAY,
+  POLICE_STATION,
 } from "../shared/rpTypes";
 
 interface RPMarkersProps {
@@ -97,6 +98,16 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
   // Phase 5D: patient ring (stage 0+1) + ER bay ring (stage 2)
   const medicPatientRingRef = useRef<THREE.MeshStandardMaterial>(null!);
   const medicErRingRef      = useRef<THREE.MeshStandardMaterial>(null!);
+  // Phase 5E: Police Station marker refs
+  const policeStationRingRef = useRef<THREE.MeshStandardMaterial>(null!);
+  const policeStationSignRef = useRef<THREE.MeshStandardMaterial>(null!);
+  // Phase 5E: one ref per patrol checkpoint ring (4 total).
+  const policeCpRingRefs = [
+    useRef<THREE.MeshStandardMaterial>(null!),
+    useRef<THREE.MeshStandardMaterial>(null!),
+    useRef<THREE.MeshStandardMaterial>(null!),
+    useRef<THREE.MeshStandardMaterial>(null!),
+  ];
 
   useFrame(({ clock }) => {
     const t  = clock.getElapsedTime();
@@ -156,6 +167,26 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
     const medicCenterPulse = 0.4 + 0.3 * Math.sin(t * 2.3 + 0.5);
     if (medicCenterRingRef.current) medicCenterRingRef.current.emissiveIntensity = medicCenterPulse;
     if (medicCenterSignRef.current) medicCenterSignRef.current.emissiveIntensity = 0.7 + 0.2 * Math.sin(t * 3.1 + 0.1);
+
+    // Police Station — navy/blue pulse
+    const policeStationPulse = 0.4 + 0.3 * Math.sin(t * 2.0 + 0.7);
+    if (policeStationRingRef.current) policeStationRingRef.current.emissiveIntensity = policeStationPulse;
+    if (policeStationSignRef.current) policeStationSignRef.current.emissiveIntensity = 0.7 + 0.2 * Math.sin(t * 2.8 + 0.4);
+
+    // Police patrol checkpoint rings — only animate when job is police_patrol.
+    if (aj?.job === "police_patrol") {
+      policeCpRingRefs.forEach((ref, i) => {
+        if (!ref.current) return;
+        if (i >= aj.checkpoints.length) return;
+        if (i < aj.nextCp) {
+          ref.current.emissiveIntensity = 0.05;
+        } else if (i === aj.nextCp) {
+          ref.current.emissiveIntensity = 0.45 + 0.35 * Math.sin(t * 3.0 + i * 0.5);
+        } else {
+          ref.current.emissiveIntensity = 0.15 + 0.05 * Math.sin(t * 1.5 + i * 0.5);
+        }
+      });
+    }
 
     // Medic patient + ER rings — only animate when job is medic.
     if (aj?.job === "medic") {
@@ -955,6 +986,114 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
           </group>
         );
       })()}
+
+      {/* ════ Police Station marker ═══════════════════════════════════════════════ */}
+      {(() => {
+        const [psx, , psz] = POLICE_STATION;
+        return (
+          <group position={[psx, 0, psz]}>
+            {/* Ground ring — 5–6 m radius, navy/blue */}
+            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[5, 6, 48]} />
+              <meshStandardMaterial
+                ref={policeStationRingRef}
+                color="#000a2a"
+                emissive="#2255cc"
+                emissiveIntensity={0.4}
+                transparent
+                opacity={0.5}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+
+            {/* Sign post */}
+            <mesh position={[0, 1.8, -0.3]}>
+              <boxGeometry args={[0.12, 3.6, 0.12]} />
+              <meshStandardMaterial color="#111122" roughness={0.6} metalness={0.6} />
+            </mesh>
+
+            {/* Sign board */}
+            <mesh position={[0, 3.3, -0.3]}>
+              <boxGeometry args={[4.8, 0.8, 0.1]} />
+              <meshStandardMaterial
+                ref={policeStationSignRef}
+                color="#00091a"
+                emissive="#2255cc"
+                emissiveIntensity={0.7}
+                roughness={0.3}
+                metalness={0.3}
+              />
+            </mesh>
+
+            {/* Sign text strip — white/light blue */}
+            <mesh position={[0, 3.6, -0.24]}>
+              <boxGeometry args={[4.4, 0.1, 0.01]} />
+              <meshStandardMaterial color="#ffffff" emissive="#aabbff" emissiveIntensity={2} />
+            </mesh>
+
+            <pointLight position={[0, 4, 0]} color="#2255cc" intensity={2.5} distance={14} decay={2} />
+          </group>
+        );
+      })()}
+
+      {/* ════ Police Patrol checkpoint rings — only while police_patrol route active ═
+          4 sampled patrol points; blue/navy color scheme. */}
+      {activeJob?.job === "police_patrol" &&
+        activeJob.checkpoints.map(([cx, , cz], i) => {
+          const isPassed = i < activeJob.nextCp;
+          const isNext   = i === activeJob.nextCp;
+          const emissiveColor = "#2255cc";
+          const ringColor     = isPassed ? "#000510" : "#000a2a";
+          return (
+            <group key={`pcp-${i}`} position={[cx, 0, cz]}>
+              {/* Ground ring — 10–11 m (vehicle-scale) */}
+              <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                <ringGeometry args={[10, 11, 48]} />
+                <meshStandardMaterial
+                  ref={policeCpRingRefs[i]}
+                  color={ringColor}
+                  emissive={emissiveColor}
+                  emissiveIntensity={isPassed ? 0.05 : isNext ? 0.45 : 0.15}
+                  transparent
+                  opacity={isPassed ? 0.12 : isNext ? 0.5 : 0.3}
+                  side={THREE.DoubleSide}
+                  depthWrite={false}
+                />
+              </mesh>
+
+              {/* Pillar + cap + light only for active/future stages */}
+              {!isPassed && (
+                <>
+                  <mesh position={[0, 2, 0]}>
+                    <cylinderGeometry args={[0.16, 0.16, 4, 8]} />
+                    <meshStandardMaterial
+                      color={emissiveColor}
+                      emissive={emissiveColor}
+                      emissiveIntensity={isNext ? 0.6 : 0.2}
+                      roughness={0.3}
+                    />
+                  </mesh>
+                  <mesh position={[0, 4.2, 0]}>
+                    <sphereGeometry args={[0.28, 8, 8]} />
+                    <meshStandardMaterial
+                      color="#ffffff"
+                      emissive={emissiveColor}
+                      emissiveIntensity={isNext ? 1.2 : 0.4}
+                    />
+                  </mesh>
+                  <pointLight
+                    position={[0, 4.3, 0]}
+                    color={emissiveColor}
+                    intensity={isNext ? 2.0 : 0.8}
+                    distance={16}
+                    decay={2}
+                  />
+                </>
+              )}
+            </group>
+          );
+        })}
 
       {/* ════ License-test checkpoint rings — only while test is active ════════
           Passed rings are dimmed. The next target pulses brightly.

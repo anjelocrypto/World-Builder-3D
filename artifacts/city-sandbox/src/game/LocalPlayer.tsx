@@ -23,6 +23,9 @@ import {
   MEDIC_CENTER,
   MEDIC_CENTER_RADIUS,
   MEDIC_SERVICE_RADIUS,
+  POLICE_STATION,
+  POLICE_STATION_RADIUS,
+  POLICE_PATROL_ACCEPT_RADIUS,
 } from "../shared/rpTypes";
 import {
   SPAWN_POINTS,
@@ -156,6 +159,8 @@ interface LocalPlayerProps {
     nearMechanicGarage: boolean;
     /** Phase 5D: true when walking player is within MEDIC_CENTER_RADIUS of the Medical Center. */
     nearMedicCenter: boolean;
+    /** Phase 5E: true when walking player is within POLICE_STATION_RADIUS of the Police Station. */
+    nearPoliceStation: boolean;
   }) => void;
   playerPosRef: React.MutableRefObject<THREE.Vector3>;
   // Authoritative spawn from the server's gameState. Falls back to a
@@ -347,6 +352,8 @@ export default function LocalPlayer({
   const nearMechanicGarageRef = useRef(false);
   // Phase 5D: Medical Center proximity ref — read by E key handler
   const nearMedicCenterRef    = useRef(false);
+  // Phase 5E: Police Station proximity ref — read by E key handler
+  const nearPoliceStationRef  = useRef(false);
   // Phase 4: job checkpoint retry state (same pattern as license-test cpRetryRef)
   const jobCpRetryRef = useRef<{ nextCp: number; lastAttemptAt: number } | null>(null);
 
@@ -369,6 +376,7 @@ export default function LocalPlayer({
     nearDeliveryHub: false,
     nearMechanicGarage: false,
     nearMedicCenter: false,
+    nearPoliceStation: false,
   });
 
   // Pointer lock
@@ -673,6 +681,26 @@ export default function LocalPlayer({
           jobCpRetryRef.current = null;
         }
       }
+    } else if (activeJob.job === "police_patrol" && inVehicle.current) {
+      // Phase 5E: police patrol uses vehicle position.
+      // 4 sampled patrol points; standard retry-every-1s pattern.
+      const nextCpIdx = activeJob.nextCp;
+      if (nextCpIdx < activeJob.checkpoints.length) {
+        const [cpx, , cpz] = activeJob.checkpoints[nextCpIdx];
+        const ppoldx = vehiclePos.current.x - cpx;
+        const ppoldz = vehiclePos.current.z - cpz;
+        const inRange = ppoldx * ppoldx + ppoldz * ppoldz < POLICE_PATROL_ACCEPT_RADIUS * POLICE_PATROL_ACCEPT_RADIUS;
+        const ppRetry = jobCpRetryRef.current;
+        if (inRange) {
+          const r = jobCpRetryRef.current;
+          if (!r || r.nextCp !== nextCpIdx || now - r.lastAttemptAt >= 1000) {
+            jobCpRetryRef.current = { nextCp: nextCpIdx, lastAttemptAt: now };
+            emitJobCheckpoint?.(nextCpIdx);
+          }
+        } else if (ppRetry?.nextCp === nextCpIdx) {
+          jobCpRetryRef.current = null;
+        }
+      }
     } else {
       // Mismatched mode — reset retry
       jobCpRetryRef.current = null;
@@ -750,6 +778,15 @@ export default function LocalPlayer({
       mcdx * mcdx + mcdz * mcdz < MEDIC_CENTER_RADIUS * MEDIC_CENTER_RADIUS;
     nearMedicCenterRef.current = nearMedicCenter;
 
+    // Phase 5E: Police Station proximity (also writes to ref for E key handler)
+    const [psX, , psZ] = POLICE_STATION;
+    const psdx = curPos.x - psX;
+    const psdz = curPos.z - psZ;
+    const nearPoliceStation =
+      !inVehicle.current &&
+      psdx * psdx + psdz * psdz < POLICE_STATION_RADIUS * POLICE_STATION_RADIUS;
+    nearPoliceStationRef.current = nearPoliceStation;
+
     // Phase 3: nearest owned vehicle within 6 m (for lock/unlock prompt)
     let nearOwnedVehicleId: string | null = null;
     if (!inVehicle.current) {
@@ -786,6 +823,7 @@ export default function LocalPlayer({
       nearDeliveryHub,
       nearMechanicGarage,
       nearMedicCenter,
+      nearPoliceStation,
     };
 
     // Throttled per-field UI diff. JSON.stringify on a 10-key object
@@ -812,7 +850,8 @@ export default function LocalPlayer({
       newUI.nearTaxiDepot !== cache.nearTaxiDepot ||
       newUI.nearDeliveryHub !== cache.nearDeliveryHub ||
       newUI.nearMechanicGarage !== cache.nearMechanicGarage ||
-      newUI.nearMedicCenter !== cache.nearMedicCenter;
+      newUI.nearMedicCenter !== cache.nearMedicCenter ||
+      newUI.nearPoliceStation !== cache.nearPoliceStation;
     const timeChanged = Math.abs(newUI.raceTime - cache.raceTime) > 100;
     const sinceLast = now - lastUIEmit.current;
     if (
@@ -1167,6 +1206,10 @@ export default function LocalPlayer({
         } else if (nearMedicCenterRef.current) {
           // Phase 5D: clock in/out at Medical Center.
           emitToggleDuty?.("medic");
+          interactCooldown.current = 1.0;
+        } else if (nearPoliceStationRef.current) {
+          // Phase 5E: clock in/out at Police Station.
+          emitToggleDuty?.("police_patrol");
           interactCooldown.current = 1.0;
         } else if (nearDealershipRef.current) {
           // Phase 3: open dealership shop.

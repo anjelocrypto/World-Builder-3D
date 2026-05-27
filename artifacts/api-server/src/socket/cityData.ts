@@ -427,6 +427,61 @@ export const MEDIC_PAY_PER_M = 1.1;
 /** Minimum ms between two completed medic runs (cooldown). */
 export const MEDIC_ROUTE_COOLDOWN_MS = 60_000;
 
+// ── Phase 5E: Police Patrol job ───────────────────────────────────────────
+// POLICE_STATION originally suggested as [-68, 0, 0]; adjusted to [-68, 0, 14]
+// because z=0 falls on the E-W road carriageway at z=0 (half-width 10 m).
+// Adjusted position [-68, 0, 14]: off-road ✓, nearest parked car (car-5) 25.55 m ✓.
+// All 6 POLICE_PATROL_POINTS are on road carriageways ✓; min parked-car clearance
+// 8.94 m (PP1 vs car-7) ✓ — no further adjustments required.
+
+/** Police Station entrance — west outer district, between Mechanic Garage and Medical Center. */
+export const POLICE_STATION: [number, number, number] = [-68, 0, 14];
+
+/** Radius (m) within which the player can clock in/out at the Police Station. */
+export const POLICE_STATION_RADIUS = 6;
+
+/**
+ * Allowlist of patrol checkpoint positions [x, y, z]. All are on road carriageways.
+ * Server samples 4 without replacement per route. Client never chooses.
+ *
+ * Geometry (verified programmatically):
+ *   PP0 [−45, 0.5, −40] — x=−45 N-S road; nearest car (car-9)  11.18 m ✓
+ *   PP1 [  0, 0.5, −45] — z=−45 E-W road; nearest car (car-7)   8.94 m ✓
+ *   PP2 [ 45, 0.5, −20] — x= 45 N-S road; nearest car (car-10) 18.03 m ✓
+ *   PP3 [ 45, 0.5,  30] — x= 45 N-S road; nearest car (car-8)  11.18 m ✓
+ *   PP4 [  0, 0.5,  45] — z= 45 E-W road; nearest car (car-6)  12.81 m ✓
+ *   PP5 [−45, 0.5,  20] — x=−45 N-S road; nearest car (car-11) 18.03 m ✓
+ */
+export const POLICE_PATROL_POINTS: [number, number, number][] = [
+  [-45, 0.5, -40],  // PP0 — x=−45 N-S road, south block
+  [  0, 0.5, -45],  // PP1 — z=−45 E-W road, center
+  [ 45, 0.5, -20],  // PP2 — x= 45 N-S road, south of center
+  [ 45, 0.5,  30],  // PP3 — x= 45 N-S road, north of center
+  [  0, 0.5,  45],  // PP4 — z= 45 E-W road, center
+  [-45, 0.5,  20],  // PP5 — x=−45 N-S road, north of center
+];
+
+/** Vehicle must be within this distance (m) of a patrol checkpoint to trigger it. */
+export const POLICE_PATROL_ACCEPT_RADIUS = 12;
+
+/** Minimum pay for completing a full Police Patrol route. */
+export const POLICE_PATROL_PAY_MIN = 180;
+
+/** Maximum pay for completing a full Police Patrol route. */
+export const POLICE_PATROL_PAY_MAX = 300;
+
+/**
+ * Pay per metre of total route distance (sum of consecutive checkpoint segments).
+ * pay = clamp(totalDist * 0.8, MIN, MAX), rounded to nearest $10.
+ */
+export const POLICE_PATROL_PAY_PER_M = 0.8;
+
+/** Minimum ms between consecutive patrol checkpoint hits (anti-farm). */
+export const POLICE_PATROL_MIN_STAGE_INTERVAL_MS = 5_000;
+
+/** Minimum ms between two completed Police Patrol routes (cooldown). */
+export const POLICE_PATROL_ROUTE_COOLDOWN_MS = 60_000;
+
 // ── Licensing Office (Phase 2) ─────────────────────────────────────────────
 
 /** Entrance of the Licensing Office — SE inner block, east-facing sidewalk. */

@@ -30,6 +30,8 @@ import {
   MEDIC_CENTER,
   MEDIC_PATIENT_CALLS,
   MEDIC_ER_BAY,
+  POLICE_STATION,
+  POLICE_PATROL_POINTS,
 } from "../socket/cityData";
 import type { RpCacheEntry, TestState } from "./rpCache";
 
@@ -154,6 +156,11 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     { label: "MEDIC_CENTER", x: MEDIC_CENTER[0], z: MEDIC_CENTER[2] },
   ];
 
+  // Phase 5E: Police Station must be off-road
+  const policeOffRoadMarkers = [
+    { label: "POLICE_STATION", x: POLICE_STATION[0], z: POLICE_STATION[2] },
+  ];
+
   // Phase 5A: Taxi pickups + dropoffs must be on roads
   const taxiOnRoad = [
     ...TAXI_PICKUPS.map(([cx, , cz], i) => ({ label: `TAXI_PICKUP_${i}`, x: cx, z: cz })),
@@ -177,7 +184,12 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     { label: "MEDIC_ER_BAY", x: MEDIC_ER_BAY[0], z: MEDIC_ER_BAY[2] },
   ];
 
-  for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers, ...deliveryMarkers, ...mechanicMarkers, ...medicOffRoadMarkers]) {
+  // Phase 5E: Patrol points must be on roads
+  const policeOnRoad = [
+    ...POLICE_PATROL_POINTS.map(([cx, , cz], i) => ({ label: `POLICE_PATROL_POINT_${i}`, x: cx, z: cz })),
+  ];
+
+  for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers, ...deliveryMarkers, ...mechanicMarkers, ...medicOffRoadMarkers, ...policeOffRoadMarkers]) {
     if (isInCarriageway(m.x, m.z))
       throw new Error(`[rp] marker "${m.label}" is inside road carriageway`);
     if (isInsideObstacle(m.x, m.z, obstacles))
@@ -185,7 +197,7 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     console.info(`[rp] marker OK: ${m.label} [${m.x}, ${m.z}]`);
   }
 
-  for (const cp of [...ON_ROAD, ...taxiOnRoad, ...deliveryOnRoad, ...mechanicOnRoad, ...medicOnRoad]) {
+  for (const cp of [...ON_ROAD, ...taxiOnRoad, ...deliveryOnRoad, ...mechanicOnRoad, ...medicOnRoad, ...policeOnRoad]) {
     if (!isOnRoad(cp.x, cp.z))
       throw new Error(`[rp] checkpoint "${cp.label}" is NOT on a road`);
     if (isInsideObstacle(cp.x, cp.z, obstacles))
@@ -244,6 +256,9 @@ export function validateRpMarkerVehicleClearance(vehicles: VehiclePos[]): void {
     { label: "MEDIC_CENTER",            x: MEDIC_CENTER[0],            z: MEDIC_CENTER[2] },
     ...MEDIC_PATIENT_CALLS.map(([cx, , cz], i) => ({ label: `MEDIC_PATIENT_CALL_${i}`, x: cx, z: cz })),
     { label: "MEDIC_ER_BAY",            x: MEDIC_ER_BAY[0],            z: MEDIC_ER_BAY[2] },
+    // Phase 5E — police station + all patrol points
+    { label: "POLICE_STATION",          x: POLICE_STATION[0],          z: POLICE_STATION[2] },
+    ...POLICE_PATROL_POINTS.map(([cx, , cz], i) => ({ label: `POLICE_PATROL_POINT_${i}`, x: cx, z: cz })),
   ];
   for (const m of markers) {
     if (isNearParkedCar(m.x, m.z, vehicles)) {

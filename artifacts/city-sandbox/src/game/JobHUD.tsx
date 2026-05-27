@@ -1,10 +1,12 @@
 /**
- * JobHUD — Phase 4/5A/5B/5C overlay shown during an active job route.
+ * JobHUD — Phase 4/5A/5B/5C/5D/5E overlay shown during an active job route.
  *
  * Phase 4:  City Worker — progress bar of 4 walk checkpoints.
  * Phase 5A: Taxi Driver — two-stage HUD (pickup → dropoff) with fare display.
  * Phase 5B: Delivery Driver — pickup + ordered stop segments.
  * Phase 5C: Mechanic — travel to target + repair countdown.
+ * Phase 5D: Medic / Paramedic — respond → treat countdown → transport to ER.
+ * Phase 5E: Police Patrol — 4-segment patrol route progress bar, blue/navy.
  *
  * Branches on activeJob.job (or activeJob.mode) to render the correct layout.
  * Rendered outside the Canvas (plain React) so it sits above the 3D scene.
@@ -528,6 +530,86 @@ function MedicHUD({ activeJob }: { activeJob: ActiveJob }) {
   );
 }
 
+// ── Police Patrol HUD ─────────────────────────────────────────────────────────
+
+const PATROL_NAVY = "#2255cc";
+const PATROL_BLUE = "#4488ff";
+
+function PolicePatrolHUD({ activeJob }: { activeJob: ActiveJob }) {
+  const total   = activeJob.checkpoints.length; // 4
+  const current = Math.min(activeJob.nextCp, total);
+  const done    = current >= total;
+
+  const stageLabel = done
+    ? "Patrol complete!"
+    : `Patrol point ${current + 1} / ${total}`;
+
+  const stageColor = done ? "#2ee07a" : current === total - 1 ? PATROL_BLUE : PATROL_NAVY;
+
+  return (
+    <div
+      style={{
+        position:             "fixed",
+        top:                  64,
+        left:                 "50%",
+        transform:            "translateX(-50%)",
+        background:           PANEL_BG,
+        border:               `1px solid rgba(34,85,204,0.65)`,
+        borderRadius:         PANEL_RADIUS,
+        padding:              "10px 24px",
+        display:              "flex",
+        flexDirection:        "column",
+        alignItems:           "center",
+        gap:                  6,
+        boxShadow:            PANEL_SHADOW,
+        backdropFilter:       "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        pointerEvents:        "none",
+        minWidth:             220,
+        fontFamily:           "'Courier New', monospace",
+        userSelect:           "none",
+        zIndex:               50,
+      }}
+    >
+      {/* Job label */}
+      <div style={{ fontSize: 10, color: PATROL_NAVY, letterSpacing: 3, fontWeight: "bold", textTransform: "uppercase" }}>
+        🚔 Police Patrol
+      </div>
+
+      {/* 4-segment progress bar */}
+      <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
+        {Array.from({ length: total }).map((_, i) => {
+          const isPassed = i < current;
+          const isNext   = i === current && !done;
+          return (
+            <div
+              key={i}
+              style={{
+                width:        28,
+                height:       8,
+                borderRadius: 3,
+                background:   isPassed
+                  ? PATROL_NAVY
+                  : isNext
+                  ? "rgba(34,85,204,0.45)"
+                  : "rgba(255,255,255,0.1)",
+                boxShadow:    isPassed ? `0 0 6px rgba(34,85,204,0.7)` : "none",
+                transition:   "background 0.25s",
+              }}
+            />
+          );
+        })}
+      </div>
+
+      {/* Status line */}
+      <div style={{ fontSize: 12, color: stageColor, letterSpacing: 0.5 }}>
+        {stageLabel}{" "}
+        <span style={{ color: "#9bb", fontSize: 11 }}>· ${activeJob.pay} pay</span>
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 
 export default function JobHUD({ activeJob }: JobHUDProps) {
@@ -543,6 +625,14 @@ export default function JobHUD({ activeJob }: JobHUDProps) {
 
   if (activeJob.job === "mechanic") {
     return <MechanicHUD activeJob={activeJob} />;
+  }
+
+  if (activeJob.job === "medic") {
+    return <MedicHUD activeJob={activeJob} />;
+  }
+
+  if (activeJob.job === "police_patrol") {
+    return <PolicePatrolHUD activeJob={activeJob} />;
   }
 
   // Default: city_worker (or any future walk job)

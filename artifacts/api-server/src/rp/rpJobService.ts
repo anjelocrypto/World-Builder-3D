@@ -31,6 +31,10 @@
  * Phase 5D: medic — 3-stage vehicle route (respond → treat 6 s → transport to ER);
  *   driver license required; server-timed treatment; distance-based pay $220–$360;
  *   DB-first payment at ER bay; retryable on failure.
+ * Phase 5E: police_patrol — 4-point perimeter patrol; vehicle required; driver license
+ *   required; server samples 4 checkpoints without replacement from 6 fixed patrol
+ *   points; distance-based pay $180–$300; DB-first payment at final patrol point;
+ *   retryable on failure.
  */
 
 import { db, rpPlayers, rpWallets, rpTransactionLog } from "@workspace/db";
@@ -89,6 +93,16 @@ import {
   MEDIC_PAY_MAX,
   MEDIC_PAY_PER_M,
   MEDIC_ROUTE_COOLDOWN_MS,
+  // Police Patrol
+  POLICE_STATION,
+  POLICE_STATION_RADIUS,
+  POLICE_PATROL_POINTS,
+  POLICE_PATROL_ACCEPT_RADIUS,
+  POLICE_PATROL_PAY_MIN,
+  POLICE_PATROL_PAY_MAX,
+  POLICE_PATROL_PAY_PER_M,
+  POLICE_PATROL_MIN_STAGE_INTERVAL_MS,
+  POLICE_PATROL_ROUTE_COOLDOWN_MS,
 } from "../socket/cityData";
 
 // ── Context ────────────────────────────────────────────────────────────────────
@@ -248,7 +262,7 @@ export async function toggleDuty(
   ctx:    JobContext,
   job:    string,
 ): Promise<void> {
-  if (job !== "city_worker" && job !== "taxi_driver" && job !== "delivery_driver" && job !== "mechanic" && job !== "medic") {
+  if (job !== "city_worker" && job !== "taxi_driver" && job !== "delivery_driver" && job !== "mechanic" && job !== "medic" && job !== "police_patrol") {
     socket.emit("rp:toast", {
       msg:      "Unknown job.",
       color:    "red",
@@ -299,6 +313,10 @@ export async function toggleDuty(
       const dx = player.x - MEDIC_CENTER[0];
       const dz = player.z - MEDIC_CENTER[2];
       atDepot = dx * dx + dz * dz <= MEDIC_CENTER_RADIUS * MEDIC_CENTER_RADIUS;
+    } else if (activeState.job === "police_patrol") {
+      const dx = player.x - POLICE_STATION[0];
+      const dz = player.z - POLICE_STATION[2];
+      atDepot = dx * dx + dz * dz <= POLICE_STATION_RADIUS * POLICE_STATION_RADIUS;
     }
 
     if (!atDepot) {
@@ -349,8 +367,10 @@ export async function toggleDuty(
     await clockInDelivery(socket, ctx, entry, player);
   } else if (job === "mechanic") {
     await clockInMechanic(socket, ctx, entry, player);
-  } else {
+  } else if (job === "medic") {
     await clockInMedic(socket, ctx, entry, player);
+  } else {
+    await clockInPolicePatrol(socket, ctx, entry, player);
   }
 }
 
@@ -550,6 +570,8 @@ export async function handleJobCheckpoint(
     await handleMechanicCheckpoint(socket, ctx, entry, state, idx, now);
   } else if (state.job === "medic") {
     await handleMedicCheckpoint(socket, ctx, entry, state, idx, now);
+  } else if (state.job === "police_patrol") {
+    await handlePolicePatrolCheckpoint(socket, ctx, entry, state, idx, now);
   }
 }
 
@@ -1666,4 +1688,266 @@ async function handleMedicCheckpoint(
     duration: 6000,
   });
   logger.info({ socketId: socket.id, pay, newCash }, "[rp] medic run complete, paid");
+}
+
+// ── Police Patrol helpers ──────────────────────────────────────────────────────
+
+/**
+ * Pay = sum of consecutive segment distances through the 4 sampled patrol points,
+ * multiplied by POLICE_PATROL_PAY_PER_M, clamped to [MIN, MAX], rounded to $10.
+ */
+function calcPolicePatrolPay(route: [number, number, number][]): number {
+  let total = 0;
+  for (let i = 1; i < route.length; i++) {
+    total += dist3d(route[i - 1][0], route[i - 1][1], route[i - 1][2], route[i][0], route[i][1], route[i][2]);
+  }
+  const raw = Math.max(POLICE_PATROL_PAY_MIN, Math.min(POLICE_PATROL_PAY_MAX, total * POLICE_PATROL_PAY_PER_M));
+  return Math.round(raw / 10) * 10;
+}
+
+/**
+ * Builds the activeJob payload for the police_patrol job.
+ * checkpoints = the 4 sampled patrol points; nextCp advances 0 → 1 → 2 → 3.
+ */
+function buildPolicePatrolJob(state: JobState): Record<string, unknown> {
+  return {
+    job:         "police_patrol",
+    label:       "Police Patrol",
+    mode:        "vehicle" as const,
+    checkpoints: state.policePatrolRoute! as [number, number, number][],
+    nextCp:      state.nextCp,
+    pay:         state.policePatrolPay!,
+  };
+}
+
+// ── Police Patrol clock-in ─────────────────────────────────────────────────────
+
+async function clockInPolicePatrol(
+  socket: Socket,
+  ctx:    JobContext,
+  entry:  RpCacheEntry,
+  player: PlayerState,
+): Promise<void> {
+  // Requires driver license
+  if (!entry.driverLicense) {
+    socket.emit("rp:toast", {
+      msg:      "A driver license is required to work as a Police Officer.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Must be at Police Station
+  const dx = player.x - POLICE_STATION[0];
+  const dz = player.z - POLICE_STATION[2];
+  if (dx * dx + dz * dz > POLICE_STATION_RADIUS * POLICE_STATION_RADIUS) {
+    socket.emit("rp:toast", {
+      msg:      "You must be at the Police Station to clock in.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Cooldown check
+  const now = Date.now();
+  if (entry.lastPaycheckAt !== null) {
+    const elapsed = now - entry.lastPaycheckAt;
+    if (elapsed < POLICE_PATROL_ROUTE_COOLDOWN_MS) {
+      const waitSecs = Math.ceil((POLICE_PATROL_ROUTE_COOLDOWN_MS - elapsed) / 1000);
+      socket.emit("rp:toast", {
+        msg:      `Patrol cooldown — wait ${waitSecs}s before starting another patrol.`,
+        color:    "yellow",
+        duration: 4000,
+      });
+      return;
+    }
+  }
+
+  // Server assigns a 4-point route sampled without replacement (client never chooses)
+  const route = sampleWithoutReplacement(POLICE_PATROL_POINTS, 4);
+  const pay   = calcPolicePatrolPay(route);
+
+  // DB-first (Fix 2 pattern)
+  try {
+    await db
+      .update(rpPlayers)
+      .set({ onDuty: true, currentJob: "police_patrol" })
+      .where(eq(rpPlayers.id, entry.playerId));
+  } catch (err) {
+    logger.error({ err, socketId: socket.id }, "[rp] clockInPolicePatrol: DB update failed");
+    socket.emit("rp:toast", {
+      msg:      "Clock-in failed — try again.",
+      color:    "red",
+      duration: 3000,
+    });
+    return;
+  }
+
+  const state: JobState = {
+    job:               "police_patrol",
+    nextCp:            0,
+    startedAt:         now,
+    lastCpAt:          0,
+    policePatrolRoute: route,
+    policePatrolPay:   pay,
+  };
+  rpJobState.set(socket.id, state);
+  entry.onDuty     = true;
+  entry.currentJob = "police_patrol";
+
+  socket.emit("rp:profileUpdate", {
+    onDuty:     true,
+    currentJob: "police_patrol",
+    activeJob:  buildPolicePatrolJob(state),
+  });
+  socket.emit("rp:toast", {
+    msg:      `Patrol dispatched! Visit all 4 patrol points by vehicle. Pay: $${pay}.`,
+    color:    "green",
+    duration: 6000,
+  });
+  logger.info({ socketId: socket.id, route, pay }, "[rp] police_patrol clocked in");
+}
+
+// ── Police Patrol checkpoint ───────────────────────────────────────────────────
+
+/**
+ * idx 0–2: advance nextCp, emit profileUpdate.
+ * idx 3 (final): arrive at last patrol point — pay atomically, clear state.
+ *
+ * Server-authoritative: uses drivenVehicle.x/z only (no player.x/z fallback).
+ * Anti-farm: POLICE_PATROL_MIN_STAGE_INTERVAL_MS between accepted checkpoints.
+ * Final checkpoint is retryable: on DB failure, state is left intact so client
+ * retries next second.
+ */
+async function handlePolicePatrolCheckpoint(
+  socket: Socket,
+  ctx:    JobContext,
+  entry:  RpCacheEntry,
+  state:  JobState,
+  idx:    number,
+  now:    number,
+): Promise<void> {
+  if (!state.policePatrolRoute || state.policePatrolPay === undefined) {
+    logger.warn({ socketId: socket.id }, "[rp] handlePolicePatrolCheckpoint: missing patrol state");
+    socket.emit("rp:toast", {
+      msg:      "Patrol data lost — please clock out and try again.",
+      color:    "red",
+      duration: 5000,
+    });
+    return;
+  }
+
+  // Anti-farm: minimum interval between stages
+  if (state.lastCpAt > 0 && now - state.lastCpAt < POLICE_PATROL_MIN_STAGE_INTERVAL_MS) {
+    socket.emit("rp:toast", {
+      msg:      "Drive further between patrol points.",
+      color:    "yellow",
+      duration: 2000,
+    });
+    return;
+  }
+
+  // Require a real server-registered driven vehicle (no player.x/z fallback)
+  const drivenVehicle = [...ctx.vehicles.values()].find(v => v.driverId === socket.id);
+  if (!drivenVehicle) {
+    socket.emit("rp:toast", {
+      msg:      "You must be driving a vehicle during Police Patrol.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Distance check — server vehicle position only
+  const [cpx, , cpz] = state.policePatrolRoute[idx];
+  const vdx = drivenVehicle.x - cpx;
+  const vdz = drivenVehicle.z - cpz;
+  if (vdx * vdx + vdz * vdz > POLICE_PATROL_ACCEPT_RADIUS * POLICE_PATROL_ACCEPT_RADIUS) return;
+
+  // ── Checkpoint accepted ────────────────────────────────────────────────────
+  state.nextCp  += 1;
+  state.lastCpAt = now;
+
+  const totalCps = state.policePatrolRoute.length; // 4
+
+  if (idx < totalCps - 1) {
+    // Intermediate checkpoint — advance and notify
+    socket.emit("rp:profileUpdate", { activeJob: buildPolicePatrolJob(state) });
+    socket.emit("rp:toast", {
+      msg:      `Patrol point ${idx + 1} / ${totalCps} — keep going!`,
+      color:    "blue",
+      duration: 2500,
+    });
+    logger.debug({ socketId: socket.id, idx, nextCp: state.nextCp }, "[rp] police_patrol checkpoint hit");
+    return;
+  }
+
+  // ── Final patrol point — pay atomically ──────────────────────────────────
+  const pay = state.policePatrolPay;
+  let newCash = entry.cash;
+  try {
+    await db.transaction(async (tx) => {
+      const [wallet] = await tx
+        .select()
+        .from(rpWallets)
+        .where(eq(rpWallets.playerId, entry.playerId))
+        .for("update");
+      if (!wallet) throw new Error("no wallet row");
+
+      newCash = wallet.cash + pay;
+
+      await tx
+        .update(rpWallets)
+        .set({ cash: newCash, updatedAt: new Date() })
+        .where(eq(rpWallets.playerId, entry.playerId));
+
+      await tx.insert(rpTransactionLog).values({
+        playerId:  entry.playerId,
+        kind:      "job_pay",
+        cashDelta: pay,
+        bankDelta: 0,
+        cashAfter: newCash,
+        bankAfter: wallet.bank,
+        note:      "Police Patrol route complete",
+      });
+
+      await tx
+        .update(rpPlayers)
+        .set({ onDuty: false, currentJob: null, lastPaycheckAt: new Date(now) })
+        .where(eq(rpPlayers.id, entry.playerId));
+    });
+  } catch (err) {
+    // DB failed — roll back so final checkpoint is retryable
+    state.nextCp  -= 1;
+    state.lastCpAt = 0;
+    logger.error({ err, socketId: socket.id }, "[rp] handlePolicePatrolCheckpoint: payment tx failed");
+    socket.emit("rp:toast", {
+      msg:      "Payment failed — drive through the final patrol point again.",
+      color:    "red",
+      duration: 5000,
+    });
+    return;
+  }
+
+  // DB committed — finalise state
+  rpJobState.delete(socket.id);
+  entry.cash           = newCash;
+  entry.onDuty         = false;
+  entry.currentJob     = null;
+  entry.lastPaycheckAt = now;
+
+  socket.emit("rp:profileUpdate", {
+    cash:       newCash,
+    onDuty:     false,
+    currentJob: null,
+    activeJob:  null,
+  });
+  socket.emit("rp:toast", {
+    msg:      `Patrol complete! +$${pay} earned. Next patrol in 60 seconds.`,
+    color:    "green",
+    duration: 6000,
+  });
+  logger.info({ socketId: socket.id, pay, newCash }, "[rp] police_patrol route complete, paid");
 }

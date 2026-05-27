@@ -111,6 +111,7 @@ export default function GameScene({
     nearDeliveryHub: false,
     nearMechanicGarage: false,
     nearMedicCenter: false,
+    nearPoliceStation: false,
   });
 
   // Phase 3: dealership shop panel visibility
@@ -375,6 +376,7 @@ export default function GameScene({
         nearDeliveryHub={uiState.nearDeliveryHub}
         nearMechanicGarage={uiState.nearMechanicGarage}
         nearMedicCenter={uiState.nearMedicCenter}
+        nearPoliceStation={uiState.nearPoliceStation}
       />
     </div>
   );

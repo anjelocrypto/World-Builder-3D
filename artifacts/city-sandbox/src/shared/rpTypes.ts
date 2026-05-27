@@ -219,6 +219,18 @@ export const MEDIC_SERVICE_RADIUS = 12;
 /** Duration (ms) the paramedic must stay on scene for treatment. */
 export const MEDIC_TREATMENT_DURATION_MS = 6_000;
 
+// ── Phase 5E: Police Patrol job constants ──────────────────────────────────
+// These MUST stay in sync with POLICE_* in api-server/src/socket/cityData.ts.
+
+/** Police Station position [x, y, z]. Adjusted from −68,0,0 to clear z=0 road. */
+export const POLICE_STATION: [number, number, number] = [-68, 0, 14];
+
+/** Radius (m) within which the player can clock in/out at the Police Station. */
+export const POLICE_STATION_RADIUS = 6;
+
+/** Acceptance radius (m) for patrol checkpoint stages. */
+export const POLICE_PATROL_ACCEPT_RADIUS = 12;
+
 // ── Client-side optimistic license + lock check ────────────────────────────
 
 /**

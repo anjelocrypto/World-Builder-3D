@@ -105,6 +105,15 @@ export interface JobState {
    * to 2; if the player leaves the radius the timer resets (nextCp back to 0).
    */
   medicTreatmentStartedAt?:  number;
+
+  // Phase 5E — Police Patrol extras (undefined for other jobs)
+  /**
+   * Ordered 4-point patrol route sampled without replacement from
+   * POLICE_PATROL_POINTS. Player visits each in sequence.
+   */
+  policePatrolRoute?: [number, number, number][];
+  /** Calculated pay in $, rounded to nearest $10. */
+  policePatrolPay?:   number;
 }
 
 // ── Module-level maps ──────────────────────────────────────────────────────
