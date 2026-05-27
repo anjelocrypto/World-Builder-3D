@@ -21,6 +21,10 @@ import {
   buyVehicle,
   toggleLock,
 } from "./rpVehicleService";
+import {
+  toggleDuty,
+  handleJobCheckpoint,
+} from "./rpJobService";
 
 export type { LicenseContext };
 
@@ -134,6 +138,49 @@ export function setupRpHandlers(
           msg:      "Server error toggling lock — try again.",
           color:    "red",
           duration: 3000,
+        });
+      });
+    },
+  );
+
+  // ── rp:toggleDuty ─────────────────────────────────────────────────────────
+  // Phase 4: client emits { job } to clock in/out at the City Worker depot.
+  socket.on(
+    "rp:toggleDuty",
+    (data: { job?: unknown } | null | undefined) => {
+      const job = typeof data?.job === "string" ? data.job : "";
+      if (!job) {
+        logger.debug({ socketId: socket.id, data }, "[rp] rp:toggleDuty: missing job");
+        return;
+      }
+      toggleDuty(socket, ctx, job).catch((err) => {
+        logger.error({ err, socketId: socket.id, job }, "[rp] toggleDuty threw");
+        socket.emit("rp:toast", {
+          msg:      "Server error — could not toggle duty. Try again.",
+          color:    "red",
+          duration: 4000,
+        });
+      });
+    },
+  );
+
+  // ── rp:jobCheckpoint ──────────────────────────────────────────────────────
+  // Phase 4: client emits { idx } when within range of the next job checkpoint.
+  // Server validates order, proximity, and timing anti-farm rules.
+  socket.on(
+    "rp:jobCheckpoint",
+    (data: { idx?: unknown } | null | undefined) => {
+      const idx = typeof data?.idx === "number" ? Math.floor(data.idx) : -1;
+      if (idx < 0) {
+        logger.debug({ socketId: socket.id, data }, "[rp] rp:jobCheckpoint: invalid idx");
+        return;
+      }
+      handleJobCheckpoint(socket, ctx, idx).catch((err) => {
+        logger.error({ err, socketId: socket.id, idx }, "[rp] handleJobCheckpoint threw");
+        socket.emit("rp:toast", {
+          msg:      "Server error processing checkpoint — walk through again.",
+          color:    "red",
+          duration: 4000,
         });
       });
     },

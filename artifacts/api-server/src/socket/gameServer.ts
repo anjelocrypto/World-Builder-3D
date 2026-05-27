@@ -9,7 +9,7 @@ import {
   canDriveVehicle,
   safeStationSpawn,
 } from "../rp/rpValidators";
-import { rpCache, rpTestState, buildProfile } from "../rp/rpCache";
+import { rpCache, rpTestState, rpJobState, buildProfile } from "../rp/rpCache";
 import { upsertPlayer } from "../rp/rpPlayerService";
 import { setupRpHandlers, type LicenseContext } from "../rp/setupRpHandlers";
 import { failTest, cleanupOnDisconnect } from "../rp/rpLicenseService";
@@ -382,6 +382,9 @@ export function setupGameServer(httpServer: HttpServer) {
       if (rpTestState.has(socket.id)) {
         cleanupOnDisconnect(socket.id, ctx);
       }
+
+      // Phase 4: discard in-progress job route state (no pay on disconnect).
+      rpJobState.delete(socket.id);
 
       // Clear RP cache (after test cleanup).
       rpCache.delete(socket.id);

@@ -58,6 +58,11 @@ interface HUDProps {
    * Shows a lock/unlock prompt.
    */
   nearOwnedVehicleId?: string | null;
+  /**
+   * Phase 4: true when walking player is within depot radius.
+   * Shows an E — Clock In/Out prompt.
+   */
+  nearDepot?: boolean;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -419,6 +424,7 @@ export default function HUD({
   nearOffice,
   nearDealership,
   nearOwnedVehicleId,
+  nearDepot,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -888,6 +894,56 @@ export default function HUD({
             <span style={{ color: "#66cc22", fontWeight: "bold" }}>
               Dealership
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — City Worker Depot clock-in/out prompt (Phase 4)
+          ============================================================ */}
+      {nearDepot && !inVehicle && !showInteract && !nearOffice && !nearDealership && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 130,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: PANEL_BG,
+            border: "1px solid rgba(255, 120, 0, 0.65)",
+            borderRadius: PANEL_RADIUS,
+            padding: "8px 14px 8px 8px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            boxShadow: `${PANEL_SHADOW}, 0 0 24px rgba(255,120,0,0.22)`,
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              background: "rgba(255, 120, 0, 0.15)",
+              border: "1px solid rgba(255, 120, 0, 0.7)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 13,
+              fontWeight: "bold",
+              color: "#ff7800",
+              boxShadow: "inset 0 -2px 0 rgba(255,120,0,0.35)",
+            }}
+          >
+            E
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            🏗{" "}
+            <span style={{ color: "#ff7800", fontWeight: "bold" }}>
+              Clock In / Out
+            </span>{" "}
+            <span style={{ color: "#9bb", fontSize: 11 }}>· City Worker</span>
           </div>
         </div>
       )}

@@ -17,6 +17,8 @@ import {
   DEALERSHIP_POS,
   DEALERSHIP_DELIVERY_PAD,
   DELIVERY_SLOT_OFFSETS,
+  CITY_WORKER_DEPOT,
+  CITY_WORKER_CHECKPOINTS,
 } from "../socket/cityData";
 import type { RpCacheEntry, TestState } from "./rpCache";
 
@@ -111,7 +113,17 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     { label: "CP2", x: 42, z: -14 },
   ];
 
-  for (const m of OFF_ROAD) {
+  // Phase 4: City Worker depot + patrol checkpoints must be off-road
+  const cityWorkerMarkers = [
+    { label: "CITY_WORKER_DEPOT", x: CITY_WORKER_DEPOT[0], z: CITY_WORKER_DEPOT[2] },
+    ...CITY_WORKER_CHECKPOINTS.map(([cx, , cz], i) => ({
+      label: `CITY_WORKER_CP${i}`,
+      x: cx,
+      z: cz,
+    })),
+  ];
+
+  for (const m of [...OFF_ROAD, ...cityWorkerMarkers]) {
     if (isInCarriageway(m.x, m.z))
       throw new Error(`[rp] marker "${m.label}" is inside road carriageway`);
     if (isInsideObstacle(m.x, m.z, obstacles))
@@ -161,6 +173,8 @@ export function validateRpMarkerVehicleClearance(vehicles: VehiclePos[]): void {
     // Phase 3 — dealership entrance + all delivery slots
     { label: "DEALERSHIP_POS",          x: DEALERSHIP_POS[0],         z: DEALERSHIP_POS[2] },
     ...deliverySlotMarkers,
+    // Phase 4 — city worker depot
+    { label: "CITY_WORKER_DEPOT",       x: CITY_WORKER_DEPOT[0],      z: CITY_WORKER_DEPOT[2] },
   ];
   for (const m of markers) {
     if (isNearParkedCar(m.x, m.z, vehicles)) {

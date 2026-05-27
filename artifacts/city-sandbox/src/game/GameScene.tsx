@@ -9,6 +9,7 @@ import type { RpProfile, RpToast } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
 import LicenseTestHUD from "./LicenseTestHUD";
+import JobHUD from "./JobHUD";
 import VehicleShopHUD from "./VehicleShopHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
@@ -64,6 +65,10 @@ interface GameSceneProps {
   emitBuyVehicle:  (model: string, variant: string, color: string) => void;
   /** Phase 3: Emit rp:toggleLock. From useRpSocket. */
   emitToggleLock:  (vehicleId: string) => void;
+  /** Phase 4: Emit rp:toggleDuty. From useRpSocket. */
+  emitToggleDuty:  (job: string) => void;
+  /** Phase 4: Emit rp:jobCheckpoint. From useRpSocket. */
+  emitJobCheckpoint: (idx: number) => void;
 }
 
 export default function GameScene({
@@ -84,6 +89,8 @@ export default function GameScene({
   emitLicenseCheckpoint,
   emitBuyVehicle,
   emitToggleLock,
+  emitToggleDuty,
+  emitJobCheckpoint,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -99,6 +106,7 @@ export default function GameScene({
     nearOffice: false,
     nearDealership: false,
     nearOwnedVehicleId: null as string | null,
+    nearDepot: false,
   });
 
   // Phase 3: dealership shop panel visibility
@@ -279,8 +287,11 @@ export default function GameScene({
             raceActive={uiState.raceActive}
           />
 
-          {/* RP world markers — station platform, licensing office, checkpoint rings */}
-          <RPMarkers activeTest={rpProfile?.activeTest ?? null} />
+          {/* RP world markers — station platform, licensing office, checkpoint rings, depot */}
+          <RPMarkers
+            activeTest={rpProfile?.activeTest ?? null}
+            activeJob={rpProfile?.activeJob ?? null}
+          />
 
           {/* Local player (manages its own mesh + camera) */}
           <LocalPlayer
@@ -301,6 +312,9 @@ export default function GameScene({
             activeTest={rpProfile?.activeTest}
             emitToggleLock={emitToggleLock}
             onOpenShop={() => setShowShop(true)}
+            activeJob={rpProfile?.activeJob ?? null}
+            emitToggleDuty={emitToggleDuty}
+            emitJobCheckpoint={emitJobCheckpoint}
           />
 
           <PerfMonitor />
@@ -314,6 +328,9 @@ export default function GameScene({
 
       {/* License test HUD — top-center overlay during an active driver test */}
       <LicenseTestHUD activeTest={rpProfile?.activeTest ?? null} />
+
+      {/* Phase 4: Job HUD — top-center overlay during an active City Worker route */}
+      <JobHUD activeJob={rpProfile?.activeJob ?? null} />
 
       {/* Phase 3: dealership shop panel */}
       <VehicleShopHUD
@@ -349,6 +366,7 @@ export default function GameScene({
         nearOffice={uiState.nearOffice}
         nearDealership={uiState.nearDealership}
         nearOwnedVehicleId={uiState.nearOwnedVehicleId}
+        nearDepot={uiState.nearDepot}
       />
     </div>
   );

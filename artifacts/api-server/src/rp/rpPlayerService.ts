@@ -50,21 +50,27 @@ export async function upsertPlayer(
     .where(eq(rpWallets.playerId, player.id));
 
   return {
-    playerId:      player.id,
-    cash:          wallet?.cash  ?? 500,
-    bank:          wallet?.bank  ?? 0,
-    driverLicense: player.driverLicenseAt !== null,
-    weaponLicense: player.weaponLicenseAt !== null,
-    jailUntil:     player.jailUntil ?? null,
-    factionId:     player.factionId ?? null,
+    playerId:       player.id,
+    cash:           wallet?.cash  ?? 500,
+    bank:           wallet?.bank  ?? 0,
+    driverLicense:  player.driverLicenseAt !== null,
+    weaponLicense:  player.weaponLicenseAt !== null,
+    jailUntil:      player.jailUntil ?? null,
+    factionId:      player.factionId ?? null,
     // Phase 2: JOIN to rp_factions to populate factionSlug.
-    factionSlug:   null,
-    factionRank:   player.factionRank,
-    currentJob:    player.currentJob ?? null,
-    onDuty:        player.onDuty,
+    factionSlug:    null,
+    factionRank:    player.factionRank,
+    currentJob:     player.currentJob ?? null,
+    // Phase 4: in-memory job route state is never persisted across reconnects.
+    // Always start as off-duty so the client HUD is in a consistent state even
+    // if the DB still has on_duty=true from a crash/disconnect mid-route.
+    onDuty:         false,
+    // Phase 4: load last paycheck timestamp so the 60-second cooldown survives
+    // reconnects (player cannot farm by reconnecting just before cooldown expires).
+    lastPaycheckAt: player.lastPaycheckAt ? player.lastPaycheckAt.getTime() : null,
     // Phase 2: query rp_warrants WHERE cleared_at IS NULL to populate wantedStars.
-    wantedStars:   0,
+    wantedStars:    0,
     // Phase 3: loaded separately via loadAndSpawnOwnedVehicles after join.
-    ownedVehicles: [],
+    ownedVehicles:  [],
   };
 }

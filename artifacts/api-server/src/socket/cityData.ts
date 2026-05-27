@@ -163,6 +163,43 @@ export const VEHICLE_SHOP_CATALOG = [
   },
 ] as const;
 
+// ── City Worker job (Phase 4) ─────────────────────────────────────────────
+
+/**
+ * City Worker depot entrance — NE inner block, clear of all roads and cars.
+ * Validated: x=30 → |30−45|=15>10 (x=45 NS road), |30−0|=30>10 (x=0 road);
+ *             z=28 → |28−45|=17>10 (z=45 EW road), |28−0|=28>10 (z=0 road).
+ * Vehicle clearance: nearest car is car-2 at (22,22) → dist≈10 m > 8 m.
+ */
+export const CITY_WORKER_DEPOT: [number, number, number] = [30, 0, 28];
+
+/** Radius (m) player must be within to clock in/out at the depot. */
+export const CITY_WORKER_DEPOT_RADIUS = 6;
+
+/**
+ * City Worker foot-patrol route — 4 checkpoints forming a clockwise loop
+ * around the central plaza. All positions are off-road (inner-block plazas).
+ * Must stay in sync with CITY_WORKER_CHECKPOINTS in city-sandbox/shared/rpTypes.ts.
+ */
+export const CITY_WORKER_CHECKPOINTS: [number, number, number][] = [
+  [ 22, 0.5, -18],  // CP0 — E side, south half
+  [ 22, 0.5,  18],  // CP1 — E side, north half
+  [-22, 0.5,  18],  // CP2 — W side, north half
+  [-22, 0.5, -18],  // CP3 — W side, south half
+];
+
+/** Cash paid per completed City Worker route. */
+export const JOB_CITY_WORKER_PAY     = 120;
+
+/** Minimum ms between consecutive checkpoint hits (anti-farm). */
+export const JOB_MIN_CP_INTERVAL_MS  = 3_000;
+
+/** Minimum ms between two completed routes (anti-farm cooldown). */
+export const JOB_ROUTE_COOLDOWN_MS   = 60_000;
+
+/** Player must be within this distance (m) of a checkpoint to trigger it. */
+export const JOB_CP_ACCEPT_RADIUS    = 8;
+
 // ── Licensing Office (Phase 2) ─────────────────────────────────────────────
 
 /** Entrance of the Licensing Office — SE inner block, east-facing sidewalk. */

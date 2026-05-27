@@ -14,23 +14,29 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import type { ActiveTest } from "../shared/rpTypes";
+import type { ActiveTest, ActiveJob } from "../shared/rpTypes";
 import {
   STATION_MARKER_POS,
   LICENSING_OFFICE_POS,
   DEALERSHIP_POS,
   LICENSE_TEST_CHECKPOINTS,
+  CITY_WORKER_DEPOT,
+  CITY_WORKER_CHECKPOINTS,
 } from "../shared/rpTypes";
 
 interface RPMarkersProps {
   /** Non-null only while a driver-license test is in progress. */
   activeTest: ActiveTest | null;
+  /** Phase 4: Non-null while a City Worker route is active. */
+  activeJob:  ActiveJob | null;
 }
 
-export default function RPMarkers({ activeTest }: RPMarkersProps) {
-  // Mirror prop into a ref so useFrame (non-reactive) always reads current value.
+export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
+  // Mirror props into refs so useFrame (non-reactive) always reads current value.
   const activeTestRef = useRef<ActiveTest | null>(activeTest);
   activeTestRef.current = activeTest;
+  const activeJobRef = useRef<ActiveJob | null>(activeJob);
+  activeJobRef.current = activeJob;
 
   const platMatRef      = useRef<THREE.MeshStandardMaterial>(null!);
   const ringMatRef      = useRef<THREE.MeshStandardMaterial>(null!);
@@ -39,9 +45,19 @@ export default function RPMarkers({ activeTest }: RPMarkersProps) {
   const officeSignRef   = useRef<THREE.MeshStandardMaterial>(null!);
   const dealerRingRef   = useRef<THREE.MeshStandardMaterial>(null!);
   const dealerSignRef   = useRef<THREE.MeshStandardMaterial>(null!);
-  // One ref per checkpoint ring (4 total). Populated only while activeTest
+  // Phase 4: City Worker depot marker refs
+  const depotRingRef    = useRef<THREE.MeshStandardMaterial>(null!);
+  const depotSignRef    = useRef<THREE.MeshStandardMaterial>(null!);
+  // One ref per license-test checkpoint ring (4 total). Populated only while activeTest
   // renders the checkpoint groups; null-checked before every write.
   const cpRingRefs = [
+    useRef<THREE.MeshStandardMaterial>(null!),
+    useRef<THREE.MeshStandardMaterial>(null!),
+    useRef<THREE.MeshStandardMaterial>(null!),
+    useRef<THREE.MeshStandardMaterial>(null!),
+  ];
+  // Phase 4: one ref per job checkpoint ring (4 total). Populated only while activeJob renders.
+  const jobCpRingRefs = [
     useRef<THREE.MeshStandardMaterial>(null!),
     useRef<THREE.MeshStandardMaterial>(null!),
     useRef<THREE.MeshStandardMaterial>(null!),
@@ -68,7 +84,25 @@ export default function RPMarkers({ activeTest }: RPMarkersProps) {
     if (dealerRingRef.current) dealerRingRef.current.emissiveIntensity = dealerPulse;
     if (dealerSignRef.current) dealerSignRef.current.emissiveIntensity = 0.8 + 0.2 * Math.sin(t * 2.4 + 0.5);
 
-    // Checkpoint rings — only animate when a test is active.
+    // City Worker Depot — orange/municipal pulse
+    const depotPulse = 0.4 + 0.3 * Math.sin(t * 2.0 + 0.8);
+    if (depotRingRef.current) depotRingRef.current.emissiveIntensity = depotPulse;
+    if (depotSignRef.current) depotSignRef.current.emissiveIntensity = 0.7 + 0.2 * Math.sin(t * 2.8 + 0.3);
+
+    // Job checkpoint rings — only animate when a route is active.
+    const aj = activeJobRef.current;
+    jobCpRingRefs.forEach((ref, i) => {
+      if (!ref.current || !aj) return;
+      if (i < aj.nextCp) {
+        ref.current.emissiveIntensity = 0.05;
+      } else if (i === aj.nextCp) {
+        ref.current.emissiveIntensity = 0.45 + 0.35 * Math.sin(t * 3.0 + i * 0.5);
+      } else {
+        ref.current.emissiveIntensity = 0.15 + 0.05 * Math.sin(t * 1.5 + i * 0.5);
+      }
+    });
+
+    // License-test checkpoint rings — only animate when a test is active.
     // nextCp ring: bright fast pulse. Passed: static dim. Future: slow medium pulse.
     cpRingRefs.forEach((ref, i) => {
       if (!ref.current) return;
@@ -259,6 +293,111 @@ export default function RPMarkers({ activeTest }: RPMarkersProps) {
           </group>
         );
       })()}
+
+      {/* ════ City Worker Depot marker ══════════════════════════════════════════ */}
+      {(() => {
+        const [dpx, , dpz] = CITY_WORKER_DEPOT;
+        return (
+          <group position={[dpx, 0, dpz]}>
+            {/* Ground ring — 5–6 m radius, orange/municipal */}
+            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[5, 6, 48]} />
+              <meshStandardMaterial
+                ref={depotRingRef}
+                color="#5a2a00"
+                emissive="#ff6600"
+                emissiveIntensity={0.4}
+                transparent
+                opacity={0.5}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+
+            {/* Sign post */}
+            <mesh position={[0, 1.8, -0.3]}>
+              <boxGeometry args={[0.12, 3.6, 0.12]} />
+              <meshStandardMaterial color="#3a2a00" roughness={0.7} metalness={0.5} />
+            </mesh>
+
+            {/* Sign board */}
+            <mesh position={[0, 3.3, -0.3]}>
+              <boxGeometry args={[4.4, 0.8, 0.1]} />
+              <meshStandardMaterial
+                ref={depotSignRef}
+                color="#1a0d00"
+                emissive="#ff6600"
+                emissiveIntensity={0.7}
+                roughness={0.3}
+                metalness={0.2}
+              />
+            </mesh>
+
+            {/* Sign text strip */}
+            <mesh position={[0, 3.6, -0.24]}>
+              <boxGeometry args={[4.0, 0.1, 0.01]} />
+              <meshStandardMaterial color="#ffffff" emissive="#ffcc88" emissiveIntensity={2} />
+            </mesh>
+
+            <pointLight position={[0, 4, 0]} color="#ff8833" intensity={2.5} distance={14} decay={2} />
+          </group>
+        );
+      })()}
+
+      {/* ════ Job checkpoint rings — only while a route is active ═══════════════ */}
+      {activeJob &&
+        CITY_WORKER_CHECKPOINTS.map(([cx, , cz], i) => {
+          const isPassed = i < activeJob.nextCp;
+          const isNext   = i === activeJob.nextCp;
+          return (
+            <group key={`jcp-${i}`} position={[cx, 0, cz]}>
+              {/* Ground ring — 7–8 m, orange/amber */}
+              <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                <ringGeometry args={[7, 8, 48]} />
+                <meshStandardMaterial
+                  ref={jobCpRingRefs[i]}
+                  color={isPassed ? "#301000" : "#5a2200"}
+                  emissive="#ff8800"
+                  emissiveIntensity={isPassed ? 0.05 : isNext ? 0.45 : 0.15}
+                  transparent
+                  opacity={isPassed ? 0.12 : isNext ? 0.5 : 0.3}
+                  side={THREE.DoubleSide}
+                  depthWrite={false}
+                />
+              </mesh>
+
+              {/* Pillar + cap + light only for active/future checkpoints */}
+              {!isPassed && (
+                <>
+                  <mesh position={[0, 1.5, 0]}>
+                    <cylinderGeometry args={[0.12, 0.12, 3, 8]} />
+                    <meshStandardMaterial
+                      color="#ff8800"
+                      emissive="#ff8800"
+                      emissiveIntensity={isNext ? 0.6 : 0.25}
+                      roughness={0.4}
+                    />
+                  </mesh>
+                  <mesh position={[0, 3.1, 0]}>
+                    <sphereGeometry args={[0.22, 8, 8]} />
+                    <meshStandardMaterial
+                      color="#ffffff"
+                      emissive="#ffbb44"
+                      emissiveIntensity={isNext ? 1.2 : 0.4}
+                    />
+                  </mesh>
+                  <pointLight
+                    position={[0, 3.2, 0]}
+                    color="#ff8800"
+                    intensity={isNext ? 1.5 : 0.6}
+                    distance={12}
+                    decay={2}
+                  />
+                </>
+              )}
+            </group>
+          );
+        })}
 
       {/* ════ License-test checkpoint rings — only while test is active ════════
           Passed rings are dimmed. The next target pulses brightly.

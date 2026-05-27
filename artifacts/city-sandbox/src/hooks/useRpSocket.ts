@@ -132,6 +132,22 @@ export function useRpSocket(socket: Socket | null) {
     [socket],
   );
 
+  /** Phase 4: emit rp:toggleDuty to clock in/out at the City Worker depot. */
+  const emitToggleDuty = useCallback(
+    (job: string) => {
+      socket?.emit("rp:toggleDuty", { job });
+    },
+    [socket],
+  );
+
+  /** Phase 4: emit rp:jobCheckpoint when within range of the next checkpoint. */
+  const emitJobCheckpoint = useCallback(
+    (idx: number) => {
+      socket?.emit("rp:jobCheckpoint", { idx });
+    },
+    [socket],
+  );
+
   return {
     rpProfile,
     rpToasts,
@@ -142,5 +158,7 @@ export function useRpSocket(socket: Socket | null) {
     emitLicenseCheckpoint,
     emitBuyVehicle,
     emitToggleLock,
+    emitToggleDuty,
+    emitJobCheckpoint,
   };
 }

@@ -31,6 +31,14 @@ export interface VehicleShopItem {
   colors:  readonly string[];
 }
 
+/** Phase 4: active City Worker route payload. */
+export interface ActiveJob {
+  job:         string;
+  checkpoints: [number, number, number][];
+  nextCp:      number;
+  pay:         number;
+}
+
 export interface RpProfile {
   playerId:      string;
   cash:          number;
@@ -50,6 +58,8 @@ export interface RpProfile {
   activeTest:    ActiveTest | null;
   /** Phase 3: vehicles owned by this player. Empty until server sends them. */
   ownedVehicles: OwnedVehicleSummary[];
+  /** Phase 4: non-null while a City Worker route is active. */
+  activeJob:     ActiveJob | null;
 }
 
 export interface RpToast {
@@ -103,6 +113,29 @@ export const TEST_VEHICLE_SPAWN: [number, number, number] = [13, 0.6, -30];
 
 /** Cash cost to attempt the driver license test (Phase 2). */
 export const TEST_FEE = 200;
+
+// ── Phase 4: City Worker job constants ────────────────────────────────────
+// These MUST stay in sync with CITY_WORKER_* in api-server/src/socket/cityData.ts.
+
+/** City Worker depot position [x, y, z]. */
+export const CITY_WORKER_DEPOT: [number, number, number] = [30, 0, 28];
+
+/** Radius (m) within which the player can clock in/out at the depot. */
+export const CITY_WORKER_DEPOT_RADIUS = 6;
+
+/** Walking patrol checkpoints around the central plaza (server-authoritative order). */
+export const CITY_WORKER_CHECKPOINTS: [number, number, number][] = [
+  [ 22, 0.5, -18],  // CP0 — E side, south half
+  [ 22, 0.5,  18],  // CP1 — E side, north half
+  [-22, 0.5,  18],  // CP2 — W side, north half
+  [-22, 0.5, -18],  // CP3 — W side, south half
+];
+
+/** Pay for completing a full City Worker route. */
+export const JOB_CITY_WORKER_PAY = 120;
+
+/** Acceptance radius (m) for each job checkpoint. */
+export const JOB_CP_ACCEPT_RADIUS = 8;
 
 /**
  * License-test checkpoint route (Phase 2).

@@ -23,21 +23,26 @@ export interface OwnedVehicleSummary {
 
 export interface RpCacheEntry {
   /** UUID primary key from rp_players.id */
-  playerId:      string;
-  cash:          number;
-  bank:          number;
-  driverLicense: boolean;
-  weaponLicense: boolean;
-  jailUntil:     Date | null;
-  factionId:     string | null;
+  playerId:       string;
+  cash:           number;
+  bank:           number;
+  driverLicense:  boolean;
+  weaponLicense:  boolean;
+  jailUntil:      Date | null;
+  factionId:      string | null;
   /** Denormalised from rp_factions.slug — null when player has no faction. */
-  factionSlug:   string | null;
-  factionRank:   number;
-  currentJob:    string | null;
-  onDuty:        boolean;
-  wantedStars:   number;
+  factionSlug:    string | null;
+  factionRank:    number;
+  currentJob:     string | null;
+  onDuty:         boolean;
+  /**
+   * Unix ms of the last completed job route — loaded from DB on join so the
+   * 60-second cooldown survives reconnects. null = never completed a route.
+   */
+  lastPaycheckAt: number | null;
+  wantedStars:    number;
   /** Phase 3: vehicles owned by this player. Populated after DB load on join. */
-  ownedVehicles: OwnedVehicleSummary[];
+  ownedVehicles:  OwnedVehicleSummary[];
 }
 
 // ── Active license-test state ──────────────────────────────────────────────
@@ -49,6 +54,16 @@ export interface TestState {
   lastCpAt:  number;   // Unix ms
 }
 
+// ── Active job state (Phase 4) ─────────────────────────────────────────────
+
+/** In-memory job route progress. Keyed by socket.id. Cleared on disconnect. */
+export interface JobState {
+  job:       string;   // e.g. "city_worker"
+  nextCp:    number;   // index of next expected checkpoint
+  startedAt: number;   // Unix ms — when the player clocked in
+  lastCpAt:  number;   // Unix ms — last accepted checkpoint hit; 0 = none yet
+}
+
 // ── Module-level maps ──────────────────────────────────────────────────────
 
 /** socketId → RpCacheEntry. Entry removed on disconnect. */
@@ -56,6 +71,9 @@ export const rpCache = new Map<string, RpCacheEntry>();
 
 /** socketId → TestState. Entry removed on disconnect or test end. */
 export const rpTestState = new Map<string, TestState>();
+
+/** socketId → JobState. Entry removed on disconnect or route end/abort. */
+export const rpJobState = new Map<string, JobState>();
 
 // ── Profile builder ────────────────────────────────────────────────────────
 
@@ -91,5 +109,8 @@ export function buildProfile(
       : null,
     // Phase 3: owned vehicles summary (client displays in shop/garage UI).
     ownedVehicles: entry.ownedVehicles,
+    // Phase 4: activeJob is always null at join time — job route state is
+    // in-memory and emitted as rp:profileUpdate patches by rpJobService.
+    activeJob:     null,
   };
 }

@@ -33,6 +33,8 @@ export default function Game({ username }: GameProps) {
     emitLicenseCheckpoint,
     emitBuyVehicle,
     emitToggleLock,
+    emitToggleDuty,
+    emitJobCheckpoint,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -81,6 +83,8 @@ export default function Game({ username }: GameProps) {
       emitLicenseCheckpoint={emitLicenseCheckpoint}
       emitBuyVehicle={emitBuyVehicle}
       emitToggleLock={emitToggleLock}
+      emitToggleDuty={emitToggleDuty}
+      emitJobCheckpoint={emitJobCheckpoint}
     />
   );
 }

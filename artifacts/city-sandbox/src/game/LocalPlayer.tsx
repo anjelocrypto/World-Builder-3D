@@ -3,8 +3,15 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
 import * as THREE from "three";
 import type { VehicleState } from "../shared/types";
-import type { ActiveTest } from "../shared/rpTypes";
-import { LICENSING_OFFICE_POS, DEALERSHIP_POS } from "../shared/rpTypes";
+import type { ActiveTest, ActiveJob } from "../shared/rpTypes";
+import {
+  LICENSING_OFFICE_POS,
+  DEALERSHIP_POS,
+  CITY_WORKER_DEPOT,
+  CITY_WORKER_DEPOT_RADIUS,
+  CITY_WORKER_CHECKPOINTS,
+  JOB_CP_ACCEPT_RADIUS,
+} from "../shared/rpTypes";
 import {
   SPAWN_POINTS,
   CHECKPOINTS,
@@ -127,6 +134,8 @@ interface LocalPlayerProps {
     nearOffice: boolean;
     nearDealership: boolean;
     nearOwnedVehicleId: string | null;
+    /** Phase 4: true when walking player is within CITY_WORKER_DEPOT_RADIUS of the depot. */
+    nearDepot: boolean;
   }) => void;
   playerPosRef: React.MutableRefObject<THREE.Vector3>;
   // Authoritative spawn from the server's gameState. Falls back to a
@@ -172,6 +181,19 @@ interface LocalPlayerProps {
    * GameScene uses this to toggle the VehicleShopHUD open.
    */
   onOpenShop?: () => void;
+  /**
+   * Phase 4: Active City Worker job state from the server profile.
+   * Non-null while a route is in progress. Drives job checkpoint proximity detection.
+   */
+  activeJob?: ActiveJob | null;
+  /**
+   * Phase 4: Emit rp:toggleDuty to clock in/out at the City Worker depot.
+   */
+  emitToggleDuty?: (job: string) => void;
+  /**
+   * Phase 4: Emit rp:jobCheckpoint when within range of the next job checkpoint.
+   */
+  emitJobCheckpoint?: (idx: number) => void;
 }
 
 export default function LocalPlayer({
@@ -192,6 +214,9 @@ export default function LocalPlayer({
   activeTest,
   emitToggleLock,
   onOpenShop,
+  activeJob,
+  emitToggleDuty,
+  emitJobCheckpoint,
 }: LocalPlayerProps) {
   const { camera, gl } = useThree();
   const [, getKeys] = useKeyboardControls<Controls>();
@@ -292,6 +317,10 @@ export default function LocalPlayer({
   // Phase 3: proximity state refs — updated each frame, read by E key handler
   const nearDealershipRef     = useRef(false);
   const nearOwnedVehicleIdRef = useRef<string | null>(null);
+  // Phase 4: City Worker depot proximity ref — read by E key handler
+  const nearDepotRef          = useRef(false);
+  // Phase 4: job checkpoint retry state (same pattern as license-test cpRetryRef)
+  const jobCpRetryRef = useRef<{ nextCp: number; lastAttemptAt: number } | null>(null);
 
   const uiCache = useRef({
     health: 100,
@@ -307,6 +336,7 @@ export default function LocalPlayer({
     nearOffice: false,
     nearDealership: false,
     nearOwnedVehicleId: null as string | null,
+    nearDepot: false,
   });
 
   // Pointer lock
@@ -488,6 +518,36 @@ export default function LocalPlayer({
       }
     }
 
+    // ── Phase 4: job checkpoint proximity — retry throttle ─────────────────────
+    // Walking player only (no vehicle required). Retries the same nextCp every
+    // ~1000 ms while within JOB_CP_ACCEPT_RADIUS until server accepts and
+    // advances activeJob.nextCp via rp:profileUpdate.
+    if (!activeJob || inVehicle.current) {
+      jobCpRetryRef.current = null;
+    } else {
+      const nextCpIdx = activeJob.nextCp;
+      if (nextCpIdx < CITY_WORKER_CHECKPOINTS.length) {
+        const [cpx, , cpz] = CITY_WORKER_CHECKPOINTS[nextCpIdx];
+        const jdx = pos.current.x - cpx;
+        const jdz = pos.current.z - cpz;
+        const inRange = jdx * jdx + jdz * jdz < JOB_CP_ACCEPT_RADIUS * JOB_CP_ACCEPT_RADIUS;
+
+        const jRetry = jobCpRetryRef.current;
+        if (!jRetry || jRetry.nextCp !== nextCpIdx) {
+          // nextCp advanced — clear so next in-range tick emits immediately
+          jobCpRetryRef.current = null;
+        }
+
+        if (inRange) {
+          const r = jobCpRetryRef.current;
+          if (!r || now - r.lastAttemptAt >= 1000) {
+            jobCpRetryRef.current = { nextCp: nextCpIdx, lastAttemptAt: now };
+            emitJobCheckpoint?.(nextCpIdx);
+          }
+        }
+      }
+    }
+
     // Update playerPosRef for minimap / HUD
     const curPos = inVehicle.current ? vehiclePos.current : pos.current;
     playerPosRef.current.copy(curPos);
@@ -514,6 +574,15 @@ export default function LocalPlayer({
     const nearDealership =
       !inVehicle.current && ddx * ddx + ddz * ddz < 8 * 8;
     nearDealershipRef.current = nearDealership;
+
+    // Phase 4: depot proximity (also writes to ref for E key handler)
+    const [depX, , depZ] = CITY_WORKER_DEPOT;
+    const depdx = curPos.x - depX;
+    const depdz = curPos.z - depZ;
+    const nearDepot =
+      !inVehicle.current &&
+      depdx * depdx + depdz * depdz < CITY_WORKER_DEPOT_RADIUS * CITY_WORKER_DEPOT_RADIUS;
+    nearDepotRef.current = nearDepot;
 
     // Phase 3: nearest owned vehicle within 6 m (for lock/unlock prompt)
     let nearOwnedVehicleId: string | null = null;
@@ -546,6 +615,7 @@ export default function LocalPlayer({
       nearOffice,
       nearDealership,
       nearOwnedVehicleId,
+      nearDepot,
     };
 
     // Throttled per-field UI diff. JSON.stringify on a 10-key object
@@ -567,7 +637,8 @@ export default function LocalPlayer({
       newUI.racePassed !== cache.racePassed ||
       newUI.nearOffice !== cache.nearOffice ||
       newUI.nearDealership !== cache.nearDealership ||
-      newUI.nearOwnedVehicleId !== cache.nearOwnedVehicleId;
+      newUI.nearOwnedVehicleId !== cache.nearOwnedVehicleId ||
+      newUI.nearDepot !== cache.nearDepot;
     const timeChanged = Math.abs(newUI.raceTime - cache.raceTime) > 100;
     const sinceLast = now - lastUIEmit.current;
     if (
@@ -902,6 +973,10 @@ export default function LocalPlayer({
         const odz2 = pos.current.z - offZ2;
         if (odx2 * odx2 + odz2 * odz2 < 6 * 6) {
           emitRpInteract?.("licensing_office", "start_driver_test");
+          interactCooldown.current = 1.0;
+        } else if (nearDepotRef.current) {
+          // Phase 4: clock in/out at City Worker depot.
+          emitToggleDuty?.("city_worker");
           interactCooldown.current = 1.0;
         } else if (nearDealershipRef.current) {
           // Phase 3: open dealership shop.
