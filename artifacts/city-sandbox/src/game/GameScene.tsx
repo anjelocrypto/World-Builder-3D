@@ -6,6 +6,7 @@ import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
 import type { RpProfile, RpToast } from "../shared/rpTypes";
+import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
 import LicenseTestHUD from "./LicenseTestHUD";
@@ -74,6 +75,10 @@ interface GameSceneProps {
   emitBankDeposit: (amount: number) => void;
   /** Phase 5F: Emit rp:bankWithdraw. From useRpSocket. */
   emitBankWithdraw: (amount: number) => void;
+  /** Phase 6A: Emit rp:issueWarrant — officer issues a warrant. */
+  emitIssueWarrant: (targetId: string, stars: number, reason: string) => void;
+  /** Phase 6A: Emit rp:arrest — officer arrests a wanted player. */
+  emitArrest: (targetId: string) => void;
 }
 
 export default function GameScene({
@@ -98,6 +103,8 @@ export default function GameScene({
   emitJobCheckpoint,
   emitBankDeposit,
   emitBankWithdraw,
+  emitIssueWarrant,
+  emitArrest,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -235,6 +242,86 @@ export default function GameScene({
   const drivingVehicleId = uiState.inVehicle
     ? Object.values(gameState.vehicles).find(v => v.driverId === myId)?.id
     : undefined;
+
+  // Phase 6A: stable refs so the J/K keydown handler always reads current values
+  // without needing to be re-registered every render.
+  const remotePlayersRef = useRef(remotePlayers);
+  remotePlayersRef.current = remotePlayers;
+  const rpProfileRef = useRef(rpProfile);
+  rpProfileRef.current = rpProfile;
+  const emitIssueWarrantRef = useRef(emitIssueWarrant);
+  emitIssueWarrantRef.current = emitIssueWarrant;
+  const emitArrestRef = useRef(emitArrest);
+  emitArrestRef.current = emitArrest;
+
+  // Phase 6A: J/K police action keys.
+  // J = Issue 1★ warrant against the nearest player within POLICE_WARRANT_RADIUS.
+  // K = Arrest the nearest player within POLICE_ARREST_RADIUS (server validates wantedStars).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      if (e.code !== "KeyJ" && e.code !== "KeyK") return;
+      const profile = rpProfileRef.current;
+      if (!profile?.onDuty || profile.currentJob !== "police_patrol") return;
+      if (profile.jailUntil !== null && profile.jailUntil !== undefined) return;
+
+      const pos    = playerPosRef.current;
+      const players = remotePlayersRef.current;
+
+      if (e.code === "KeyJ") {
+        let nearestId: string | null = null;
+        let nearestDist = Infinity;
+        for (const p of players) {
+          const dx = p.x - pos.x;
+          const dz = p.z - pos.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist <= POLICE_WARRANT_RADIUS && dist < nearestDist) {
+            nearestDist = dist;
+            nearestId   = p.id;
+          }
+        }
+        if (nearestId) emitIssueWarrantRef.current(nearestId, 1, "Suspicious behaviour");
+        return;
+      }
+
+      if (e.code === "KeyK") {
+        let nearestId: string | null = null;
+        let nearestDist = Infinity;
+        for (const p of players) {
+          const dx = p.x - pos.x;
+          const dz = p.z - pos.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist <= POLICE_ARREST_RADIUS && dist < nearestDist) {
+            nearestDist = dist;
+            nearestId   = p.id;
+          }
+        }
+        if (nearestId) emitArrestRef.current(nearestId);
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Intentionally empty — all state accessed via refs above.
+
+  // Phase 6A: officer J/K prompt visibility — computed on each render from
+  // current remotePlayers + playerPosRef (updated by LocalPlayer every frame).
+  const isOfficerOnDuty =
+    (rpProfile?.onDuty === true) &&
+    rpProfile.currentJob === "police_patrol" &&
+    !rpProfile.jailUntil;
+
+  const nearPoliceTarget = isOfficerOnDuty && !uiState.inVehicle && remotePlayers.some((p) => {
+    const dx = p.x - playerPosRef.current.x;
+    const dz = p.z - playerPosRef.current.z;
+    return Math.sqrt(dx * dx + dz * dz) <= POLICE_WARRANT_RADIUS;
+  });
+
+  const nearArrestTarget = isOfficerOnDuty && !uiState.inVehicle && remotePlayers.some((p) => {
+    const dx = p.x - playerPosRef.current.x;
+    const dz = p.z - playerPosRef.current.z;
+    return Math.sqrt(dx * dx + dz * dz) <= POLICE_ARREST_RADIUS;
+  });
 
   return (
     <div
@@ -400,6 +487,12 @@ export default function GameScene({
         nearMedicCenter={uiState.nearMedicCenter}
         nearPoliceStation={uiState.nearPoliceStation}
         nearATM={uiState.nearATM}
+        wantedStars={rpProfile?.wantedStars}
+        jailUntil={rpProfile?.jailUntil}
+        jailReason={rpProfile?.jailReason}
+        isOfficerOnDuty={isOfficerOnDuty}
+        nearPoliceTarget={nearPoliceTarget}
+        nearArrestTarget={nearArrestTarget}
       />
     </div>
   );

@@ -41,6 +41,8 @@ export interface RpCacheEntry {
    */
   lastPaycheckAt: number | null;
   wantedStars:    number;
+  /** Phase 6A: reason for current jail sentence (null when not jailed). */
+  jailReason:     string | null;
   /** Phase 3: vehicles owned by this player. Populated after DB load on join. */
   ownedVehicles:  OwnedVehicleSummary[];
 }
@@ -146,6 +148,7 @@ export function buildProfile(
     driverLicense: entry.driverLicense,
     weaponLicense: entry.weaponLicense,
     jailUntil:     entry.jailUntil ? entry.jailUntil.getTime() : null,
+    jailReason:    entry.jailReason,
     factionId:     entry.factionId,
     factionSlug:   entry.factionSlug,
     factionRank:   entry.factionRank,

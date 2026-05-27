@@ -1,7 +1,15 @@
 import { Server, Socket } from "socket.io";
 import type { Server as HttpServer } from "http";
 import { logger } from "../lib/logger";
-import { INITIAL_VEHICLES, WORLD_HALF, DEALERSHIP_DELIVERY_PAD, DELIVERY_SLOT_OFFSETS } from "./cityData";
+import {
+  INITIAL_VEHICLES,
+  WORLD_HALF,
+  DEALERSHIP_DELIVERY_PAD,
+  DELIVERY_SLOT_OFFSETS,
+  POLICE_JAIL_CELL,
+  POLICE_JAIL_RADIUS,
+} from "./cityData";
+import { releaseFromJail, jailReleaseInProgress } from "../rp/rpPoliceService";
 import {
   validateRpMarkers,
   validateRpMarkerVehicleClearance,
@@ -289,6 +297,40 @@ export function setupGameServer(httpServer: HttpServer) {
         delete data.moveSpeed;
       }
 
+      // ── Phase 6A: Jail confinement ───────────────────────────────────────
+      // Jailed players are confined to POLICE_JAIL_RADIUS around POLICE_JAIL_CELL.
+      // All vehicle access is blocked while jailed.
+      const jailEntry = rpCache.get(socket.id);
+      if (jailEntry?.jailUntil !== null && jailEntry?.jailUntil !== undefined) {
+        const nowMs = Date.now();
+
+        if (nowMs >= jailEntry.jailUntil.getTime()) {
+          // Sentence expired — trigger async release (guard prevents double-call).
+          if (!jailReleaseInProgress.has(socket.id)) {
+            releaseFromJail(socket.id, jailEntry, ctx).catch((err) => {
+              logger.error({ err, socketId: socket.id }, "[rp] releaseFromJail threw");
+            });
+          }
+          // Let the player move freely once expired (release will teleport them).
+        } else {
+          // Still jailed — clamp position inside jail radius.
+          const [jailX, , jailZ] = POLICE_JAIL_CELL;
+          const nx = data.x ?? player.x;
+          const nz = data.z ?? player.z;
+          const dx = nx - jailX;
+          const dz = nz - jailZ;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist > POLICE_JAIL_RADIUS) {
+            const scale = POLICE_JAIL_RADIUS / dist;
+            data.x = jailX + dx * scale;
+            data.z = jailZ + dz * scale;
+          }
+          // Force player off any vehicle while jailed.
+          data.isInVehicle = false;
+          data.vehicleId   = null;
+        }
+      }
+
       const updated: PlayerState = { ...player, ...data, id: socket.id };
       players.set(socket.id, updated);
       socket.broadcast.emit("playerMoved", updated);
@@ -298,6 +340,12 @@ export function setupGameServer(httpServer: HttpServer) {
       if (!data.id) return;
       const vehicle = vehicles.get(data.id);
       if (!vehicle) return;
+
+      // Phase 6A: jailed players cannot drive.
+      const vehicleEntry = rpCache.get(socket.id);
+      if (vehicleEntry?.jailUntil !== null && vehicleEntry?.jailUntil !== undefined) {
+        return;
+      }
 
       // Strict ownership check: reject if another player is driving.
       if (vehicle.driverId !== null && vehicle.driverId !== socket.id) {
@@ -385,6 +433,9 @@ export function setupGameServer(httpServer: HttpServer) {
 
       // Phase 4: discard in-progress job route state (no pay on disconnect).
       rpJobState.delete(socket.id);
+
+      // Phase 6A: clear any in-flight jail release guard.
+      jailReleaseInProgress.delete(socket.id);
 
       // Clear RP cache (after test cleanup).
       rpCache.delete(socket.id);

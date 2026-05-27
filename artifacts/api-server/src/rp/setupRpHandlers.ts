@@ -29,6 +29,10 @@ import {
   bankDeposit,
   bankWithdraw,
 } from "./rpWalletService";
+import {
+  handleIssueWarrant,
+  handleArrest,
+} from "./rpPoliceService";
 
 export type { LicenseContext };
 
@@ -219,6 +223,41 @@ export function setupRpHandlers(
         logger.error({ err, socketId: socket.id }, "[rp] bankWithdraw threw");
         socket.emit("rp:toast", {
           msg:      "Server error — withdrawal failed. Try again.",
+          color:    "red",
+          duration: 4000,
+        });
+      });
+    },
+  );
+
+  // ── rp:issueWarrant ───────────────────────────────────────────────────────
+  // Phase 6A: officer emits { targetId, stars, reason } to issue a warrant.
+  // Server validates officer duty state, proximity, and inserts rp_warrants row.
+  socket.on(
+    "rp:issueWarrant",
+    (data: { targetId?: unknown; stars?: unknown; reason?: unknown } | null | undefined) => {
+      handleIssueWarrant(socket, ctx, data?.targetId, data?.stars, data?.reason).catch((err) => {
+        logger.error({ err, socketId: socket.id }, "[rp] handleIssueWarrant threw");
+        socket.emit("rp:toast", {
+          msg:      "Server error — warrant not issued. Try again.",
+          color:    "red",
+          duration: 4000,
+        });
+      });
+    },
+  );
+
+  // ── rp:arrest ─────────────────────────────────────────────────────────────
+  // Phase 6A: officer emits { targetId } to arrest a nearby wanted player.
+  // Server validates officer duty state, warrant existence, proximity, and
+  // runs DB-first transaction (fine deduction + jail sentence).
+  socket.on(
+    "rp:arrest",
+    (data: { targetId?: unknown } | null | undefined) => {
+      handleArrest(socket, ctx, data?.targetId).catch((err) => {
+        logger.error({ err, socketId: socket.id }, "[rp] handleArrest threw");
+        socket.emit("rp:toast", {
+          msg:      "Server error — arrest failed. Try again.",
           color:    "red",
           duration: 4000,
         });

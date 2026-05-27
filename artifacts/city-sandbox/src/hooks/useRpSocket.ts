@@ -47,16 +47,47 @@ export function useRpSocket(socket: Socket | null) {
     // so no additional state mutation is needed here.
     const onLicenseTestActive = () => {};
 
+    // Phase 6A: rp:wantedUpdate — server pushes a new wantedStars count.
+    const onWantedUpdate = (data: { wantedStars: number }) => {
+      setRpProfile((prev) => (prev ? { ...prev, wantedStars: data.wantedStars } : null));
+    };
+
+    // Phase 6A: rp:jailStatus — player jailed or released.
+    const onJailStatus = (data: {
+      jailed: boolean;
+      jailUntil?: number;
+      jailReason?: string;
+      jailCell?: [number, number, number];
+      releasePos?: [number, number, number];
+    }) => {
+      setRpProfile((prev) => {
+        if (!prev) return null;
+        if (data.jailed) {
+          return {
+            ...prev,
+            jailUntil:  data.jailUntil  ?? prev.jailUntil,
+            jailReason: data.jailReason ?? prev.jailReason ?? null,
+          };
+        } else {
+          return { ...prev, jailUntil: null, jailReason: null, wantedStars: 0 };
+        }
+      });
+    };
+
     socket.on("rp:profile",            onProfile);
     socket.on("rp:profileUpdate",      onProfileUpdate);
     socket.on("rp:toast",              onToast);
     socket.on("rp:licenseTestActive",  onLicenseTestActive);
+    socket.on("rp:wantedUpdate",       onWantedUpdate);
+    socket.on("rp:jailStatus",         onJailStatus);
 
     return () => {
       socket.off("rp:profile",            onProfile);
       socket.off("rp:profileUpdate",      onProfileUpdate);
       socket.off("rp:toast",              onToast);
       socket.off("rp:licenseTestActive",  onLicenseTestActive);
+      socket.off("rp:wantedUpdate",       onWantedUpdate);
+      socket.off("rp:jailStatus",         onJailStatus);
     };
   }, [socket]);
 
@@ -164,6 +195,22 @@ export function useRpSocket(socket: Socket | null) {
     [socket],
   );
 
+  /** Phase 6A: emit rp:issueWarrant — officer issues a warrant against a nearby player. */
+  const emitIssueWarrant = useCallback(
+    (targetId: string, stars: number, reason: string) => {
+      socket?.emit("rp:issueWarrant", { targetId, stars, reason });
+    },
+    [socket],
+  );
+
+  /** Phase 6A: emit rp:arrest — officer arrests a nearby wanted player. */
+  const emitArrest = useCallback(
+    (targetId: string) => {
+      socket?.emit("rp:arrest", { targetId });
+    },
+    [socket],
+  );
+
   return {
     rpProfile,
     rpToasts,
@@ -178,5 +225,7 @@ export function useRpSocket(socket: Socket | null) {
     emitJobCheckpoint,
     emitBankDeposit,
     emitBankWithdraw,
+    emitIssueWarrant,
+    emitArrest,
   };
 }

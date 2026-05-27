@@ -529,3 +529,42 @@ export const LICENSE_TEST_CHECKPOINTS: [number, number, number][] = [
   [ 42, 0.5, -14],  // CP2 — north on x=45 road, mid-block
   [ 14, 0.5, -26],  // CP3 — finish line near Licensing Office entrance
 ];
+
+// ── Phase 6A: Police Wanted + Arrest ─────────────────────────────────────────
+
+/**
+ * Jail cell world position — inside the Police Station compound. Off-road.
+ * Geometry check:
+ *   x=−68: nearest NS road is x=−45, |−68−(−45)| = 23 > ROAD_HALF(10) ✅
+ *   z=14:  nearest EW road is z=0,   |14−0|       = 14 > ROAD_HALF(10) ✅
+ * NOTE: z=6 (originally suggested) fails — |6−0|=6 < 10 (on z=0 carriageway).
+ *       z=14 matches POLICE_STATION z, already validated off-road.
+ */
+export const POLICE_JAIL_CELL: [number, number, number] = [-68, 1, 14];
+
+/**
+ * Release position — just outside the jail area, between station and medic center.
+ * z=22: |22−0|=22 > 10 ✅, |22−45|=23 > 10 ✅.
+ */
+export const POLICE_RELEASE_POS: [number, number, number] = [-68, 1, 22];
+
+/** Radius (m) of the jail confinement zone centred on POLICE_JAIL_CELL. */
+export const POLICE_JAIL_RADIUS = 8;
+
+/** Officer must be within this distance (m) of the target to arrest. */
+export const POLICE_ARREST_RADIUS = 4;
+
+/** Officer must be within this distance (m) of the target to issue a warrant. */
+export const POLICE_WARRANT_RADIUS = 14;
+
+/** Default sentence duration in seconds. */
+export const POLICE_DEFAULT_SENTENCE_SECS = 120;
+
+/** Default fine deducted on arrest (cash-first, then bank; never below 0). */
+export const POLICE_DEFAULT_FINE = 150;
+
+/** Maximum fine an officer may issue (server-validated). */
+export const POLICE_MAX_FINE = 5_000;
+
+/** Maximum sentence an officer may issue (server-validated). */
+export const POLICE_MAX_SENTENCE_SECS = 900;

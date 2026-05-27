@@ -3,8 +3,8 @@
  * return an RpCacheEntry ready to store in rpCache.
  */
 
-import { db, rpPlayers, rpWallets } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { db, rpPlayers, rpWallets, rpWarrants } from "@workspace/db";
+import { eq, and, isNull, max }                from "drizzle-orm";
 import type { RpCacheEntry } from "./rpCache";
 
 /**
@@ -49,6 +49,20 @@ export async function upsertPlayer(
     .from(rpWallets)
     .where(eq(rpWallets.playerId, player.id));
 
+  // Phase 6A: query the highest active (un-cleared) warrant star count.
+  const [warrantRow] = await db
+    .select({ maxStars: max(rpWarrants.stars) })
+    .from(rpWarrants)
+    .where(
+      and(
+        eq(rpWarrants.playerId, player.id),
+        isNull(rpWarrants.clearedAt),
+      ),
+    );
+  const wantedStars = warrantRow?.maxStars !== null && warrantRow?.maxStars !== undefined
+    ? Number(warrantRow.maxStars)
+    : 0;
+
   return {
     playerId:       player.id,
     cash:           wallet?.cash  ?? 500,
@@ -56,6 +70,7 @@ export async function upsertPlayer(
     driverLicense:  player.driverLicenseAt !== null,
     weaponLicense:  player.weaponLicenseAt !== null,
     jailUntil:      player.jailUntil ?? null,
+    jailReason:     player.jailReason ?? null,
     factionId:      player.factionId ?? null,
     // Phase 2: JOIN to rp_factions to populate factionSlug.
     factionSlug:    null,
@@ -68,8 +83,8 @@ export async function upsertPlayer(
     // Phase 4: load last paycheck timestamp so the 60-second cooldown survives
     // reconnects (player cannot farm by reconnecting just before cooldown expires).
     lastPaycheckAt: player.lastPaycheckAt ? player.lastPaycheckAt.getTime() : null,
-    // Phase 2: query rp_warrants WHERE cleared_at IS NULL to populate wantedStars.
-    wantedStars:    0,
+    // Phase 6A: loaded above from rp_warrants WHERE cleared_at IS NULL.
+    wantedStars,
     // Phase 3: loaded separately via loadAndSpawnOwnedVehicles after join.
     ownedVehicles:  [],
   };

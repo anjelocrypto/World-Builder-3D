@@ -61,6 +61,8 @@ export interface RpProfile {
   weaponLicense: boolean;
   /** Unix ms timestamp; null means the player is not jailed. */
   jailUntil:     number | null;
+  /** Reason for current jail sentence; null when not jailed. */
+  jailReason:    string | null;
   factionId:     string | null;
   /** Denormalised from rp_factions.slug for fast HUD render. */
   factionSlug:   string | null;
@@ -230,6 +232,26 @@ export const POLICE_STATION_RADIUS = 6;
 
 /** Acceptance radius (m) for patrol checkpoint stages. */
 export const POLICE_PATROL_ACCEPT_RADIUS = 12;
+
+// ── Phase 6A: Police Wanted + Arrest constants ────────────────────────────
+// These MUST stay in sync with POLICE_JAIL_* / POLICE_ARREST_* in api-server/src/socket/cityData.ts.
+
+/**
+ * Jail cell world position — inside the Police Station compound.
+ * Server uses this to clamp jailed player positions.
+ */
+export const POLICE_JAIL_CELL: [number, number, number] = [-68, 1, 14];
+
+/**
+ * Release position — where the player is teleported when jail expires.
+ */
+export const POLICE_RELEASE_POS: [number, number, number] = [-68, 1, 22];
+
+/** Radius (m) for warrant issuance — how close the officer must be to the suspect. */
+export const POLICE_WARRANT_RADIUS = 14;
+
+/** Radius (m) for arrest — how close the officer must be to the suspect. */
+export const POLICE_ARREST_RADIUS = 4;
 
 // ── Phase 5F: Bank / ATM constants ────────────────────────────────────────
 // These MUST stay in sync with ATM_* in api-server/src/socket/cityData.ts.

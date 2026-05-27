@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   Wifi,
   WifiOff,
@@ -93,6 +93,29 @@ interface HUDProps {
    * Shows an E — Open ATM prompt.
    */
   nearATM?: boolean;
+  /**
+   * Phase 6A: current wanted stars count (0 = clean). Shown in wallet panel.
+   */
+  wantedStars?: number;
+  /** Phase 6A: Unix ms when jail sentence expires; null = not jailed. */
+  jailUntil?: number | null;
+  /** Phase 6A: reason string shown in jail overlay. */
+  jailReason?: string | null;
+  /**
+   * Phase 6A: true when this player is on duty as police_patrol.
+   * Shows J / K action prompts.
+   */
+  isOfficerOnDuty?: boolean;
+  /**
+   * Phase 6A: true when a non-jailed player is within POLICE_WARRANT_RADIUS.
+   * Shows J — Issue Warrant prompt.
+   */
+  nearPoliceTarget?: boolean;
+  /**
+   * Phase 6A: true when a wanted player is within POLICE_ARREST_RADIUS.
+   * Shows K — Arrest prompt.
+   */
+  nearArrestTarget?: boolean;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -114,6 +137,71 @@ const PANEL_SHADOW =
   "0 8px 24px rgba(0,0,0,0.45), 0 0 1px rgba(0,229,255,0.25), inset 0 1px 0 rgba(255,255,255,0.04)";
 
 const MINIMAP_PX = 200;
+
+// ── Phase 6A: JailOverlay ────────────────────────────────────────────────────
+
+/**
+ * Full-screen dimmed overlay shown while the player is jailed.
+ * Displays a countdown timer that ticks in real time.
+ */
+function JailOverlay({
+  jailUntil,
+  jailReason,
+}: {
+  jailUntil:  number;
+  jailReason: string | null | undefined;
+}) {
+  const [remaining, setRemaining] = useState(() => Math.max(0, jailUntil - Date.now()));
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setRemaining(Math.max(0, jailUntil - Date.now()));
+    }, 500);
+    return () => clearInterval(id);
+  }, [jailUntil]);
+
+  const secs = Math.ceil(remaining / 1000);
+  const mins  = Math.floor(secs / 60);
+  const s     = secs % 60;
+  const timeStr = `${mins}:${String(s).padStart(2, "0")}`;
+
+  return (
+    <div
+      style={{
+        position:        "fixed",
+        inset:           0,
+        background:      "rgba(0, 0, 0, 0.72)",
+        zIndex:          2500,
+        display:         "flex",
+        flexDirection:   "column",
+        alignItems:      "center",
+        justifyContent:  "center",
+        gap:             12,
+        pointerEvents:   "none",
+        fontFamily:      "monospace",
+        userSelect:      "none",
+      }}
+    >
+      <div style={{ fontSize: 48 }}>🚔</div>
+      <div style={{ fontSize: 26, fontWeight: 800, color: "#ff4444", letterSpacing: 2 }}>
+        IN JAIL
+      </div>
+      <div style={{ fontSize: 40, fontWeight: 700, color: "#fff", letterSpacing: 4 }}>
+        {timeStr}
+      </div>
+      {jailReason && (
+        <div style={{ fontSize: 13, color: "#aaa", maxWidth: 320, textAlign: "center" }}>
+          {jailReason}
+        </div>
+      )}
+      <div style={{ fontSize: 11, color: "#555", marginTop: 8 }}>
+        Serve your sentence and be released automatically
+      </div>
+    </div>
+  );
+}
+
+// ────────────────────────────────────────────────────────────────────────────
 
 function Minimap({
   px,
@@ -461,6 +549,12 @@ export default function HUD({
   nearMedicCenter,
   nearPoliceStation,
   nearATM,
+  wantedStars,
+  jailUntil,
+  jailReason,
+  isOfficerOnDuty,
+  nearPoliceTarget,
+  nearArrestTarget,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -1456,6 +1550,25 @@ export default function HUD({
             </div>
           )}
 
+          {/* Wanted stars badge (Phase 6A) */}
+          {wantedStars != null && wantedStars > 0 && (
+            <div
+              style={{
+                background:    "rgba(8, 14, 28, 0.82)",
+                border:        "1px solid rgba(255, 68, 68, 0.65)",
+                borderRadius:  PANEL_RADIUS,
+                padding:       "3px 10px",
+                fontSize:      14,
+                color:         "#ff4444",
+                letterSpacing: 1,
+                textShadow:    "0 0 8px rgba(255,68,68,0.6)",
+              }}
+            >
+              {"⭐".repeat(wantedStars)}{" "}
+              <span style={{ fontSize: 11 }}>WANTED</span>
+            </div>
+          )}
+
           {/* Driver license badge */}
           <div
             style={{
@@ -1471,6 +1584,116 @@ export default function HUD({
             }}
           >
             {driverLicense ? "🪪 Licensed" : "🚫 No License"}
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          FULL-SCREEN — Jail overlay (Phase 6A)
+          Renders on top of everything except modals (z-index 2500).
+          ============================================================ */}
+      {jailUntil != null && jailUntil > Date.now() && (
+        <JailOverlay jailUntil={jailUntil} jailReason={jailReason} />
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Officer: Issue Warrant prompt (Phase 6A)
+          J key — shown when officer is on duty + non-jailed player nearby
+          ============================================================ */}
+      {isOfficerOnDuty && nearPoliceTarget && !inVehicle && (
+        <div
+          style={{
+            position:             "absolute",
+            bottom:               160,
+            left:                 "50%",
+            transform:            "translateX(-50%)",
+            background:           PANEL_BG,
+            border:               "1px solid rgba(255, 200, 50, 0.65)",
+            borderRadius:         PANEL_RADIUS,
+            padding:              "8px 14px 8px 8px",
+            display:              "flex",
+            alignItems:           "center",
+            gap:                  12,
+            boxShadow:            `${PANEL_SHADOW}, 0 0 18px rgba(255,200,50,0.18)`,
+            backdropFilter:       "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width:          28,
+              height:         28,
+              borderRadius:   6,
+              background:     "rgba(255, 200, 50, 0.15)",
+              border:         "1px solid rgba(255, 200, 50, 0.7)",
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              fontSize:       13,
+              fontWeight:     "bold",
+              color:          "#ffc832",
+              boxShadow:      "inset 0 -2px 0 rgba(255,200,50,0.35)",
+            }}
+          >
+            J
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            ⭐{" "}
+            <span style={{ color: "#ffc832", fontWeight: "bold" }}>
+              Issue Warrant
+            </span>{" "}
+            <span style={{ color: "#9bb", fontSize: 11 }}>· 1★ default</span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Officer: Arrest prompt (Phase 6A)
+          K key — shown when officer is on duty + wanted player in range
+          ============================================================ */}
+      {isOfficerOnDuty && nearArrestTarget && !inVehicle && (
+        <div
+          style={{
+            position:             "absolute",
+            bottom:               200,
+            left:                 "50%",
+            transform:            "translateX(-50%)",
+            background:           PANEL_BG,
+            border:               "1px solid rgba(255, 68, 68, 0.65)",
+            borderRadius:         PANEL_RADIUS,
+            padding:              "8px 14px 8px 8px",
+            display:              "flex",
+            alignItems:           "center",
+            gap:                  12,
+            boxShadow:            `${PANEL_SHADOW}, 0 0 18px rgba(255,68,68,0.2)`,
+            backdropFilter:       "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width:          28,
+              height:         28,
+              borderRadius:   6,
+              background:     "rgba(255, 68, 68, 0.15)",
+              border:         "1px solid rgba(255, 68, 68, 0.7)",
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              fontSize:       13,
+              fontWeight:     "bold",
+              color:          "#ff4444",
+              boxShadow:      "inset 0 -2px 0 rgba(255,68,68,0.35)",
+            }}
+          >
+            K
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            🚔{" "}
+            <span style={{ color: "#ff4444", fontWeight: "bold" }}>
+              Arrest
+            </span>{" "}
+            <span style={{ color: "#9bb", fontSize: 11 }}>· Wanted suspect nearby</span>
           </div>
         </div>
       )}
