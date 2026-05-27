@@ -1,12 +1,11 @@
 /**
- * JobHUD — Phase 4 overlay shown during an active City Worker route.
+ * JobHUD — Phase 4/5A overlay shown during an active job route.
  *
- * Displayed top-center (below controls hint) while rpProfile.activeJob is
- * non-null. Shows the job name, current checkpoint progress X/N, and the
- * route payout.
+ * Phase 4: City Worker — progress bar of 4 walk checkpoints.
+ * Phase 5A: Taxi Driver — two-stage HUD (pickup → dropoff) with fare display.
  *
- * Rendered outside the Canvas (plain React) so it sits above the 3D scene
- * without any R3F overhead.
+ * Branches on activeJob.job (or activeJob.mode) to render the correct layout.
+ * Rendered outside the Canvas (plain React) so it sits above the 3D scene.
  */
 
 import type { ActiveJob } from "../shared/rpTypes";
@@ -16,14 +15,13 @@ interface JobHUDProps {
 }
 
 const PANEL_BG     = "rgba(8, 14, 28, 0.82)";
-const PANEL_BORDER = "rgba(255, 165, 0, 0.55)";
 const PANEL_RADIUS = 10;
 const PANEL_SHADOW =
-  "0 8px 24px rgba(0,0,0,0.5), 0 0 1px rgba(255,165,0,0.3), inset 0 1px 0 rgba(255,255,255,0.04)";
+  "0 8px 24px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.04)";
 
-export default function JobHUD({ activeJob }: JobHUDProps) {
-  if (!activeJob) return null;
+// ── City Worker HUD ────────────────────────────────────────────────────────────
 
+function CityWorkerHUD({ activeJob }: { activeJob: ActiveJob }) {
   const total   = activeJob.checkpoints.length;
   const current = Math.min(activeJob.nextCp, total);
   const done    = current >= total;
@@ -36,7 +34,7 @@ export default function JobHUD({ activeJob }: JobHUDProps) {
         left:            "50%",
         transform:       "translateX(-50%)",
         background:      PANEL_BG,
-        border:          `1px solid ${PANEL_BORDER}`,
+        border:          "1px solid rgba(255,165,0,0.55)",
         borderRadius:    PANEL_RADIUS,
         padding:         "10px 22px",
         display:         "flex",
@@ -53,16 +51,7 @@ export default function JobHUD({ activeJob }: JobHUDProps) {
         zIndex:          50,
       }}
     >
-      {/* Job label */}
-      <div
-        style={{
-          fontSize:      10,
-          color:         "#ffa500",
-          letterSpacing: 3,
-          fontWeight:    "bold",
-          textTransform: "uppercase",
-        }}
-      >
+      <div style={{ fontSize: 10, color: "#ffa500", letterSpacing: 3, fontWeight: "bold", textTransform: "uppercase" }}>
         🏗 City Worker
       </div>
 
@@ -91,14 +80,7 @@ export default function JobHUD({ activeJob }: JobHUDProps) {
         })}
       </div>
 
-      {/* Status line */}
-      <div
-        style={{
-          fontSize:  12,
-          color:     done ? "#2ee07a" : "#fff",
-          letterSpacing: 0.5,
-        }}
-      >
+      <div style={{ fontSize: 12, color: done ? "#2ee07a" : "#fff", letterSpacing: 0.5 }}>
         {done
           ? "Route complete!"
           : `Checkpoint ${current + 1} / ${total}`}{" "}
@@ -106,4 +88,120 @@ export default function JobHUD({ activeJob }: JobHUDProps) {
       </div>
     </div>
   );
+}
+
+// ── Taxi Driver HUD ────────────────────────────────────────────────────────────
+
+const TAXI_YELLOW = "#f5c518";
+const TAXI_BLUE   = "#4488ff";
+
+function TaxiHUD({ activeJob }: { activeJob: ActiveJob }) {
+  const stage = activeJob.nextCp; // 0 = go to pickup, 1 = go to dropoff, 2 = complete
+  const done  = stage >= 2;
+
+  const pickupDone  = stage >= 1;
+  const dropoffDone = done;
+
+  const stageLabel = done
+    ? "Fare complete!"
+    : stage === 0
+    ? "Pick up passenger"
+    : "Drop off passenger";
+
+  const stageColor = done ? "#2ee07a" : stage === 0 ? TAXI_YELLOW : TAXI_BLUE;
+
+  return (
+    <div
+      style={{
+        position:        "fixed",
+        top:             64,
+        left:            "50%",
+        transform:       "translateX(-50%)",
+        background:      PANEL_BG,
+        border:          `1px solid rgba(245,197,24,0.6)`,
+        borderRadius:    PANEL_RADIUS,
+        padding:         "10px 24px",
+        display:         "flex",
+        flexDirection:   "column",
+        alignItems:      "center",
+        gap:             6,
+        boxShadow:       PANEL_SHADOW,
+        backdropFilter:  "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        pointerEvents:   "none",
+        minWidth:        220,
+        fontFamily:      "'Courier New', monospace",
+        userSelect:      "none",
+        zIndex:          50,
+      }}
+    >
+      {/* Job label */}
+      <div style={{ fontSize: 10, color: TAXI_YELLOW, letterSpacing: 3, fontWeight: "bold", textTransform: "uppercase" }}>
+        🚕 Taxi Driver
+      </div>
+
+      {/* Two-stage progress row */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginTop: 2 }}>
+        {/* Pickup */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+          <div
+            style={{
+              width:        48,
+              height:       8,
+              borderRadius: 3,
+              background:   pickupDone
+                ? TAXI_YELLOW
+                : stage === 0
+                ? "rgba(245,197,24,0.5)"
+                : "rgba(255,255,255,0.1)",
+              boxShadow:    pickupDone ? `0 0 6px rgba(245,197,24,0.6)` : "none",
+              transition:   "background 0.25s",
+            }}
+          />
+          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.5)", letterSpacing: 1 }}>PICKUP</span>
+        </div>
+
+        {/* Arrow */}
+        <span style={{ color: "rgba(255,255,255,0.3)", fontSize: 14 }}>→</span>
+
+        {/* Dropoff */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+          <div
+            style={{
+              width:        48,
+              height:       8,
+              borderRadius: 3,
+              background:   dropoffDone
+                ? TAXI_BLUE
+                : stage === 1
+                ? "rgba(68,136,255,0.5)"
+                : "rgba(255,255,255,0.1)",
+              boxShadow:    dropoffDone ? `0 0 6px rgba(68,136,255,0.6)` : "none",
+              transition:   "background 0.25s",
+            }}
+          />
+          <span style={{ fontSize: 9, color: "rgba(255,255,255,0.5)", letterSpacing: 1 }}>DROPOFF</span>
+        </div>
+      </div>
+
+      {/* Status line */}
+      <div style={{ fontSize: 12, color: stageColor, letterSpacing: 0.5 }}>
+        {stageLabel}{" "}
+        <span style={{ color: "#9bb", fontSize: 11 }}>· ${activeJob.pay} fare</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Main component ─────────────────────────────────────────────────────────────
+
+export default function JobHUD({ activeJob }: JobHUDProps) {
+  if (!activeJob) return null;
+
+  if (activeJob.job === "taxi_driver") {
+    return <TaxiHUD activeJob={activeJob} />;
+  }
+
+  // Default: city_worker (or any future walk job)
+  return <CityWorkerHUD activeJob={activeJob} />;
 }

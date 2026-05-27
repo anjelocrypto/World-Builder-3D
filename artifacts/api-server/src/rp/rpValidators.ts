@@ -19,6 +19,9 @@ import {
   DELIVERY_SLOT_OFFSETS,
   CITY_WORKER_DEPOT,
   CITY_WORKER_CHECKPOINTS,
+  TAXI_DEPOT,
+  TAXI_PICKUPS,
+  TAXI_DROPOFFS,
 } from "../socket/cityData";
 import type { RpCacheEntry, TestState } from "./rpCache";
 
@@ -123,7 +126,18 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     })),
   ];
 
-  for (const m of [...OFF_ROAD, ...cityWorkerMarkers]) {
+  // Phase 5A: Taxi Depot must be off-road
+  const taxiMarkers = [
+    { label: "TAXI_DEPOT", x: TAXI_DEPOT[0], z: TAXI_DEPOT[2] },
+  ];
+
+  // Phase 5A: Taxi pickups + dropoffs must be on roads
+  const taxiOnRoad = [
+    ...TAXI_PICKUPS.map(([cx, , cz], i) => ({ label: `TAXI_PICKUP_${i}`, x: cx, z: cz })),
+    ...TAXI_DROPOFFS.map(([cx, , cz], i) => ({ label: `TAXI_DROPOFF_${i}`, x: cx, z: cz })),
+  ];
+
+  for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers]) {
     if (isInCarriageway(m.x, m.z))
       throw new Error(`[rp] marker "${m.label}" is inside road carriageway`);
     if (isInsideObstacle(m.x, m.z, obstacles))
@@ -131,7 +145,7 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     console.info(`[rp] marker OK: ${m.label} [${m.x}, ${m.z}]`);
   }
 
-  for (const cp of ON_ROAD) {
+  for (const cp of [...ON_ROAD, ...taxiOnRoad]) {
     if (!isOnRoad(cp.x, cp.z))
       throw new Error(`[rp] checkpoint "${cp.label}" is NOT on a road`);
     if (isInsideObstacle(cp.x, cp.z, obstacles))
@@ -175,6 +189,8 @@ export function validateRpMarkerVehicleClearance(vehicles: VehiclePos[]): void {
     ...deliverySlotMarkers,
     // Phase 4 — city worker depot
     { label: "CITY_WORKER_DEPOT",       x: CITY_WORKER_DEPOT[0],      z: CITY_WORKER_DEPOT[2] },
+    // Phase 5A — taxi depot
+    { label: "TAXI_DEPOT",              x: TAXI_DEPOT[0],              z: TAXI_DEPOT[2] },
   ];
   for (const m of markers) {
     if (isNearParkedCar(m.x, m.z, vehicles)) {

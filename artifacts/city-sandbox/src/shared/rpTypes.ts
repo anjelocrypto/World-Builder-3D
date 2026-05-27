@@ -31,9 +31,13 @@ export interface VehicleShopItem {
   colors:  readonly string[];
 }
 
-/** Phase 4: active City Worker route payload. */
+/** Phase 4+: active job route payload. Phase 5A adds label + mode. */
 export interface ActiveJob {
   job:         string;
+  /** Human-readable name for HUD display (e.g. "City Worker", "Taxi Driver"). */
+  label:       string;
+  /** "walk" = on-foot route; "vehicle" = must be driving. */
+  mode:        "walk" | "vehicle";
   checkpoints: [number, number, number][];
   nextCp:      number;
   pay:         number;
@@ -147,6 +151,18 @@ export const LICENSE_TEST_CHECKPOINTS: [number, number, number][] = [
   [ 42, 0.5, -14],   // CP2 — north on x=45 road, mid-block
   [ 14, 0.5, -26],   // CP3 — finish line near Licensing Office entrance
 ];
+
+// ── Phase 5A: Taxi Driver job constants ───────────────────────────────────
+// These MUST stay in sync with TAXI_* in api-server/src/socket/cityData.ts.
+
+/** Taxi Depot position [x, y, z]. */
+export const TAXI_DEPOT: [number, number, number] = [-30, 0, -15];
+
+/** Radius (m) within which the player can clock in/out at the Taxi Depot. */
+export const TAXI_DEPOT_RADIUS = 6;
+
+/** Acceptance radius (m) for taxi pickup/dropoff stages. */
+export const TAXI_CP_ACCEPT_RADIUS = 12;
 
 // ── Client-side optimistic license + lock check ────────────────────────────
 

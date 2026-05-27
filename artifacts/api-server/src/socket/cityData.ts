@@ -200,6 +200,67 @@ export const JOB_ROUTE_COOLDOWN_MS   = 60_000;
 /** Player must be within this distance (m) of a checkpoint to trigger it. */
 export const JOB_CP_ACCEPT_RADIUS    = 8;
 
+// ── Taxi Driver job (Phase 5A) ────────────────────────────────────────────
+
+/**
+ * Taxi Depot — NW inner block, clear of all roads.
+ * x=−30: |−30−(−45)|=15>10 (x=−45 NS road), |−30−0|=30>10 (x=0 road);
+ * z=−15: |−15−(−45)|=30>10 (z=−45 EW road), |−15−0|=15>10 (z=0 road).
+ * Nearest parked car (car-3 at −22,−22): dist≈10.6 m > 8 m.
+ */
+export const TAXI_DEPOT: [number, number, number] = [-30, 0, -15];
+
+/** Radius (m) player must be within to clock in/out at the Taxi Depot. */
+export const TAXI_DEPOT_RADIUS = 6;
+
+/**
+ * Server-authoritative taxi pickup locations.
+ * All points are ON a road carriageway (validated at startup).
+ * The server picks one at random when the player clocks in.
+ *
+ * Must stay in sync with TAXI_PICKUPS in city-sandbox/shared/rpTypes.ts.
+ */
+export const TAXI_PICKUPS: [number, number, number][] = [
+  [   0, 0.5, -30],  // P0 — x=0 N-S road, south block
+  [   0, 0.5,  20],  // P1 — x=0 N-S road, north block
+  [  42, 0.5, -20],  // P2 — x=45 N-S road, south half
+  [ -42, 0.5,  20],  // P3 — x=−45 N-S road, north half
+  [  25, 0.5, -44],  // P4 — z=−45 E-W road, east of center
+  [ -25, 0.5,  44],  // P5 — z=45 E-W road, west of center
+];
+
+/**
+ * Server-authoritative taxi dropoff locations.
+ * All points are ON a road carriageway (validated at startup).
+ * Must stay in sync with TAXI_DROPOFFS in city-sandbox/shared/rpTypes.ts.
+ */
+export const TAXI_DROPOFFS: [number, number, number][] = [
+  [  42, 0.5,  20],  // D0 — x=45 N-S road, north half
+  [ -42, 0.5, -20],  // D1 — x=−45 N-S road, south half
+  [   0, 0.5, -44],  // D2 — z=−45 E-W road, center
+  [  25, 0.5,  44],  // D3 — z=45 E-W road, east of center
+  [ -25, 0.5, -44],  // D4 — z=−45 E-W road, west of center
+  [ -42, 0.5,   0],  // D5 — x=−45 N-S road, center (also on z=0 road)
+];
+
+/** Minimum fare for a completed Taxi route (short trip). */
+export const TAXI_PAY_MIN = 80;
+
+/** Maximum fare for a completed Taxi route (long trip). */
+export const TAXI_PAY_MAX = 180;
+
+/** Distance factor for fare calculation: pay = clamp(dist * TAXI_PAY_PER_M, MIN, MAX). */
+export const TAXI_PAY_PER_M = 1.2;
+
+/** Player/vehicle must be within this distance (m) of a taxi target to trigger it. */
+export const TAXI_CP_ACCEPT_RADIUS = 12;
+
+/** Minimum ms between consecutive taxi stages (anti-teleport). */
+export const TAXI_MIN_STAGE_INTERVAL_MS = 5_000;
+
+/** Minimum ms between two completed Taxi routes (cooldown). */
+export const TAXI_ROUTE_COOLDOWN_MS = 60_000;
+
 // ── Licensing Office (Phase 2) ─────────────────────────────────────────────
 
 /** Entrance of the Licensing Office — SE inner block, east-facing sidewalk. */

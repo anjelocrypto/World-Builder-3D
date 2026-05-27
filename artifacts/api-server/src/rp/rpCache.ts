@@ -58,10 +58,18 @@ export interface TestState {
 
 /** In-memory job route progress. Keyed by socket.id. Cleared on disconnect. */
 export interface JobState {
-  job:       string;   // e.g. "city_worker"
-  nextCp:    number;   // index of next expected checkpoint
+  job:       string;   // e.g. "city_worker" | "taxi_driver"
+  nextCp:    number;   // index of next expected checkpoint (0=pickup, 1=dropoff for taxi)
   startedAt: number;   // Unix ms — when the player clocked in
   lastCpAt:  number;   // Unix ms — last accepted checkpoint hit; 0 = none yet
+
+  // Phase 5A — Taxi Driver extras (undefined for city_worker)
+  /** Server-assigned pickup position [x, y, z]. */
+  taxiPickup?:  [number, number, number];
+  /** Server-assigned dropoff position [x, y, z]. */
+  taxiDropoff?: [number, number, number];
+  /** Calculated fare in $, rounded to nearest $10. */
+  taxiFare?:    number;
 }
 
 // ── Module-level maps ──────────────────────────────────────────────────────

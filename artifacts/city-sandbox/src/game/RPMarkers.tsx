@@ -22,6 +22,7 @@ import {
   LICENSE_TEST_CHECKPOINTS,
   CITY_WORKER_DEPOT,
   CITY_WORKER_CHECKPOINTS,
+  TAXI_DEPOT,
 } from "../shared/rpTypes";
 
 interface RPMarkersProps {
@@ -48,6 +49,9 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
   // Phase 4: City Worker depot marker refs
   const depotRingRef    = useRef<THREE.MeshStandardMaterial>(null!);
   const depotSignRef    = useRef<THREE.MeshStandardMaterial>(null!);
+  // Phase 5A: Taxi Depot marker refs
+  const taxiDepotRingRef = useRef<THREE.MeshStandardMaterial>(null!);
+  const taxiDepotSignRef = useRef<THREE.MeshStandardMaterial>(null!);
   // One ref per license-test checkpoint ring (4 total). Populated only while activeTest
   // renders the checkpoint groups; null-checked before every write.
   const cpRingRefs = [
@@ -56,10 +60,15 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
     useRef<THREE.MeshStandardMaterial>(null!),
     useRef<THREE.MeshStandardMaterial>(null!),
   ];
-  // Phase 4: one ref per job checkpoint ring (4 total). Populated only while activeJob renders.
+  // Phase 4: one ref per city worker checkpoint ring (4 total).
   const jobCpRingRefs = [
     useRef<THREE.MeshStandardMaterial>(null!),
     useRef<THREE.MeshStandardMaterial>(null!),
+    useRef<THREE.MeshStandardMaterial>(null!),
+    useRef<THREE.MeshStandardMaterial>(null!),
+  ];
+  // Phase 5A: one ref per taxi checkpoint ring (2 total: pickup + dropoff).
+  const taxiCpRingRefs = [
     useRef<THREE.MeshStandardMaterial>(null!),
     useRef<THREE.MeshStandardMaterial>(null!),
   ];
@@ -89,18 +98,39 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
     if (depotRingRef.current) depotRingRef.current.emissiveIntensity = depotPulse;
     if (depotSignRef.current) depotSignRef.current.emissiveIntensity = 0.7 + 0.2 * Math.sin(t * 2.8 + 0.3);
 
-    // Job checkpoint rings — only animate when a route is active.
+    // Taxi Depot — yellow/cab pulse
+    const taxiDepotPulse = 0.4 + 0.3 * Math.sin(t * 2.2 + 1.2);
+    if (taxiDepotRingRef.current) taxiDepotRingRef.current.emissiveIntensity = taxiDepotPulse;
+    if (taxiDepotSignRef.current) taxiDepotSignRef.current.emissiveIntensity = 0.7 + 0.2 * Math.sin(t * 3.0 + 0.6);
+
+    // City Worker checkpoint rings — only animate when job is city_worker.
     const aj = activeJobRef.current;
-    jobCpRingRefs.forEach((ref, i) => {
-      if (!ref.current || !aj) return;
-      if (i < aj.nextCp) {
-        ref.current.emissiveIntensity = 0.05;
-      } else if (i === aj.nextCp) {
-        ref.current.emissiveIntensity = 0.45 + 0.35 * Math.sin(t * 3.0 + i * 0.5);
-      } else {
-        ref.current.emissiveIntensity = 0.15 + 0.05 * Math.sin(t * 1.5 + i * 0.5);
-      }
-    });
+    if (aj?.job === "city_worker") {
+      jobCpRingRefs.forEach((ref, i) => {
+        if (!ref.current) return;
+        if (i < aj.nextCp) {
+          ref.current.emissiveIntensity = 0.05;
+        } else if (i === aj.nextCp) {
+          ref.current.emissiveIntensity = 0.45 + 0.35 * Math.sin(t * 3.0 + i * 0.5);
+        } else {
+          ref.current.emissiveIntensity = 0.15 + 0.05 * Math.sin(t * 1.5 + i * 0.5);
+        }
+      });
+    }
+
+    // Taxi checkpoint rings — only animate when job is taxi_driver.
+    if (aj?.job === "taxi_driver") {
+      taxiCpRingRefs.forEach((ref, i) => {
+        if (!ref.current) return;
+        if (i < aj.nextCp) {
+          ref.current.emissiveIntensity = 0.05;
+        } else if (i === aj.nextCp) {
+          ref.current.emissiveIntensity = 0.45 + 0.35 * Math.sin(t * 3.0 + i * 0.5);
+        } else {
+          ref.current.emissiveIntensity = 0.15 + 0.05 * Math.sin(t * 1.5 + i * 0.5);
+        }
+      });
+    }
 
     // License-test checkpoint rings — only animate when a test is active.
     // nextCp ring: bright fast pulse. Passed: static dim. Future: slow medium pulse.
@@ -344,8 +374,58 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
         );
       })()}
 
-      {/* ════ Job checkpoint rings — only while a route is active ═══════════════ */}
-      {activeJob &&
+      {/* ════ Taxi Depot marker ═════════════════════════════════════════════ */}
+      {(() => {
+        const [tdx, , tdz] = TAXI_DEPOT;
+        return (
+          <group position={[tdx, 0, tdz]}>
+            {/* Ground ring — 5–6 m radius, yellow/cab */}
+            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[5, 6, 48]} />
+              <meshStandardMaterial
+                ref={taxiDepotRingRef}
+                color="#3a2e00"
+                emissive="#f5c518"
+                emissiveIntensity={0.4}
+                transparent
+                opacity={0.5}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+
+            {/* Sign post */}
+            <mesh position={[0, 1.8, -0.3]}>
+              <boxGeometry args={[0.12, 3.6, 0.12]} />
+              <meshStandardMaterial color="#3a3000" roughness={0.7} metalness={0.5} />
+            </mesh>
+
+            {/* Sign board */}
+            <mesh position={[0, 3.3, -0.3]}>
+              <boxGeometry args={[3.8, 0.8, 0.1]} />
+              <meshStandardMaterial
+                ref={taxiDepotSignRef}
+                color="#1a1600"
+                emissive="#f5c518"
+                emissiveIntensity={0.7}
+                roughness={0.3}
+                metalness={0.2}
+              />
+            </mesh>
+
+            {/* Sign text strip */}
+            <mesh position={[0, 3.6, -0.24]}>
+              <boxGeometry args={[3.4, 0.1, 0.01]} />
+              <meshStandardMaterial color="#ffffff" emissive="#fff59d" emissiveIntensity={2} />
+            </mesh>
+
+            <pointLight position={[0, 4, 0]} color="#f5c518" intensity={2.5} distance={14} decay={2} />
+          </group>
+        );
+      })()}
+
+      {/* ════ City Worker checkpoint rings — only while city_worker route active ═ */}
+      {activeJob?.job === "city_worker" &&
         CITY_WORKER_CHECKPOINTS.map(([cx, , cz], i) => {
           const isPassed = i < activeJob.nextCp;
           const isNext   = i === activeJob.nextCp;
@@ -391,6 +471,66 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
                     color="#ff8800"
                     intensity={isNext ? 1.5 : 0.6}
                     distance={12}
+                    decay={2}
+                  />
+                </>
+              )}
+            </group>
+          );
+        })}
+
+      {/* ════ Taxi checkpoint rings — only while taxi_driver route active ═══════
+          checkpoints[0] = pickup, checkpoints[1] = dropoff.
+          Yellow/cab color for pickup (stage 0), blue for dropoff (stage 1). */}
+      {activeJob?.job === "taxi_driver" &&
+        activeJob.checkpoints.map(([cx, , cz], i) => {
+          const isPassed = i < activeJob.nextCp;
+          const isNext   = i === activeJob.nextCp;
+          const isDropoff = i === 1;
+          const emissiveColor = isDropoff ? "#4488ff" : "#f5c518";
+          const ringColor     = isDropoff ? "#001a3a" : "#3a2e00";
+          return (
+            <group key={`tcp-${i}`} position={[cx, 0, cz]}>
+              {/* Ground ring — 10–11 m (larger for vehicles) */}
+              <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                <ringGeometry args={[10, 11, 48]} />
+                <meshStandardMaterial
+                  ref={taxiCpRingRefs[i]}
+                  color={isPassed ? "#0a0a0a" : ringColor}
+                  emissive={emissiveColor}
+                  emissiveIntensity={isPassed ? 0.05 : isNext ? 0.45 : 0.15}
+                  transparent
+                  opacity={isPassed ? 0.12 : isNext ? 0.5 : 0.3}
+                  side={THREE.DoubleSide}
+                  depthWrite={false}
+                />
+              </mesh>
+
+              {/* Pillar + cap + light only for active/future stages */}
+              {!isPassed && (
+                <>
+                  <mesh position={[0, 2, 0]}>
+                    <cylinderGeometry args={[0.16, 0.16, 4, 8]} />
+                    <meshStandardMaterial
+                      color={emissiveColor}
+                      emissive={emissiveColor}
+                      emissiveIntensity={isNext ? 0.6 : 0.2}
+                      roughness={0.3}
+                    />
+                  </mesh>
+                  <mesh position={[0, 4.2, 0]}>
+                    <sphereGeometry args={[0.28, 8, 8]} />
+                    <meshStandardMaterial
+                      color="#ffffff"
+                      emissive={emissiveColor}
+                      emissiveIntensity={isNext ? 1.2 : 0.4}
+                    />
+                  </mesh>
+                  <pointLight
+                    position={[0, 4.3, 0]}
+                    color={emissiveColor}
+                    intensity={isNext ? 2.0 : 0.8}
+                    distance={16}
                     decay={2}
                   />
                 </>

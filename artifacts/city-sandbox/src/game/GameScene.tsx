@@ -107,6 +107,7 @@ export default function GameScene({
     nearDealership: false,
     nearOwnedVehicleId: null as string | null,
     nearDepot: false,
+    nearTaxiDepot: false,
   });
 
   // Phase 3: dealership shop panel visibility
@@ -367,6 +368,7 @@ export default function GameScene({
         nearDealership={uiState.nearDealership}
         nearOwnedVehicleId={uiState.nearOwnedVehicleId}
         nearDepot={uiState.nearDepot}
+        nearTaxiDepot={uiState.nearTaxiDepot}
       />
     </div>
   );
