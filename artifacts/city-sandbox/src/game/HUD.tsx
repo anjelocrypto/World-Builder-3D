@@ -78,6 +78,11 @@ interface HUDProps {
    * Shows an E — Clock In/Out · Mechanic prompt.
    */
   nearMechanicGarage?: boolean;
+  /**
+   * Phase 5D: true when walking player is within Medical Center radius.
+   * Shows an E — Clock In/Out · Paramedic prompt.
+   */
+  nearMedicCenter?: boolean;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -443,6 +448,7 @@ export default function HUD({
   nearTaxiDepot,
   nearDeliveryHub,
   nearMechanicGarage,
+  nearMedicCenter,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -1112,6 +1118,56 @@ export default function HUD({
               Clock In / Out
             </span>{" "}
             <span style={{ color: "#9bb", fontSize: 11 }}>· Mechanic</span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Medical Center clock-in/out prompt (Phase 5D)
+          ============================================================ */}
+      {nearMedicCenter && !inVehicle && !showInteract && !nearOffice && !nearDealership && !nearDepot && !nearTaxiDepot && !nearDeliveryHub && !nearMechanicGarage && (
+        <div
+          style={{
+            position:             "absolute",
+            bottom:               130,
+            left:                 "50%",
+            transform:            "translateX(-50%)",
+            background:           PANEL_BG,
+            border:               "1px solid rgba(220, 50, 50, 0.65)",
+            borderRadius:         PANEL_RADIUS,
+            padding:              "8px 14px 8px 8px",
+            display:              "flex",
+            alignItems:           "center",
+            gap:                  12,
+            boxShadow:            `${PANEL_SHADOW}, 0 0 24px rgba(220,50,50,0.22)`,
+            backdropFilter:       "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width:          28,
+              height:         28,
+              borderRadius:   6,
+              background:     "rgba(220, 50, 50, 0.15)",
+              border:         "1px solid rgba(220, 50, 50, 0.7)",
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              fontSize:       13,
+              fontWeight:     "bold",
+              color:          "#dc3232",
+              boxShadow:      "inset 0 -2px 0 rgba(220,50,50,0.35)",
+            }}
+          >
+            E
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            🚑{" "}
+            <span style={{ color: "#dc3232", fontWeight: "bold" }}>
+              Clock In / Out
+            </span>{" "}
+            <span style={{ color: "#9bb", fontSize: 11 }}>· Paramedic</span>
           </div>
         </div>
       )}

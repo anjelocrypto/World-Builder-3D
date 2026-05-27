@@ -93,6 +93,18 @@ export interface JobState {
    * Payment gated on: Date.now() − mechanicRepairStartedAt >= MECHANIC_REPAIR_DURATION_MS.
    */
   mechanicRepairStartedAt?: number;
+
+  // Phase 5D — Medic / Paramedic extras (undefined for other jobs)
+  /** Server-assigned patient call position [x, y, z]. */
+  medicTarget?:              [number, number, number];
+  /** Calculated pay in $, rounded to nearest $10. */
+  medicPay?:                 number;
+  /**
+   * Unix ms when the paramedic arrived on scene and treatment started
+   * (set when nextCp advances to 1). Treatment completion advances nextCp
+   * to 2; if the player leaves the radius the timer resets (nextCp back to 0).
+   */
+  medicTreatmentStartedAt?:  number;
 }
 
 // ── Module-level maps ──────────────────────────────────────────────────────

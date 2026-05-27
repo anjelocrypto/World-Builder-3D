@@ -25,6 +25,8 @@ import {
   TAXI_DEPOT,
   DELIVERY_HUB,
   MECHANIC_GARAGE,
+  MEDIC_CENTER,
+  MEDIC_ER_BAY,
 } from "../shared/rpTypes";
 
 interface RPMarkersProps {
@@ -89,6 +91,12 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
   const mechanicGarageSignRef = useRef<THREE.MeshStandardMaterial>(null!);
   // Phase 5C: mechanic service-call target ring (1 target, same position for both stages)
   const mechanicCpRingRef = useRef<THREE.MeshStandardMaterial>(null!);
+  // Phase 5D: Medical Center marker refs
+  const medicCenterRingRef = useRef<THREE.MeshStandardMaterial>(null!);
+  const medicCenterSignRef = useRef<THREE.MeshStandardMaterial>(null!);
+  // Phase 5D: patient ring (stage 0+1) + ER bay ring (stage 2)
+  const medicPatientRingRef = useRef<THREE.MeshStandardMaterial>(null!);
+  const medicErRingRef      = useRef<THREE.MeshStandardMaterial>(null!);
 
   useFrame(({ clock }) => {
     const t  = clock.getElapsedTime();
@@ -141,6 +149,26 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
         mechanicCpRingRef.current.emissiveIntensity = isRepairing
           ? 0.45 + 0.35 * Math.sin(t * 5.0)
           : 0.35 + 0.25 * Math.sin(t * 2.5);
+      }
+    }
+
+    // Medical Center — red/white pulse
+    const medicCenterPulse = 0.4 + 0.3 * Math.sin(t * 2.3 + 0.5);
+    if (medicCenterRingRef.current) medicCenterRingRef.current.emissiveIntensity = medicCenterPulse;
+    if (medicCenterSignRef.current) medicCenterSignRef.current.emissiveIntensity = 0.7 + 0.2 * Math.sin(t * 3.1 + 0.1);
+
+    // Medic patient + ER rings — only animate when job is medic.
+    if (aj?.job === "medic") {
+      // Patient ring: fast pulse during treatment (nextCp===1); slow during travel (nextCp===0)
+      if (medicPatientRingRef.current && aj.nextCp <= 1) {
+        const treating = aj.nextCp === 1;
+        medicPatientRingRef.current.emissiveIntensity = treating
+          ? 0.45 + 0.4 * Math.sin(t * 6.0)
+          : 0.35 + 0.25 * Math.sin(t * 2.5);
+      }
+      // ER bay ring: pulses when patient is ready for transport (nextCp===2)
+      if (medicErRingRef.current && aj.nextCp === 2) {
+        medicErRingRef.current.emissiveIntensity = 0.45 + 0.35 * Math.sin(t * 3.5);
       }
     }
     if (aj?.job === "city_worker") {
@@ -807,6 +835,126 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
             </group>
           );
         })}
+
+      {/* ════ Medical Center marker ═══════════════════════════════════════════════ */}
+      {(() => {
+        const [mcx, , mcz] = MEDIC_CENTER;
+        return (
+          <group position={[mcx, 0, mcz]}>
+            {/* Ground ring — 5–6 m radius, red/white medical */}
+            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[5, 6, 48]} />
+              <meshStandardMaterial
+                ref={medicCenterRingRef}
+                color="#3a0000"
+                emissive="#ff2244"
+                emissiveIntensity={0.4}
+                transparent
+                opacity={0.5}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+
+            {/* Sign post */}
+            <mesh position={[0, 1.8, -0.3]}>
+              <boxGeometry args={[0.12, 3.6, 0.12]} />
+              <meshStandardMaterial color="#220000" roughness={0.6} metalness={0.5} />
+            </mesh>
+
+            {/* Sign board */}
+            <mesh position={[0, 3.3, -0.3]}>
+              <boxGeometry args={[4.8, 0.8, 0.1]} />
+              <meshStandardMaterial
+                ref={medicCenterSignRef}
+                color="#1a0000"
+                emissive="#ff2244"
+                emissiveIntensity={0.7}
+                roughness={0.3}
+                metalness={0.2}
+              />
+            </mesh>
+
+            {/* Sign text strip — white cross bar */}
+            <mesh position={[0, 3.6, -0.24]}>
+              <boxGeometry args={[4.4, 0.1, 0.01]} />
+              <meshStandardMaterial color="#ffffff" emissive="#ffaaaa" emissiveIntensity={2} />
+            </mesh>
+
+            <pointLight position={[0, 4, 0]} color="#ff2244" intensity={2.5} distance={14} decay={2} />
+          </group>
+        );
+      })()}
+
+      {/* ════ Medic patient ring — RESPOND+TREAT stages (nextCp 0 or 1) ══════════
+          Only rendered while job is "medic" AND nextCp <= 1.
+          Red/white; pulses fast during treatment. */}
+      {activeJob?.job === "medic" && activeJob.nextCp <= 1 && (() => {
+        const cp = activeJob.checkpoints[0];
+        if (!cp) return null;
+        const [cx, , cz] = cp;
+        const isTreating = activeJob.nextCp === 1;
+        const emissiveColor = "#ff2244";
+        return (
+          <group position={[cx, 0, cz]}>
+            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[10, 11, 48]} />
+              <meshStandardMaterial
+                ref={medicPatientRingRef}
+                color="#3a0000"
+                emissive={emissiveColor}
+                emissiveIntensity={0.35}
+                transparent
+                opacity={isTreating ? 0.6 : 0.45}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+            <mesh position={[0, 2, 0]}>
+              <cylinderGeometry args={[0.16, 0.16, 4, 8]} />
+              <meshStandardMaterial color={emissiveColor} emissive={emissiveColor} emissiveIntensity={0.6} roughness={0.3} />
+            </mesh>
+            <mesh position={[0, 4.2, 0]}>
+              <sphereGeometry args={[0.28, 8, 8]} />
+              <meshStandardMaterial color="#ffffff" emissive={emissiveColor} emissiveIntensity={1.2} />
+            </mesh>
+            <pointLight position={[0, 4.3, 0]} color={emissiveColor} intensity={2.0} distance={16} decay={2} />
+          </group>
+        );
+      })()}
+
+      {/* ════ Medic ER bay ring — TRANSPORT stage (nextCp === 2) ════════════════════
+          Blue/white; pulses when patient is ready for transport. */}
+      {activeJob?.job === "medic" && activeJob.nextCp === 2 && (() => {
+        const [erx, , erz] = MEDIC_ER_BAY;
+        const emissiveColor = "#4488ff";
+        return (
+          <group position={[erx, 0, erz]}>
+            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[10, 11, 48]} />
+              <meshStandardMaterial
+                ref={medicErRingRef}
+                color="#001a3a"
+                emissive={emissiveColor}
+                emissiveIntensity={0.35}
+                transparent
+                opacity={0.5}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+            <mesh position={[0, 2, 0]}>
+              <cylinderGeometry args={[0.16, 0.16, 4, 8]} />
+              <meshStandardMaterial color={emissiveColor} emissive={emissiveColor} emissiveIntensity={0.6} roughness={0.3} />
+            </mesh>
+            <mesh position={[0, 4.2, 0]}>
+              <sphereGeometry args={[0.28, 8, 8]} />
+              <meshStandardMaterial color="#ffffff" emissive={emissiveColor} emissiveIntensity={1.2} />
+            </mesh>
+            <pointLight position={[0, 4.3, 0]} color={emissiveColor} intensity={2.0} distance={16} decay={2} />
+          </group>
+        );
+      })()}
 
       {/* ════ License-test checkpoint rings — only while test is active ════════
           Passed rings are dimmed. The next target pulses brightly.

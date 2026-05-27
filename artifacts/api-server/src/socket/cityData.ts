@@ -379,6 +379,54 @@ export const MECHANIC_MIN_STAGE_INTERVAL_MS = 5_000;
 /** Minimum ms between two completed mechanic service calls (cooldown). */
 export const MECHANIC_ROUTE_COOLDOWN_MS = 60_000;
 
+// ── Medic / Paramedic (Phase 5D) ──────────────────────────────────────────
+// All positions geometry-verified: MEDIC_CENTER off-road (min 33.73 m from
+// parked cars); all patient calls + ER bay on-road (min 11.18 m from parked
+// cars). No adjustments were required.
+
+/** Medical Center entrance — west outer district. Off-road. */
+export const MEDIC_CENTER: [number, number, number] = [-68, 0, 28];
+
+/** Radius (m) within which the player can clock in/out at the Medical Center. */
+export const MEDIC_CENTER_RADIUS = 6;
+
+/**
+ * Allowlist of patient call positions [x, y, z]. All on road carriageways.
+ * Server picks one at random on clock-in; client never chooses.
+ */
+export const MEDIC_PATIENT_CALLS: [number, number, number][] = [
+  [ 45, 0.5,  30],   // P0 — x=45 N-S road, north of center
+  [-45, 0.5, -30],   // P1 — x=−45 N-S road, south of center
+  [  0, 0.5, -40],   // P2 — x=0  N-S road, approaching z=−45
+  [ 30, 0.5,  45],   // P3 — z=45 E-W road, east half
+  [-30, 0.5,  45],   // P4 — z=45 E-W road, west half
+  [ 45, 0.5, -20],   // P5 — x=45 N-S road, south of center
+];
+
+/** Emergency Room drop-off bay — x=−45 N-S road near Medical Center. */
+export const MEDIC_ER_BAY: [number, number, number] = [-45, 0.5, 28];
+
+/** Acceptance radius (m) for patient call and ER bay checkpoints. */
+export const MEDIC_SERVICE_RADIUS = 12;
+
+/** Duration (ms) the paramedic must stay on scene to treat the patient. */
+export const MEDIC_TREATMENT_DURATION_MS = 6_000;
+
+/** Minimum pay for completing a full medic run (patient → ER). */
+export const MEDIC_PAY_MIN = 220;
+
+/** Maximum pay for completing a full medic run. */
+export const MEDIC_PAY_MAX = 360;
+
+/**
+ * Pay per metre of total route distance
+ * (MEDIC_CENTER → patient call + patient call → MEDIC_ER_BAY).
+ */
+export const MEDIC_PAY_PER_M = 1.1;
+
+/** Minimum ms between two completed medic runs (cooldown). */
+export const MEDIC_ROUTE_COOLDOWN_MS = 60_000;
+
 // ── Licensing Office (Phase 2) ─────────────────────────────────────────────
 
 /** Entrance of the Licensing Office — SE inner block, east-facing sidewalk. */

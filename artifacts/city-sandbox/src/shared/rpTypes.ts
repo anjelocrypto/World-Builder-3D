@@ -46,6 +46,11 @@ export interface ActiveJob {
    * to 1). Null / undefined for all other jobs.
    */
   repairStartedAt?: number | null;
+  /**
+   * Phase 5D: Unix ms when the paramedic started treating the patient (set when
+   * nextCp advances to 1). Null / undefined for all other jobs.
+   */
+  treatmentStartedAt?: number | null;
 }
 
 export interface RpProfile {
@@ -195,6 +200,24 @@ export const MECHANIC_SERVICE_RADIUS = 12;
 
 /** Duration (ms) the player must stay near the broken vehicle for repair. */
 export const MECHANIC_REPAIR_DURATION_MS = 8_000;
+
+// ── Phase 5D: Medic / Paramedic job constants ─────────────────────────────
+// These MUST stay in sync with MEDIC_* in api-server/src/socket/cityData.ts.
+
+/** Medical Center position [x, y, z]. */
+export const MEDIC_CENTER: [number, number, number] = [-68, 0, 28];
+
+/** Radius (m) within which the player can clock in/out at the Medical Center. */
+export const MEDIC_CENTER_RADIUS = 6;
+
+/** Emergency Room drop-off bay [x, y, z]. */
+export const MEDIC_ER_BAY: [number, number, number] = [-45, 0.5, 28];
+
+/** Acceptance radius (m) for patient and ER bay checkpoints. */
+export const MEDIC_SERVICE_RADIUS = 12;
+
+/** Duration (ms) the paramedic must stay on scene for treatment. */
+export const MEDIC_TREATMENT_DURATION_MS = 6_000;
 
 // ── Client-side optimistic license + lock check ────────────────────────────
 

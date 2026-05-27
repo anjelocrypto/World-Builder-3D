@@ -28,6 +28,9 @@
  *   driver license required; same server-authority rules as taxi; DB-first payment.
  * Phase 5C: mechanic — 2-stage vehicle route (drive to broken car → repair 8 s);
  *   driver license required; server-timed repair; DB-first payment; retryable on failure.
+ * Phase 5D: medic — 3-stage vehicle route (respond → treat 6 s → transport to ER);
+ *   driver license required; server-timed treatment; distance-based pay $220–$360;
+ *   DB-first payment at ER bay; retryable on failure.
  */
 
 import { db, rpPlayers, rpWallets, rpTransactionLog } from "@workspace/db";
@@ -75,6 +78,17 @@ import {
   MECHANIC_REPAIR_DURATION_MS,
   MECHANIC_PAY,
   MECHANIC_ROUTE_COOLDOWN_MS,
+  // Medic
+  MEDIC_CENTER,
+  MEDIC_CENTER_RADIUS,
+  MEDIC_PATIENT_CALLS,
+  MEDIC_ER_BAY,
+  MEDIC_SERVICE_RADIUS,
+  MEDIC_TREATMENT_DURATION_MS,
+  MEDIC_PAY_MIN,
+  MEDIC_PAY_MAX,
+  MEDIC_PAY_PER_M,
+  MEDIC_ROUTE_COOLDOWN_MS,
 } from "../socket/cityData";
 
 // ── Context ────────────────────────────────────────────────────────────────────
@@ -234,7 +248,7 @@ export async function toggleDuty(
   ctx:    JobContext,
   job:    string,
 ): Promise<void> {
-  if (job !== "city_worker" && job !== "taxi_driver" && job !== "delivery_driver" && job !== "mechanic") {
+  if (job !== "city_worker" && job !== "taxi_driver" && job !== "delivery_driver" && job !== "mechanic" && job !== "medic") {
     socket.emit("rp:toast", {
       msg:      "Unknown job.",
       color:    "red",
@@ -281,6 +295,10 @@ export async function toggleDuty(
       const dx = player.x - MECHANIC_GARAGE[0];
       const dz = player.z - MECHANIC_GARAGE[2];
       atDepot = dx * dx + dz * dz <= MECHANIC_GARAGE_RADIUS * MECHANIC_GARAGE_RADIUS;
+    } else if (activeState.job === "medic") {
+      const dx = player.x - MEDIC_CENTER[0];
+      const dz = player.z - MEDIC_CENTER[2];
+      atDepot = dx * dx + dz * dz <= MEDIC_CENTER_RADIUS * MEDIC_CENTER_RADIUS;
     }
 
     if (!atDepot) {
@@ -329,8 +347,10 @@ export async function toggleDuty(
     await clockInTaxi(socket, ctx, entry, player);
   } else if (job === "delivery_driver") {
     await clockInDelivery(socket, ctx, entry, player);
-  } else {
+  } else if (job === "mechanic") {
     await clockInMechanic(socket, ctx, entry, player);
+  } else {
+    await clockInMedic(socket, ctx, entry, player);
   }
 }
 
@@ -528,6 +548,8 @@ export async function handleJobCheckpoint(
     await handleDeliveryCheckpoint(socket, ctx, entry, state, idx, now);
   } else if (state.job === "mechanic") {
     await handleMechanicCheckpoint(socket, ctx, entry, state, idx, now);
+  } else if (state.job === "medic") {
+    await handleMedicCheckpoint(socket, ctx, entry, state, idx, now);
   }
 }
 
@@ -1329,4 +1351,319 @@ async function handleMechanicCheckpoint(
     duration: 6000,
   });
   logger.info({ socketId: socket.id, pay, newCash }, "[rp] mechanic service call complete, paid");
+}
+
+// ── Medic helpers ──────────────────────────────────────────────────────────────
+
+/**
+ * Distance-based pay formula: clamp(dist * MEDIC_PAY_PER_M, MIN, MAX), rounded
+ * to nearest $10.
+ * dist = MEDIC_CENTER → patient call + patient call → MEDIC_ER_BAY.
+ */
+function calcMedicPay(patient: [number, number, number]): number {
+  const d1 = Math.sqrt(
+    (patient[0] - MEDIC_CENTER[0]) ** 2 + (patient[2] - MEDIC_CENTER[2]) ** 2,
+  );
+  const d2 = Math.sqrt(
+    (MEDIC_ER_BAY[0] - patient[0]) ** 2 + (MEDIC_ER_BAY[2] - patient[2]) ** 2,
+  );
+  const raw = (d1 + d2) * MEDIC_PAY_PER_M;
+  return Math.round(Math.max(MEDIC_PAY_MIN, Math.min(MEDIC_PAY_MAX, raw)) / 10) * 10;
+}
+
+/**
+ * Builds the activeJob payload for the medic job.
+ *
+ * Checkpoint layout:
+ *   [0] patient call position — RESPOND stage
+ *   [1] patient call position — TREAT  stage (same location, separate CP)
+ *   [2] MEDIC_ER_BAY          — TRANSPORT stage
+ */
+function buildMedicJob(state: JobState): Record<string, unknown> {
+  return {
+    job:                 "medic",
+    label:               "Paramedic",
+    mode:                "vehicle" as const,
+    checkpoints:         [state.medicTarget!, state.medicTarget!, MEDIC_ER_BAY] as [number, number, number][],
+    nextCp:              state.nextCp,
+    pay:                 state.medicPay!,
+    treatmentStartedAt: state.medicTreatmentStartedAt ?? null,
+  };
+}
+
+// ── Medic clock-in ─────────────────────────────────────────────────────────────
+
+async function clockInMedic(
+  socket: Socket,
+  ctx:    JobContext,
+  entry:  RpCacheEntry,
+  player: PlayerState,
+): Promise<void> {
+  // Requires driver license
+  if (!entry.driverLicense) {
+    socket.emit("rp:toast", {
+      msg:      "A driver license is required to work as a paramedic.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Must be at Medical Center
+  const dx = player.x - MEDIC_CENTER[0];
+  const dz = player.z - MEDIC_CENTER[2];
+  if (dx * dx + dz * dz > MEDIC_CENTER_RADIUS * MEDIC_CENTER_RADIUS) {
+    socket.emit("rp:toast", {
+      msg:      "You must be at the Medical Center to clock in.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Cooldown check
+  const now = Date.now();
+  if (entry.lastPaycheckAt !== null) {
+    const elapsed = now - entry.lastPaycheckAt;
+    if (elapsed < MEDIC_ROUTE_COOLDOWN_MS) {
+      const waitSecs = Math.ceil((MEDIC_ROUTE_COOLDOWN_MS - elapsed) / 1000);
+      socket.emit("rp:toast", {
+        msg:      `Dispatch cooldown — wait ${waitSecs}s before taking another call.`,
+        color:    "yellow",
+        duration: 4000,
+      });
+      return;
+    }
+  }
+
+  // Server assigns a random patient call (client never chooses)
+  const patient = pickRandom(MEDIC_PATIENT_CALLS);
+  const pay     = calcMedicPay(patient);
+
+  // DB-first (Fix 2 pattern)
+  try {
+    await db
+      .update(rpPlayers)
+      .set({ onDuty: true, currentJob: "medic" })
+      .where(eq(rpPlayers.id, entry.playerId));
+  } catch (err) {
+    logger.error({ err, socketId: socket.id }, "[rp] clockInMedic: DB update failed");
+    socket.emit("rp:toast", {
+      msg:      "Clock-in failed — try again.",
+      color:    "red",
+      duration: 3000,
+    });
+    return;
+  }
+
+  const state: JobState = {
+    job:         "medic",
+    nextCp:      0,
+    startedAt:   now,
+    lastCpAt:    0,
+    medicTarget: patient,
+    medicPay:    pay,
+  };
+  rpJobState.set(socket.id, state);
+  entry.onDuty     = true;
+  entry.currentJob = "medic";
+
+  socket.emit("rp:profileUpdate", {
+    onDuty:     true,
+    currentJob: "medic",
+    activeJob:  buildMedicJob(state),
+  });
+  socket.emit("rp:toast", {
+    msg:      `Dispatch! Respond to patient call. Pay: $${pay}.`,
+    color:    "green",
+    duration: 6000,
+  });
+  logger.info({ socketId: socket.id, patient, pay }, "[rp] medic clocked in");
+}
+
+// ── Medic checkpoint ───────────────────────────────────────────────────────────
+
+/**
+ * idx === 0:  arrived at patient — start treatment timer (nextCp → 1).
+ * idx === 1:  treatment timer running — stays at patient location 6 s.
+ *             If player leaves radius, reset treatmentStartedAt and send nextCp back to 0.
+ *             On timer elapsed, advance nextCp → 2.
+ * idx === 2:  arrived at ER bay — pay atomically and clear state.
+ *
+ * Server-authoritative: uses drivenVehicle.x/z only (no player.x/z fallback).
+ */
+async function handleMedicCheckpoint(
+  socket: Socket,
+  ctx:    JobContext,
+  entry:  RpCacheEntry,
+  state:  JobState,
+  idx:    number,
+  now:    number,
+): Promise<void> {
+  if (!state.medicTarget || state.medicPay === undefined) {
+    logger.warn({ socketId: socket.id }, "[rp] handleMedicCheckpoint: missing medic state");
+    socket.emit("rp:toast", {
+      msg:      "Route data lost — please clock out and try again.",
+      color:    "red",
+      duration: 5000,
+    });
+    return;
+  }
+
+  // Reject wrong idx
+  if (idx !== state.nextCp) {
+    logger.debug(
+      { socketId: socket.id, idx, nextCp: state.nextCp },
+      "[rp] medic checkpoint out of order — ignored",
+    );
+    return;
+  }
+
+  // All stages require driven vehicle (no player.x/z fallback)
+  const drivenVehicle = [...ctx.vehicles.values()].find(v => v.driverId === socket.id);
+  if (!drivenVehicle) {
+    socket.emit("rp:toast", {
+      msg:      "You must be driving to respond to a call.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  const radiusSq = MEDIC_SERVICE_RADIUS * MEDIC_SERVICE_RADIUS;
+
+  // ── idx === 0: respond to patient ────────────────────────────────────────────
+  if (idx === 0) {
+    const [tx, , tz] = state.medicTarget;
+    const dx = drivenVehicle.x - tx;
+    const dz = drivenVehicle.z - tz;
+    if (dx * dx + dz * dz > radiusSq) return; // not close enough yet
+
+    state.nextCp                 = 1;
+    state.lastCpAt               = now;
+    state.medicTreatmentStartedAt = now;
+
+    socket.emit("rp:profileUpdate", { activeJob: buildMedicJob(state) });
+    socket.emit("rp:toast", {
+      msg:      "On scene — treating patient for 6 seconds. Stay close!",
+      color:    "cyan",
+      duration: 4000,
+    });
+    logger.debug({ socketId: socket.id }, "[rp] medic arrived at patient, treatment started");
+    return;
+  }
+
+  // ── idx === 1: treatment timer ────────────────────────────────────────────────
+  if (idx === 1) {
+    if (!state.medicTreatmentStartedAt) {
+      logger.warn({ socketId: socket.id }, "[rp] handleMedicCheckpoint: idx=1 but no treatmentStartedAt");
+      return;
+    }
+
+    const [tx, , tz] = state.medicTarget;
+    const dx = drivenVehicle.x - tx;
+    const dz = drivenVehicle.z - tz;
+
+    // Left the scene — reset treatment (same pattern as mechanic)
+    if (dx * dx + dz * dz > radiusSq) {
+      state.medicTreatmentStartedAt = undefined;
+      state.nextCp                  = 0;
+      state.lastCpAt                = 0;
+      socket.emit("rp:profileUpdate", { activeJob: buildMedicJob(state) });
+      socket.emit("rp:toast", {
+        msg:      "Left the scene! Drive back to restart treatment.",
+        color:    "yellow",
+        duration: 3000,
+      });
+      return;
+    }
+
+    // Timer still running?
+    if (now - state.medicTreatmentStartedAt < MEDIC_TREATMENT_DURATION_MS) {
+      return; // client retries next second
+    }
+
+    // Treatment complete — advance to transport stage
+    state.nextCp   = 2;
+    state.lastCpAt = now;
+
+    socket.emit("rp:profileUpdate", { activeJob: buildMedicJob(state) });
+    socket.emit("rp:toast", {
+      msg:      "Patient stabilised! Transport to the ER bay.",
+      color:    "cyan",
+      duration: 5000,
+    });
+    logger.debug({ socketId: socket.id }, "[rp] medic treatment complete, advancing to transport");
+    return;
+  }
+
+  // ── idx === 2: ER bay — pay atomically ────────────────────────────────────────
+  const [erx, , erz] = MEDIC_ER_BAY;
+  const erdx = drivenVehicle.x - erx;
+  const erdz = drivenVehicle.z - erz;
+  if (erdx * erdx + erdz * erdz > radiusSq) return; // not at ER yet
+
+  const pay = state.medicPay;
+  let newCash = entry.cash;
+  try {
+    await db.transaction(async (tx) => {
+      const [wallet] = await tx
+        .select()
+        .from(rpWallets)
+        .where(eq(rpWallets.playerId, entry.playerId))
+        .for("update");
+      if (!wallet) throw new Error("no wallet row");
+
+      newCash = wallet.cash + pay;
+
+      await tx
+        .update(rpWallets)
+        .set({ cash: newCash, updatedAt: new Date() })
+        .where(eq(rpWallets.playerId, entry.playerId));
+
+      await tx.insert(rpTransactionLog).values({
+        playerId:  entry.playerId,
+        kind:      "job_pay",
+        cashDelta: pay,
+        bankDelta: 0,
+        cashAfter: newCash,
+        bankAfter: wallet.bank,
+        note:      "Paramedic run complete (patient delivered to ER)",
+      });
+
+      await tx
+        .update(rpPlayers)
+        .set({ onDuty: false, currentJob: null, lastPaycheckAt: new Date(now) })
+        .where(eq(rpPlayers.id, entry.playerId));
+    });
+  } catch (err) {
+    // DB failed — leave state untouched; client retries idx=2 next second
+    logger.error({ err, socketId: socket.id }, "[rp] handleMedicCheckpoint: payment tx failed");
+    socket.emit("rp:toast", {
+      msg:      "Payment failed — drive through the ER bay again.",
+      color:    "red",
+      duration: 4000,
+    });
+    return;
+  }
+
+  // DB committed — finalise state
+  rpJobState.delete(socket.id);
+  entry.cash           = newCash;
+  entry.onDuty         = false;
+  entry.currentJob     = null;
+  entry.lastPaycheckAt = now;
+
+  socket.emit("rp:profileUpdate", {
+    cash:       newCash,
+    onDuty:     false,
+    currentJob: null,
+    activeJob:  null,
+  });
+  socket.emit("rp:toast", {
+    msg:      `Patient delivered! +$${pay} earned. Next call in 60 seconds.`,
+    color:    "green",
+    duration: 6000,
+  });
+  logger.info({ socketId: socket.id, pay, newCash }, "[rp] medic run complete, paid");
 }

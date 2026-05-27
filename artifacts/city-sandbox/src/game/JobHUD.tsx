@@ -12,7 +12,7 @@
 
 import { useEffect, useState } from "react";
 import type { ActiveJob } from "../shared/rpTypes";
-import { MECHANIC_REPAIR_DURATION_MS } from "../shared/rpTypes";
+import { MECHANIC_REPAIR_DURATION_MS, MEDIC_TREATMENT_DURATION_MS } from "../shared/rpTypes";
 
 interface JobHUDProps {
   activeJob: ActiveJob | null;
@@ -401,6 +401,122 @@ function MechanicHUD({ activeJob }: { activeJob: ActiveJob }) {
           />
           <span style={{ fontSize: 9, color: "rgba(255,255,255,0.5)", letterSpacing: 1 }}>REPAIR</span>
         </div>
+      </div>
+
+      {/* Status line */}
+      <div style={{ fontSize: 12, color: stageColor, letterSpacing: 0.5 }}>
+        {stageLabel}{" "}
+        <span style={{ color: "#9bb", fontSize: 11 }}>· ${activeJob.pay} pay</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Medic / Paramedic HUD ─────────────────────────────────────────────────────
+
+const MEDIC_RED   = "#ff2244";
+const MEDIC_BLUE  = "#4488ff";
+const MEDIC_WHITE = "#ffffff";
+
+function MedicHUD({ activeJob }: { activeJob: ActiveJob }) {
+  const stage = activeJob.nextCp; // 0=RESPOND, 1=TREAT, 2=TRANSPORT, 3=done
+
+  // Treatment countdown — ticks every 100 ms during stage 1
+  const isTreating = stage === 1;
+  const [timeLeft, setTimeLeft] = useState<number | null>(null);
+  useEffect(() => {
+    if (!isTreating || !activeJob.treatmentStartedAt) {
+      setTimeLeft(null);
+      return;
+    }
+    const tick = () => {
+      const elapsed    = Date.now() - (activeJob.treatmentStartedAt as number);
+      const remaining  = Math.max(0, MEDIC_TREATMENT_DURATION_MS - elapsed);
+      setTimeLeft(remaining);
+    };
+    tick();
+    const id = setInterval(tick, 100);
+    return () => clearInterval(id);
+  }, [isTreating, activeJob.treatmentStartedAt]);
+
+  const done = stage >= 3;
+
+  const STAGES = ["RESPOND", "TREAT", "TRANSPORT"];
+  const stageColors = [MEDIC_RED, MEDIC_RED, MEDIC_BLUE];
+
+  const stageLabel = done
+    ? "Patient delivered!"
+    : stage === 1 && timeLeft !== null && timeLeft > 0
+    ? `Treating… ${(timeLeft / 1000).toFixed(1)}s`
+    : stage === 1
+    ? "Treatment done — transporting…"
+    : stage === 0
+    ? "Respond to patient"
+    : "Transport to ER bay";
+
+  const borderColor = stage === 2
+    ? "rgba(68,136,255,0.6)"
+    : "rgba(255,34,68,0.6)";
+  const stageColor = done ? "#2ee07a" : stageColors[Math.min(stage, 2)];
+
+  return (
+    <div
+      style={{
+        position:             "fixed",
+        top:                  64,
+        left:                 "50%",
+        transform:            "translateX(-50%)",
+        background:           PANEL_BG,
+        border:               `1px solid ${borderColor}`,
+        borderRadius:         PANEL_RADIUS,
+        padding:              "10px 24px",
+        display:              "flex",
+        flexDirection:        "column",
+        alignItems:           "center",
+        gap:                  6,
+        boxShadow:            PANEL_SHADOW,
+        backdropFilter:       "blur(6px)",
+        WebkitBackdropFilter: "blur(6px)",
+        pointerEvents:        "none",
+        minWidth:             260,
+        fontFamily:           "'Courier New', monospace",
+        userSelect:           "none",
+        zIndex:               50,
+      }}
+    >
+      {/* Job label */}
+      <div style={{ fontSize: 10, color: MEDIC_RED, letterSpacing: 3, fontWeight: "bold", textTransform: "uppercase" }}>
+        🚑 Paramedic
+      </div>
+
+      {/* Three-stage progress row: RESPOND → TREAT → TRANSPORT */}
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginTop: 2 }}>
+        {STAGES.map((label, i) => {
+          const isPassed = i < stage;
+          const isNext   = i === stage && !done;
+          const color    = stageColors[i];
+          return (
+            <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+              <div
+                style={{
+                  width:        i === 1 ? 52 : 44,
+                  height:       8,
+                  borderRadius: 3,
+                  background:   isPassed
+                    ? color
+                    : isNext
+                    ? color + "55"
+                    : "rgba(255,255,255,0.1)",
+                  boxShadow:    isPassed ? `0 0 6px ${color}88` : "none",
+                  transition:   "background 0.25s",
+                }}
+              />
+              <span style={{ fontSize: 8, color: "rgba(255,255,255,0.45)", letterSpacing: 1 }}>
+                {label}
+              </span>
+            </div>
+          );
+        })}
       </div>
 
       {/* Status line */}

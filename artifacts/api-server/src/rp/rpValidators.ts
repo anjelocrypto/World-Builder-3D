@@ -27,6 +27,9 @@ import {
   DELIVERY_DROPOFFS,
   MECHANIC_GARAGE,
   MECHANIC_TARGETS,
+  MEDIC_CENTER,
+  MEDIC_PATIENT_CALLS,
+  MEDIC_ER_BAY,
 } from "../socket/cityData";
 import type { RpCacheEntry, TestState } from "./rpCache";
 
@@ -146,6 +149,11 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     { label: "MECHANIC_GARAGE", x: MECHANIC_GARAGE[0], z: MECHANIC_GARAGE[2] },
   ];
 
+  // Phase 5D: Medical Center must be off-road
+  const medicOffRoadMarkers = [
+    { label: "MEDIC_CENTER", x: MEDIC_CENTER[0], z: MEDIC_CENTER[2] },
+  ];
+
   // Phase 5A: Taxi pickups + dropoffs must be on roads
   const taxiOnRoad = [
     ...TAXI_PICKUPS.map(([cx, , cz], i) => ({ label: `TAXI_PICKUP_${i}`, x: cx, z: cz })),
@@ -163,7 +171,13 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     ...MECHANIC_TARGETS.map(([cx, , cz], i) => ({ label: `MECHANIC_TARGET_${i}`, x: cx, z: cz })),
   ];
 
-  for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers, ...deliveryMarkers, ...mechanicMarkers]) {
+  // Phase 5D: Patient calls + ER bay must be on roads
+  const medicOnRoad = [
+    ...MEDIC_PATIENT_CALLS.map(([cx, , cz], i) => ({ label: `MEDIC_PATIENT_CALL_${i}`, x: cx, z: cz })),
+    { label: "MEDIC_ER_BAY", x: MEDIC_ER_BAY[0], z: MEDIC_ER_BAY[2] },
+  ];
+
+  for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers, ...deliveryMarkers, ...mechanicMarkers, ...medicOffRoadMarkers]) {
     if (isInCarriageway(m.x, m.z))
       throw new Error(`[rp] marker "${m.label}" is inside road carriageway`);
     if (isInsideObstacle(m.x, m.z, obstacles))
@@ -171,7 +185,7 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     console.info(`[rp] marker OK: ${m.label} [${m.x}, ${m.z}]`);
   }
 
-  for (const cp of [...ON_ROAD, ...taxiOnRoad, ...deliveryOnRoad, ...mechanicOnRoad]) {
+  for (const cp of [...ON_ROAD, ...taxiOnRoad, ...deliveryOnRoad, ...mechanicOnRoad, ...medicOnRoad]) {
     if (!isOnRoad(cp.x, cp.z))
       throw new Error(`[rp] checkpoint "${cp.label}" is NOT on a road`);
     if (isInsideObstacle(cp.x, cp.z, obstacles))
@@ -226,6 +240,10 @@ export function validateRpMarkerVehicleClearance(vehicles: VehiclePos[]): void {
     // Phase 5C — mechanic garage + all service call targets
     { label: "MECHANIC_GARAGE",         x: MECHANIC_GARAGE[0],         z: MECHANIC_GARAGE[2] },
     ...MECHANIC_TARGETS.map(([cx, , cz], i)  => ({ label: `MECHANIC_TARGET_${i}`,   x: cx, z: cz })),
+    // Phase 5D — medical center + all patient calls + ER bay
+    { label: "MEDIC_CENTER",            x: MEDIC_CENTER[0],            z: MEDIC_CENTER[2] },
+    ...MEDIC_PATIENT_CALLS.map(([cx, , cz], i) => ({ label: `MEDIC_PATIENT_CALL_${i}`, x: cx, z: cz })),
+    { label: "MEDIC_ER_BAY",            x: MEDIC_ER_BAY[0],            z: MEDIC_ER_BAY[2] },
   ];
   for (const m of markers) {
     if (isNearParkedCar(m.x, m.z, vehicles)) {
