@@ -1,17 +1,30 @@
-# Nemoverse RP Foundation — Implementation Plan v1.2
+# Nemoverse RP Foundation — Implementation Plan v1.3
 
-> **Status:** Revised proposal — pending approval before any code changes.
+> **Status:** Final plan revision — approved as direction. Next step: code Phase 1A only.
 >
-> **Changes from v1.1:**
+> **Changes from v1.2:**
+> - **Fix 1 — Station marker geometry:** `STATION_MARKER_POS` shifted from `[128, 0, -65]`
+>   to `[132, 0, -65]`; platform reduced from 12m to 8m wide. West edge now at x=128,
+>   giving 6m clearance from stair foot at x=122. Spawn `[128, 1, -65]` unchanged.
+> - **Fix 2 — Test vehicle OBB:** `TEST_VEHICLE_SPAWN` corrected from `[11, 0.6, -30]` to
+>   `[13, 0.6, -30]`. Center-point-only clearance was insufficient — a real vehicle
+>   (~1m half-width) had its edge touching the road boundary at x=10. New position gives
+>   3m edge clearance. `validateVehicleSpawnOBB()` helper added to §12.
+> - **Fix 3 — Drizzle partial index (Option A):** Remove instruction to delete
+>   `idx_rp_warrants_player`. Both indexes are now kept: the Drizzle-generated normal
+>   index on `(player_id)` stays, and `idx_rp_warrants_active` (partial, `WHERE
+>   cleared_at IS NULL`) is manually appended to the SQL file. No deletion.
+> - **Fix 4 — Phase 1 split into 1A and 1B:** Phase 1A = schema files + `drizzle-kit
+>   generate` only (no api-server imports, no gameplay). Phase 1B = runtime code after
+>   SQL is reviewed and `DATABASE_URL` is confirmed.
+>
+> **Inherited from v1.2:**
 > - Station spawn relocated from `[18, 1, -65]` (inside downtown building block) to
 >   `[128, 1, -65]` — ground-level exterior at the foot of the real Central Loop Station
 >   stairs, validated against all buildings, parked cars, rail geometry, and obstacles.
 > - Licensing Office relocated from `[24, 0, -22]` (2m from car-0) to `[14, 0, -30]` —
 >   11m from car-0, 22m from car-10, clear of all roads and building blocks.
-> - Test vehicle spawn updated to match new office position.
-> - Checkpoint route redesigned from new office/spawn positions.
-> - Drizzle TypeScript schema updated with proper `check()`, `index()`, and partial-index
->   syntax; seed row strategy clarified (separate seed script, not in migration).
+> - Drizzle TypeScript schema with proper `check()`, `index()`, and partial-index syntax.
 > - Phase 1 scope confirmed narrow (no test, no jobs, no police, no saved position).
 
 ---
@@ -20,7 +33,7 @@
 
 1. [Architecture Principles](#1-architecture-principles)
 2. [Player Identity Strategy](#2-player-identity-strategy)
-3. [Phase 1 — Minimal RP Core (First Coding Session)](#3-phase-1--minimal-rp-core-first-coding-session)
+3. [Phase 1 — Minimal RP Core (Phase 1A + 1B)](#3-phase-1--minimal-rp-core-phase-1a--1b)
 4. [Data Model & DB Schema](#4-data-model--db-schema)
 5. [Phase 2 — Central Spawn](#5-phase-2--central-spawn)
 6. [Phase 3 — Driver License Gate](#6-phase-3--driver-license-gate)
@@ -97,9 +110,11 @@ pointing to an OAuth row; no other RP code changes.
 
 ---
 
-## 3. Phase 1 — Minimal RP Core (First Coding Session)
+## 3. Phase 1 — Minimal RP Core (Phase 1A + 1B)
 
-This is the **only** scope for the first coding session. Everything else is deferred.
+Phase 1 is split into two safe coding slices. **Phase 1A** is the only scope for
+the first coding session. **Phase 1B** begins only after the generated SQL is reviewed
+and `DATABASE_URL` is confirmed. Everything else is deferred.
 
 ### Deliverables
 
@@ -251,7 +266,9 @@ CREATE TABLE rp_warrants (
   cleared_at TIMESTAMPTZ,
   CONSTRAINT rp_warrants_stars_range CHECK (stars BETWEEN 1 AND 5)
 );
--- Partial index: only active (uncleared) warrants need fast lookup
+-- Drizzle-generated normal index (keep — do not delete):
+CREATE INDEX idx_rp_warrants_player ON rp_warrants(player_id);
+-- Manually appended partial index (active warrants hot path):
 CREATE INDEX idx_rp_warrants_active
   ON rp_warrants(player_id)
   WHERE cleared_at IS NULL;
@@ -401,11 +418,11 @@ export const rpWarrants = pgTable(
   },
   (t) => [
     check("rp_warrants_stars_range", sql`${t.stars} BETWEEN 1 AND 5`),
-    // NOTE: The partial index (WHERE cleared_at IS NULL) cannot be expressed as a
-    // type-safe Drizzle index() call in most Drizzle versions. Add it manually to the
-    // generated migration file before applying:
+    // Drizzle generates idx_rp_warrants_player — keep it (Option A: no deletion).
+    // After drizzle-kit generate, manually APPEND idx_rp_warrants_active to the SQL:
     //   CREATE INDEX idx_rp_warrants_active ON rp_warrants(player_id)
     //   WHERE cleared_at IS NULL;
+    // Both indexes coexist. Deleting the normal one causes migration drift.
     index("idx_rp_warrants_player").on(t.playerId),
   ],
 );
@@ -476,14 +493,19 @@ After `drizzle-kit generate`, open `0001_rp_foundation.sql` and append the `INSE
 statements from the SQL preview. Mark the file as manually edited so Drizzle doesn't
 overwrite it on the next generate run.
 
-**Partial index — manual addition:**
-After reviewing the generated file, manually insert before the final line:
+**Partial index — Option A (keep both, no deletion):**
+Drizzle generates `idx_rp_warrants_player` on `(player_id)` — **keep it**. Do not
+delete it. After reviewing the generated file, manually **append** the partial index
+as an additional statement:
 ```sql
+-- Manually appended after drizzle-kit generate — do NOT delete idx_rp_warrants_player
 CREATE INDEX idx_rp_warrants_active
   ON rp_warrants(player_id)
   WHERE cleared_at IS NULL;
 ```
-Then delete the plain `idx_rp_warrants_player` index Drizzle generated.
+Both indexes coexist: `idx_rp_warrants_player` serves general queries; the partial
+`idx_rp_warrants_active` serves the common hot path (look up active/uncleared warrants
+only). Deleting the normal index would cause migration drift on future Drizzle generates.
 
 ---
 
@@ -511,7 +533,10 @@ clear: no building blocks, no parked cars in the vicinity, no road carriageways.
 // Platform deck: x ∈ [106, 114], z ∈ [−75, −55] at y=12
 // Stair foot:    x=122, z=−65
 
-export const STATION_MARKER_POS:   [number, number, number] = [128, 0,  -65];
+// STATION_MARKER_POS shifted east to [132, 0, −65] (was [128, 0, −65]).
+// Platform is 8m wide (was 12m). West edge now at x=128 — 6m clear of stair foot x=122.
+// Spawn stays at [128, 1, −65] (ground exterior, east of stair); marker is behind it.
+export const STATION_MARKER_POS:   [number, number, number] = [132, 0,  -65];
 export const STATION_SPAWN:        [number, number, number] = [128, 1,  -65];
 export const STATION_SPAWN_JITTER_X = 4;   // ±4m — range x ∈ [124, 132]
 export const STATION_SPAWN_JITTER_Z = 3;   // ±3m — range z ∈ [−68, −62]
@@ -542,13 +567,15 @@ All checks pass including every worst-case jitter position.
 
 ### 5.5 Station marker description
 
-A ground-level platform at `[128, 0, −65]` (12m × 8m flat slab, y=0.05) with:
+A ground-level platform at `[132, 0, −65]` (8m × 8m flat slab, y=0.05) with:
 - A glowing sign band (emissive mesh) at the west end facing the stair: "CENTRAL STATION"
 - A canopy overhang mesh (thin box, 4m tall) to visually anchor the landmark
 - A minimap floor ring (r=10) tinted with station color so the location is obvious
 
-The marker sits to the east of the staircase and does not obscure the stair ramp or
-the elevated deck above it.
+Geometry clearance: platform is 8m wide, centered at x=132 → west edge at x=128.
+Stair foot is at x=122 → **6m gap** between platform west edge and staircase.
+Spawn point `[128, 1, −65]` sits in this gap, between stair and marker, which is
+the natural entry point. The marker does not obscure the stair ramp or elevated deck.
 
 ---
 
@@ -592,18 +619,26 @@ server will throw and the position must be adjusted.
 
 ### 6.4 Test vehicle spawn
 
+**OBB note:** A road-edge clearance check must account for the vehicle's footprint,
+not just its center point. A standard car is ~2m wide (half-width ~1m). The validator
+must check that all four OBB corners clear the road boundary, not just the center.
+
 ```ts
-export const TEST_VEHICLE_SPAWN: [number, number, number] = [11, 0.6, -30];
-// x=11: just outside the central road edge (|11−0|=11 > 10), on the
-//        east sidewalk — the test car pulls out directly onto x=0 road.
+export const TEST_VEHICLE_SPAWN: [number, number, number] = [13, 0.6, -30];
+// x=13: center-to-road-edge = |13−0| = 13. Vehicle half-width ≈ 1m → nearest
+//        body edge at x=12, giving 2m clearance from road boundary at x=10.
+//        (v1.2 used x=11; edge was at x=10, exactly on road boundary — corrected.)
 // z=−30: 15m north of z=−45 road, no obstructions.
 ```
 
 | Check | Result |
 |-------|--------|
-| Off road carriageway: `\|11−0\|=11 ≥ 10` | ✅ |
-| 3m from Licensing Office (14, −30) | ✅ close enough for walk-up |
-| Distance from car-0 (22, −22): √((11−22)²+(−30+22)²) = 13.6m | ✅ |
+| Center off road: `\|13−0\|=13 ≥ 10` | ✅ |
+| OBB edge off road: `13 − 1 = 12 ≥ 10` (2m clearance) | ✅ |
+| 1m from Licensing Office (14, −30) | ✅ adjacent — walk-up distance |
+| Distance from car-0 (22, −22): √((13−22)²+(−30+22)²) = √(81+64) = 12.0m | ✅ |
+
+See `validateVehicleSpawnOBB()` in §12.5 for the full OBB validator pattern.
 
 ### 6.5 Interaction event flow — single entry point
 
@@ -869,7 +904,7 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
   const OFF_ROAD_MARKERS = [
     { label: "STATION_SPAWN",        x: 128, z: -65 },
     { label: "LICENSING_OFFICE_POS", x:  14, z: -30 },
-    { label: "TEST_VEHICLE_SPAWN",   x:  11, z: -30 },
+    { label: "TEST_VEHICLE_SPAWN",   x:  13, z: -30 },  // v1.3: was 11
     { label: "CP3_FINISH",           x:  14, z: -26 },
   ];
   const ON_ROAD_CHECKPOINTS = [
@@ -918,7 +953,7 @@ export function validateRpMarkerVehicleClearance(
 ): void {
   const markers = [
     { label: "LICENSING_OFFICE_POS", x:  14, z: -30 },
-    { label: "TEST_VEHICLE_SPAWN",   x:  11, z: -30 },
+    { label: "TEST_VEHICLE_SPAWN",   x:  13, z: -30 },  // v1.3: was 11
     { label: "STATION_SPAWN",        x: 128, z: -65 },
   ];
   for (const m of markers) {
@@ -930,7 +965,58 @@ export function validateRpMarkerVehicleClearance(
 }
 ```
 
-### 12.5 Jitter spawn safety
+### 12.5 Vehicle spawn OBB clearance
+
+A vehicle spawn is valid only if all four corner points of its oriented bounding box
+(OBB) clear every road carriageway and static obstacle. Center-point clearance alone
+is insufficient because a real car (~2m wide, ~4m long) has edges that can still
+intersect roads or buildings even if the center passes.
+
+```ts
+/**
+ * Returns true if every OBB corner of a vehicle spawn is off all road carriageways
+ * and outside all static obstacles.
+ *
+ * @param cx        Spawn center x
+ * @param cz        Spawn center z
+ * @param halfWidth Half of the vehicle's width (default 1.0m for standard cars)
+ * @param halfLen   Half of the vehicle's length (default 2.2m for standard cars)
+ * @param headingRad Heading of the vehicle in radians (0 = facing +Z)
+ * @param obstacles  Static obstacle list from city data
+ */
+export function validateVehicleSpawnOBB(
+  cx: number,
+  cz: number,
+  halfWidth = 1.0,
+  halfLen   = 2.2,
+  headingRad = 0,
+  obstacles: StaticObstacle[] = [],
+): boolean {
+  const cos = Math.cos(headingRad);
+  const sin = Math.sin(headingRad);
+  // Four corners of the axis-aligned bounding box, rotated by heading
+  const corners: [number, number][] = [
+    [-halfWidth, -halfLen],
+    [ halfWidth, -halfLen],
+    [ halfWidth,  halfLen],
+    [-halfWidth,  halfLen],
+  ].map(([lx, lz]) => [
+    cx + lx * cos - lz * sin,
+    cz + lx * sin + lz * cos,
+  ]);
+
+  for (const [x, z] of corners) {
+    if (isInCarriageway(x, z))          return false;
+    if (isInsideObstacle(x, z, obstacles, 0)) return false;
+  }
+  return true;
+}
+```
+
+Used in `validateRpMarkers()` startup check for `TEST_VEHICLE_SPAWN` and any
+dynamically spawned test vehicle before placing it in the world.
+
+### 12.6 Jitter spawn safety
 
 ```ts
 export function safeStationSpawn(obstacles: StaticObstacle[]): [number, number, number] {
@@ -947,7 +1033,7 @@ export function safeStationSpawn(obstacles: StaticObstacle[]): [number, number, 
 }
 ```
 
-### 12.6 License check helpers
+### 12.7 License check helpers
 
 ```ts
 // Server:
@@ -1106,38 +1192,106 @@ export interface RpProfile {
 
 ## 16. Implementation Order
 
-### Phase 1 — Minimal RP Core (Session 1)
+### Phase 1A — Schema Only (First Coding Session)
+
+**Gate:** No `@workspace/db` import in `api-server`. No gameplay code. No DB push.
+Everything in this phase is pure TypeScript schema + review. Stop here and wait for
+SQL approval + `DATABASE_URL` confirmation before starting Phase 1B.
 
 ```
-Step 1  — lib/db/src/schema/rp.ts                (Drizzle schema, factions first,
-                                                   with check() + index())
-Step 2  — lib/db/src/schema/index.ts             (re-export rp.ts)
-Step 3  — lib/db/src/seed/rpSeed.ts              (seed script, do NOT run yet)
+Step 1  — lib/db/src/schema/rp.ts
+           Drizzle table definitions, factions declared first, with check() + index().
+           Exactly as shown in §4.5.
+
+Step 2  — lib/db/src/schema/index.ts
+           Add re-export: export * from "./rp";
+
+Step 3  — lib/db/src/seed/rpSeed.ts
+           Seed script (factions + jobs INSERT). Do NOT run yet.
+           As shown in §4.6 Option A.
+
 Step 4  — Run: cd lib/db && pnpm drizzle-kit generate
-           Review output vs §4.4 preview
-           Manually add partial index for rp_warrants
-           Do NOT push yet
-Step 5  — artifacts/city-sandbox/src/shared/rpTypes.ts   (RpProfile, constants)
-Step 6  — artifacts/api-server/src/rp/rpValidators.ts    (all validators)
-Step 7  — artifacts/api-server/src/rp/rpCache.ts
-Step 8  — artifacts/api-server/src/rp/rpPlayerService.ts
-Step 9  — artifacts/api-server/src/rp/rpWalletService.ts (walletTransfer)
-Step 10 — artifacts/api-server/src/socket/cityData.ts    (STATION_SPAWN constants)
-Step 11 — artifacts/api-server/src/socket/gameServer.ts  (token on join, license
-                                                           gate, validateRpMarkers)
-Step 12 — artifacts/api-server/src/rp/setupRpHandlers.ts (rp:interact stub,
-                                                           rp:profile emit)
-Step 13 — artifacts/city-sandbox/src/hooks/useSocket.ts  (send token, rp:profile)
-Step 14 — artifacts/city-sandbox/src/hooks/useRpSocket.ts
-Step 15 — artifacts/city-sandbox/src/game/RPMarkers.tsx  (station marker only)
-Step 16 — artifacts/city-sandbox/src/game/RPHud.tsx      (cash/bank/license)
-Step 17 — artifacts/city-sandbox/src/game/LocalPlayer.tsx (license gate)
-Step 18 — artifacts/city-sandbox/src/game/GameScene.tsx  (mount new components)
-Step 19 — artifacts/city-sandbox/src/game/HUD.tsx        (pass new props)
-Step 20 — pnpm run typecheck + build verification
+           Review generated SQL vs §4.4 preview.
+           Verify idx_rp_warrants_player is present — keep it, do not delete.
+           Manually APPEND idx_rp_warrants_active (partial index) to the SQL file.
+           Do NOT run drizzle-kit push or drizzle-kit migrate yet.
+
+Step 5  — Run: cd lib/db && pnpm tsc --noEmit
+           TypeScript must compile clean with no errors.
 ```
 
-### Phase 2 — License Test (Session 2)
+**Phase 1A is complete when:** `drizzle-kit generate` produces a SQL file that matches
+§4.4, both warrant indexes are present, and `tsc --noEmit` passes. Commit the schema
+files and the generated SQL for review. Do not merge or apply until approved.
+
+---
+
+### Phase 1B — Runtime Code (After SQL Approval + DATABASE_URL Confirmed)
+
+**Gate:** Phase 1A SQL file reviewed and approved. `DATABASE_URL` env var set and
+verified reachable from `artifacts/api-server`. Begin only after explicit approval.
+
+```
+Step 6  — artifacts/city-sandbox/src/shared/rpTypes.ts
+           RpProfile interface + coordinate constants (STATION_SPAWN, STATION_MARKER_POS,
+           LICENSING_OFFICE_POS, TEST_VEHICLE_SPAWN, TEST_FEE, LICENSE_TEST_CHECKPOINTS).
+
+Step 7  — artifacts/api-server/src/rp/rpValidators.ts
+           All validator functions: isInCarriageway, isOnRoad, isInsideObstacle,
+           validateRpMarkers, validateRpMarkerVehicleClearance, safeStationSpawn,
+           validateVehicleSpawnOBB, canDriveVehicle, canDriveVehicleClient.
+
+Step 8  — artifacts/api-server/src/rp/rpCache.ts
+           In-memory Map<socketId, RpCacheEntry>.
+
+Step 9  — artifacts/api-server/src/rp/rpPlayerService.ts
+           DB CRUD: player upsert on token, wallet default insert, profile load.
+
+Step 10 — artifacts/api-server/src/rp/rpWalletService.ts
+           walletTransfer() with SELECT … FOR UPDATE row lock, as shown in §7.3.
+
+Step 11 — artifacts/api-server/src/socket/cityData.ts
+           Replace hardcoded spawn array with STATION_SPAWN + jitter constants.
+
+Step 12 — artifacts/api-server/src/socket/gameServer.ts
+           • Receive token on join event; call rpPlayerService.upsert
+           • Run validateRpMarkers() + validateRpMarkerVehicleClearance() at startup
+           • License gate in vehicleUpdate handler (canDriveVehicle check)
+           • Call setupRpHandlers(io, socket)
+
+Step 13 — artifacts/api-server/src/rp/setupRpHandlers.ts
+           Register rp:interact (stub), emit rp:profile on join.
+
+Step 14 — artifacts/city-sandbox/src/hooks/useSocket.ts
+           Include token in join payload; forward rp:profile event.
+
+Step 15 — artifacts/city-sandbox/src/hooks/useRpSocket.ts
+           rp:* event listeners; store RpProfile in React state.
+
+Step 16 — artifacts/city-sandbox/src/game/RPMarkers.tsx
+           Station platform marker only (STATION_MARKER_POS geometry + sign band).
+           Licensing Office marker is deferred to Phase 2.
+
+Step 17 — artifacts/city-sandbox/src/game/RPHud.tsx
+           Cash / bank / license badge HUD panel.
+
+Step 18 — artifacts/city-sandbox/src/game/LocalPlayer.tsx
+           canDriveVehicleClient() check before enterVehicle().
+
+Step 19 — artifacts/city-sandbox/src/game/GameScene.tsx
+           Mount <RPMarkers> and <RPHud>.
+
+Step 20 — artifacts/city-sandbox/src/game/HUD.tsx
+           Add cash, bank, driverLicense props.
+
+Step 21 — pnpm run typecheck (both city-sandbox and api-server)
+           pnpm --filter @workspace/city-sandbox build
+           Both must pass clean.
+```
+
+---
+
+### Phase 2 — License Test (Session 3)
 `rpLicenseService.ts` → `LicenseTestHUD.tsx` → extend `setupRpHandlers` → extend
 `RPMarkers.tsx` with Licensing Office marker.
 
@@ -1148,22 +1302,29 @@ Jobs → Police → Factions → Mayor.
 
 ## 17. Approval Checklist
 
+### Phase 1A gate (must be checked before coding begins)
 - [ ] **DB schema** approved (§4.4–§4.5)
 - [ ] **Drizzle `check()` + `index()` syntax** reviewed — matches target Drizzle version
-- [ ] **Seed strategy** approved: separate seed script (`rpSeed.ts`) + manual partial index
-- [ ] **Migration**: `drizzle-kit generate` only; manual SQL review + partial index addition before push
+- [ ] **Seed strategy** approved: separate `rpSeed.ts` + manual partial index append (no deletion)
+- [ ] **Partial index Option A** confirmed: keep `idx_rp_warrants_player`, append `idx_rp_warrants_active` — no deletion
 - [ ] **Player identity**: UUID token in localStorage — approved
 - [ ] **Station spawn** `[128, 1, −65]` — approved *(east exterior of Central Loop Station)*
+- [ ] **Station marker** `[132, 0, −65]`, 8m wide — approved *(west edge at x=128, 6m from stair foot)*
 - [ ] **Station jitter** ±4m x, ±3m z — approved
 - [ ] **Licensing Office** `[14, 0, −30]` — approved *(subject to `validateRpMarkers()` passing)*
-- [ ] **Test vehicle spawn** `[11, 0.6, −30]` — approved
+- [ ] **Test vehicle spawn** `[13, 0.6, −30]` — approved *(OBB edge at x=12, 2m from road boundary)*
 - [ ] **License test fee** $200 — approved
 - [ ] **Starting cash** $500, bank $0 — approved
 - [ ] **Checkpoint route** (§6.8) — approved
-- [ ] **Phase 1 minimal scope** confirmed (§3): no test, no jobs, no police, no saved position
+- [ ] **Phase 1A minimal scope**: schema + generate only, no api-server imports, no gameplay code
+
+### Phase 1B gate (must be checked before runtime code begins)
+- [ ] **Generated SQL** (`drizzle/0001_rp_foundation.sql`) reviewed and approved vs §4.4 preview
+- [ ] **Both warrant indexes** present in SQL: `idx_rp_warrants_player` + `idx_rp_warrants_active`
 - [ ] **`DATABASE_URL`** env var set in `artifacts/api-server` environment
 - [ ] **PostgreSQL** instance accessible from api-server at deploy time
+- [ ] **Phase 1A typecheck** (`tsc --noEmit` in `lib/db`) passes clean
 
 ---
 
-*Nemoverse RP Foundation — plan v1.2*
+*Nemoverse RP Foundation — plan v1.3*
