@@ -275,12 +275,15 @@ export async function startLicenseTest(
  *
  * Validates against the server-authoritative vehicle position stored in the
  * vehicles Map.  Does NOT trust any coordinates the client sends.
+ *
+ * Async because the final checkpoint awaits completeTest() which writes to
+ * the DB before committing any state changes.
  */
-export function handleCheckpoint(
+export async function handleCheckpoint(
   socket: Socket,
   ctx:    LicenseContext,
   idx:    number,
-): void {
+): Promise<void> {
   const testState = ctx.rpTestState.get(socket.id);
   if (!testState) {
     logger.debug({ socketId: socket.id, idx }, "[rp] checkpoint: no active test");
@@ -340,7 +343,7 @@ export function handleCheckpoint(
   const isFinal = idx === LICENSE_TEST_CHECKPOINTS.length - 1;
 
   if (isFinal) {
-    completeTest(socket, ctx);
+    await completeTest(socket, ctx);
   } else {
     testState.nextCp = idx + 1;
     testState.lastCpAt = now;
@@ -361,32 +364,52 @@ export function handleCheckpoint(
 }
 
 /**
- * Final checkpoint validated — grant the license, despawn test vehicle,
- * persist to DB (fire-and-forget; cache is updated synchronously).
+ * Final checkpoint validated — persist driverLicenseAt to DB FIRST, then
+ * commit all in-memory state changes and notify the client.
+ *
+ * On DB failure: log, emit a red toast, and RETURN without touching any
+ * state so the client can retry the final checkpoint on the next tick.
  */
-function completeTest(socket: Socket, ctx: LicenseContext): void {
+async function completeTest(socket: Socket, ctx: LicenseContext): Promise<void> {
   const testState = ctx.rpTestState.get(socket.id);
   if (!testState) return;
 
   const entry = ctx.rpCache.get(socket.id);
+  if (!entry) {
+    logger.error({ socketId: socket.id }, "[rp] completeTest: no cache entry — cannot grant license");
+    socket.emit("rp:toast", {
+      msg:      "Server error — profile not loaded. Try again.",
+      color:    "red",
+      duration: 5000,
+    });
+    return; // test remains active; client will retry
+  }
+
   const vehicleId = testState.vehicleId;
 
+  // ── Persist FIRST — do NOT commit any state until the DB write succeeds ──
+  try {
+    await db.update(rpPlayers)
+      .set({ driverLicenseAt: new Date() })
+      .where(eq(rpPlayers.id, entry.playerId));
+    logger.info({ playerId: entry.playerId }, "[rp] driverLicenseAt persisted");
+  } catch (err) {
+    logger.error(
+      { err, playerId: entry.playerId },
+      "[rp] failed to persist driverLicenseAt — keeping test active for retry",
+    );
+    socket.emit("rp:toast", {
+      msg:      "Server error saving license — drive through the final checkpoint again.",
+      color:    "red",
+      duration: 5000,
+    });
+    return; // test remains active; client retries via the 1 s throttle
+  }
+
+  // ── DB committed — now atomically clear test state + grant license ────────
   clearTestState(socket.id, ctx);
   despawnTestVehicle(vehicleId, ctx);
-
-  if (entry) {
-    // Update cache immediately — don't wait for DB
-    entry.driverLicense = true;
-
-    // Persist to DB (fire-and-forget)
-    db.update(rpPlayers)
-      .set({ driverLicenseAt: new Date() })
-      .where(eq(rpPlayers.id, entry.playerId))
-      .then(() => logger.info({ playerId: entry.playerId }, "[rp] driverLicenseAt persisted"))
-      .catch((err) =>
-        logger.error({ err, playerId: entry.playerId }, "[rp] failed to persist driverLicenseAt"),
-      );
-  }
+  entry.driverLicense = true;
 
   socket.emit("rp:profileUpdate", { driverLicense: true, activeTest: null });
   socket.emit("rp:toast", {

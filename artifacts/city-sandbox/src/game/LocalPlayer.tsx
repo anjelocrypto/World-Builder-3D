@@ -256,9 +256,16 @@ export default function LocalPlayer({
   const raceStart = useRef(0);
   const racePassed = useRef<number[]>([]);
   const interactCooldown = useRef(0);
-  // License-test checkpoint: track last emitted CP index so we don't spam
-  // the server. Resets to -1 whenever activeTest becomes null.
-  const lastEmittedCpRef = useRef(-1);
+  // License-test checkpoint retry state.
+  // Tracks { vehicleId, nextCp, lastAttemptAt } so we can:
+  //   • keep retrying the same nextCp every ~1000 ms while inside radius
+  //   • emit immediately when vehicleId or nextCp changes (server advanced)
+  //   • never permanently mark a CP as done before server acceptance
+  const cpRetryRef = useRef<{
+    vehicleId:     string;
+    nextCp:        number;
+    lastAttemptAt: number;
+  } | null>(null);
 
   // Emit timing
   const lastEmit = useRef(0);
@@ -400,27 +407,46 @@ export default function LocalPlayer({
       }
     }
 
-    // ── License-test checkpoint proximity detection ──────────────────────────
-    // Only active when a test is running AND the player is driving the test
-    // vehicle. Emits rp:licenseTestCheckpoint once per checkpoint (lastEmitted
-    // guard prevents duplicate events). Resets lastEmitted when test ends.
+    // ── License-test checkpoint proximity — retry throttle ───────────────────
+    // Retries the same nextCp every ~1000 ms while inside the 8 m radius until
+    // the server accepts it and advances activeTest.nextCp via rp:profileUpdate.
+    // State is reset when activeTest becomes null, vehicleId changes, or nextCp
+    // advances — allowing an immediate emit on the next in-range tick.
     if (!activeTest) {
-      lastEmittedCpRef.current = -1;
+      cpRetryRef.current = null;
     } else if (
       inVehicle.current &&
       drivingVehicleId.current === activeTest.vehicleId
     ) {
       const nextCpIdx = activeTest.nextCp;
-      if (
-        nextCpIdx < activeTest.checkpoints.length &&
-        nextCpIdx !== lastEmittedCpRef.current
-      ) {
+      if (nextCpIdx < activeTest.checkpoints.length) {
         const [cpx, , cpz] = activeTest.checkpoints[nextCpIdx];
         const dvx = vehiclePos.current.x - cpx;
         const dvz = vehiclePos.current.z - cpz;
-        if (dvx * dvx + dvz * dvz < 8 * 8) {
-          lastEmittedCpRef.current = nextCpIdx;
-          emitLicenseCheckpoint?.(nextCpIdx);
+        const inRange = dvx * dvx + dvz * dvz < 8 * 8;
+
+        const retry = cpRetryRef.current;
+        const keyChanged =
+          !retry ||
+          retry.vehicleId !== activeTest.vehicleId ||
+          retry.nextCp    !== nextCpIdx;
+
+        if (keyChanged) {
+          // nextCp advanced (server accepted) or test vehicle changed —
+          // clear so next in-range tick emits immediately.
+          cpRetryRef.current = null;
+        }
+
+        if (inRange) {
+          const r = cpRetryRef.current;
+          if (!r || now - r.lastAttemptAt >= 1000) {
+            cpRetryRef.current = {
+              vehicleId:     activeTest.vehicleId,
+              nextCp:        nextCpIdx,
+              lastAttemptAt: now,
+            };
+            emitLicenseCheckpoint?.(nextCpIdx);
+          }
         }
       }
     }

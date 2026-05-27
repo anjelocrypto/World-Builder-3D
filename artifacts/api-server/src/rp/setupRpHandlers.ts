@@ -66,6 +66,8 @@ export function setupRpHandlers(
   // ── rp:licenseTestCheckpoint ──────────────────────────────────────────────
   // Client emits { idx } when within range of a checkpoint marker.  Server
   // validates using authoritative vehicle position — never client coordinates.
+  // handleCheckpoint is async (final CP awaits DB write); errors are caught
+  // here so an unhandled rejection cannot bring down the process.
   socket.on(
     "rp:licenseTestCheckpoint",
     (data: { idx?: unknown } | null | undefined) => {
@@ -74,7 +76,14 @@ export function setupRpHandlers(
         logger.debug({ socketId: socket.id, data }, "[rp] invalid checkpoint idx");
         return;
       }
-      handleCheckpoint(socket, ctx, idx);
+      handleCheckpoint(socket, ctx, idx).catch((err) => {
+        logger.error({ err, socketId: socket.id, idx }, "[rp] handleCheckpoint threw");
+        socket.emit("rp:toast", {
+          msg:      "Server error processing checkpoint — drive through again.",
+          color:    "red",
+          duration: 4000,
+        });
+      });
     },
   );
 }

@@ -266,8 +266,8 @@ export default function GameScene({
             raceActive={uiState.raceActive}
           />
 
-          {/* RP world markers — station platform, future: licensing office */}
-          <RPMarkers />
+          {/* RP world markers — station platform, licensing office, checkpoint rings */}
+          <RPMarkers activeTest={rpProfile?.activeTest ?? null} />
 
           {/* Local player (manages its own mesh + camera) */}
           <LocalPlayer
