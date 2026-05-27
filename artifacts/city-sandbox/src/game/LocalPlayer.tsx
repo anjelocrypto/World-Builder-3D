@@ -887,7 +887,7 @@ export default function LocalPlayer({
         if (canDriveVehicle && !canDriveVehicle(near.id, near)) {
           // Blocked by the optimistic gate. Show feedback locally.
           const reason = near.owned && near.locked
-            ? "That vehicle is locked. Get closer and press E to unlock it first."
+            ? "That vehicle is locked. Get closer and press L to unlock it first."
             : "Driver License required. Visit the Licensing Office.";
           pushToast?.(reason, "red", 4000);
           interactCooldown.current = 1.0;

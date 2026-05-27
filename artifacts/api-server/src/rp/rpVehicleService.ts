@@ -106,10 +106,10 @@ function spawnVehicle(v: VehicleState, ctx: VehicleContext): void {
 
 /**
  * Find the first delivery slot position that is not already occupied by
- * another vehicle (within 1.5 m of the slot centre). Falls back to the
- * last slot if all are taken.
+ * another vehicle (within 1.5 m of the slot centre).
+ * Returns null when all slots are taken — callers must not spawn.
  */
-function findFreeSlot(ctx: VehicleContext): [number, number, number] {
+function findFreeSlot(ctx: VehicleContext): [number, number, number] | null {
   const [bx, by, bz] = DEALERSHIP_DELIVERY_PAD;
   for (const [dx, dz] of DELIVERY_SLOT_OFFSETS) {
     const sx = bx + dx;
@@ -123,9 +123,7 @@ function findFreeSlot(ctx: VehicleContext): [number, number, number] {
     }
     if (!occupied) return [sx, by, sz];
   }
-  // All slots occupied — fall back to base pad (shouldn't happen in practice
-  // with 8 slots; vehicles will overlap but won't corrupt state)
-  return [bx, by, bz];
+  return null;
 }
 
 // ── Public API ─────────────────────────────────────────────────────────────────
@@ -329,8 +327,24 @@ export async function buyVehicle(
   entry.cash = newCash;
   entry.ownedVehicles.push(summary);
 
-  // Spawn at the first free delivery slot
-  const [sx, sy, sz] = findFreeSlot(ctx);
+  // Spawn at the first free delivery slot — abort if area is full
+  const slot = findFreeSlot(ctx);
+  if (!slot) {
+    socket.emit("rp:toast", {
+      msg:      "Dealership delivery area is full. Try again later.",
+      color:    "yellow",
+      duration: 5000,
+    });
+    logger.warn({ socketId: socket.id, vehicleId }, "[rp] buyVehicle: all delivery slots occupied, vehicle purchased but not spawned");
+    // Still update profile so the player's wallet reflects the purchase
+    socket.emit("rp:profileUpdate", {
+      cash:          newCash,
+      ownedVehicles: entry.ownedVehicles,
+    });
+    return;
+  }
+
+  const [sx, sy, sz] = slot;
   const v: VehicleState = {
     id:       vehicleId,
     x:        sx,
@@ -413,8 +427,13 @@ export async function loadAndSpawnOwnedVehicles(
       continue;
     }
 
-    // Spawn into the first unoccupied delivery slot
-    const [sx, sy, sz] = findFreeSlot(ctx);
+    // Spawn into the first unoccupied delivery slot — skip if area is full
+    const slot = findFreeSlot(ctx);
+    if (!slot) {
+      logger.warn({ vehicleId, socketId }, "[rp] loadAndSpawnOwnedVehicles: all delivery slots occupied, skipping spawn");
+      continue;
+    }
+    const [sx, sy, sz] = slot;
     const v: VehicleState = {
       id:       vehicleId,
       x:        sx,
