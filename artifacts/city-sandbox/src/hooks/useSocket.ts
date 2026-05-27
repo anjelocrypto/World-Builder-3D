@@ -128,6 +128,24 @@ export function useSocket(username: string) {
       });
     });
 
+    // Phase 2: dynamic vehicles (test cars) spawned/despawned by the server.
+    // INITIAL_VEHICLES covers permanent cars; vehicleAdded/vehicleRemoved handle
+    // ephemeral ones that don't exist at game-state initialisation time.
+    sock.on("vehicleAdded", (v: VehicleState) => {
+      setGameState(prev => ({
+        ...prev,
+        vehicles: { ...prev.vehicles, [v.id]: v },
+      }));
+    });
+
+    sock.on("vehicleRemoved", (data: { id: string }) => {
+      setGameState(prev => {
+        const vehicles = { ...prev.vehicles };
+        delete vehicles[data.id];
+        return { ...prev, vehicles };
+      });
+    });
+
     sock.on("playerCount", (count: number) => {
       setPlayerCount(count);
     });

@@ -8,6 +8,7 @@ import type { NpcStumbleMap } from "../shared/collision";
 import type { RpProfile, RpToast } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
+import LicenseTestHUD from "./LicenseTestHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -53,6 +54,10 @@ interface GameSceneProps {
   /** Push a local toast without a server round-trip (e.g. blocked vehicle entry). */
   pushToast:       (msg: string, color: string, duration?: number) => void;
   canDriveVehicle: (vehicleId: string) => boolean;
+  /** Emit rp:interact (e.g. start_driver_test). From useRpSocket. */
+  emitRpInteract:  (building: string, action: string) => void;
+  /** Emit rp:licenseTestCheckpoint. From useRpSocket. */
+  emitLicenseCheckpoint: (idx: number) => void;
 }
 
 export default function GameScene({
@@ -69,6 +74,8 @@ export default function GameScene({
   dismissToast,
   pushToast,
   canDriveVehicle,
+  emitRpInteract,
+  emitLicenseCheckpoint,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -81,6 +88,7 @@ export default function GameScene({
     racePassed: [] as number[],
     px: 0,
     pz: 0,
+    nearOffice: false,
   });
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
@@ -275,6 +283,9 @@ export default function GameScene({
             initialSpawn={initialSpawn}
             canDriveVehicle={canDriveVehicle}
             pushToast={pushToast}
+            emitRpInteract={emitRpInteract}
+            emitLicenseCheckpoint={emitLicenseCheckpoint}
+            activeTest={rpProfile?.activeTest}
           />
 
           <PerfMonitor />
@@ -285,6 +296,9 @@ export default function GameScene({
 
       {/* RP toast overlay — ephemeral rp:toast messages */}
       <RPHud toasts={rpToasts} onDismissToast={dismissToast} />
+
+      {/* License test HUD — top-center overlay during an active driver test */}
+      <LicenseTestHUD activeTest={rpProfile?.activeTest ?? null} />
 
       <HUD
         health={uiState.health}
@@ -306,6 +320,7 @@ export default function GameScene({
         cash={rpProfile?.cash}
         bank={rpProfile?.bank}
         driverLicense={rpProfile?.driverLicense}
+        nearOffice={uiState.nearOffice}
       />
     </div>
   );

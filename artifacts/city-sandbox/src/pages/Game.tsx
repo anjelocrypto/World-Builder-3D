@@ -23,8 +23,15 @@ export default function Game({ username }: GameProps) {
   // the socket instance exists — BEFORE the myId/ready guard below. This
   // prevents the race where the server emits rp:profile during the join
   // handshake but GameScene hasn't mounted yet (it waits for myId).
-  const { rpProfile, rpToasts, dismissToast, pushToast, canDriveVehicle } =
-    useRpSocket(socket);
+  const {
+    rpProfile,
+    rpToasts,
+    dismissToast,
+    pushToast,
+    canDriveVehicle,
+    emitInteract,
+    emitLicenseCheckpoint,
+  } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
 
@@ -68,6 +75,8 @@ export default function Game({ username }: GameProps) {
       dismissToast={dismissToast}
       pushToast={pushToast}
       canDriveVehicle={canDriveVehicle}
+      emitRpInteract={emitInteract}
+      emitLicenseCheckpoint={emitLicenseCheckpoint}
     />
   );
 }

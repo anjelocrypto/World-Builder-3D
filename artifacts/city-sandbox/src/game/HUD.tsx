@@ -44,6 +44,11 @@ interface HUDProps {
   bank?: number;
   /** True once the player has passed the driver license test. */
   driverLicense?: boolean;
+  /**
+   * True when the walking player is within 6m of the Licensing Office entrance.
+   * Shows an office-specific interact prompt distinct from the vehicle prompt.
+   */
+  nearOffice?: boolean;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -402,6 +407,7 @@ export default function HUD({
   cash,
   bank,
   driverLicense,
+  nearOffice,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -770,6 +776,58 @@ export default function HUD({
           </div>
           <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
             Enter <span style={{ color: "#f39c12", fontWeight: "bold" }}>{vehicleLabel}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Licensing Office interact prompt (Phase 2)
+          Shown when nearOffice && no vehicle is close enough to enter.
+          ============================================================ */}
+      {nearOffice && !inVehicle && !showInteract && (
+        <div
+          style={{
+            position: "absolute",
+            bottom: 130,
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: PANEL_BG,
+            border: "1px solid rgba(255, 170, 0, 0.65)",
+            borderRadius: PANEL_RADIUS,
+            padding: "8px 14px 8px 8px",
+            display: "flex",
+            alignItems: "center",
+            gap: 12,
+            boxShadow: `${PANEL_SHADOW}, 0 0 24px rgba(255,170,0,0.25)`,
+            backdropFilter: "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+          data-testid="interact-office-prompt"
+        >
+          <div
+            style={{
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              background: "rgba(255, 170, 0, 0.15)",
+              border: "1px solid rgba(255, 170, 0, 0.7)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontSize: 13,
+              fontWeight: "bold",
+              color: "#ffaa00",
+              boxShadow: "inset 0 -2px 0 rgba(255,170,0,0.35)",
+            }}
+          >
+            E
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            Apply for{" "}
+            <span style={{ color: "#ffaa00", fontWeight: "bold" }}>
+              Driver License
+            </span>{" "}
+            <span style={{ color: "#9bb", fontSize: 11 }}>· $200</span>
           </div>
         </div>
       )}

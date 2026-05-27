@@ -3,30 +3,78 @@
  * Called once inside the `join` handler in gameServer.ts, after the DB
  * upsert + rpCache population.
  *
- * Phase 1B: only `rp:interact` is registered (as a stub). Full handlers
- * (license test, ATM, job duty) arrive in Phase 2.
+ * Requires a LicenseContext (shared server state maps + io) so handlers
+ * can validate against server-authoritative player/vehicle positions.
  *
- * Cleanup (rpCache.delete, rpTestState.delete) lives in gameServer.ts's
- * disconnect handler so teardown stays centralised.
+ * Cleanup (rpCache.delete, rpTestState.delete, test vehicle despawn) lives in
+ * gameServer.ts's disconnect handler so teardown stays centralised.
  */
 
-import type { Server, Socket } from "socket.io";
+import type { Socket } from "socket.io";
 import { logger } from "../lib/logger";
+import {
+  startLicenseTest,
+  handleCheckpoint,
+  type LicenseContext,
+} from "./rpLicenseService";
 
-export function setupRpHandlers(socket: Socket, _io: Server): void {
-  // ── rp:interact (Phase 1B stub) ───────────────────────────────────────────
-  // Phase 2 will implement the full license-test and ATM interaction flows.
-  // For now we acknowledge the event so the client doesn't time out and
-  // give a gentle "coming soon" toast.
-  socket.on("rp:interact", (data: unknown) => {
-    logger.info(
-      { socketId: socket.id, data },
-      "[rp] rp:interact received — Phase 2 handler pending",
-    );
-    socket.emit("rp:toast", {
-      msg:      "Interactive buildings are coming in the next update!",
-      color:    "yellow",
-      duration: 3000,
-    });
-  });
+export type { LicenseContext };
+
+export function setupRpHandlers(
+  socket: Socket,
+  ctx:    LicenseContext,
+): void {
+
+  // ── rp:interact ───────────────────────────────────────────────────────────
+  // Phase 2: licensing office start-test.  Other buildings (ATM, job board,
+  // police station) will be added here in later phases.
+  socket.on(
+    "rp:interact",
+    (data: { building?: string; action?: string } | null | undefined) => {
+      logger.info(
+        { socketId: socket.id, data },
+        "[rp] rp:interact received",
+      );
+
+      const building = typeof data?.building === "string" ? data.building : "";
+      const action   = typeof data?.action   === "string" ? data.action   : "";
+
+      if (
+        building === "licensing_office" &&
+        action   === "start_driver_test"
+      ) {
+        startLicenseTest(socket, ctx).catch((err) => {
+          logger.error({ err, socketId: socket.id }, "[rp] startLicenseTest threw");
+          socket.emit("rp:toast", {
+            msg:      "Server error starting test — try again.",
+            color:    "red",
+            duration: 4000,
+          });
+        });
+        return;
+      }
+
+      // Unknown building / action — Phase-N stub
+      socket.emit("rp:toast", {
+        msg:      "Nothing to do here yet.",
+        color:    "yellow",
+        duration: 2500,
+      });
+    },
+  );
+
+  // ── rp:licenseTestCheckpoint ──────────────────────────────────────────────
+  // Client emits { idx } when within range of a checkpoint marker.  Server
+  // validates using authoritative vehicle position — never client coordinates.
+  socket.on(
+    "rp:licenseTestCheckpoint",
+    (data: { idx?: unknown } | null | undefined) => {
+      const idx = typeof data?.idx === "number" ? Math.floor(data.idx) : -1;
+      if (idx < 0) {
+        logger.debug({ socketId: socket.id, data }, "[rp] invalid checkpoint idx");
+        return;
+      }
+      handleCheckpoint(socket, ctx, idx);
+    },
+  );
 }

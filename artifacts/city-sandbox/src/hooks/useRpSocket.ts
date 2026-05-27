@@ -41,14 +41,21 @@ export function useRpSocket(socket: Socket | null) {
       ]);
     };
 
-    socket.on("rp:profile",       onProfile);
-    socket.on("rp:profileUpdate", onProfileUpdate);
-    socket.on("rp:toast",         onToast);
+    // rp:licenseTestActive is a lightweight acknowledgment signal.
+    // The profile update carrying activeTest arrives via rp:profileUpdate,
+    // so no additional state mutation is needed here.
+    const onLicenseTestActive = () => {};
+
+    socket.on("rp:profile",            onProfile);
+    socket.on("rp:profileUpdate",      onProfileUpdate);
+    socket.on("rp:toast",              onToast);
+    socket.on("rp:licenseTestActive",  onLicenseTestActive);
 
     return () => {
-      socket.off("rp:profile",       onProfile);
-      socket.off("rp:profileUpdate", onProfileUpdate);
-      socket.off("rp:toast",         onToast);
+      socket.off("rp:profile",            onProfile);
+      socket.off("rp:profileUpdate",      onProfileUpdate);
+      socket.off("rp:toast",              onToast);
+      socket.off("rp:licenseTestActive",  onLicenseTestActive);
     };
   }, [socket]);
 
@@ -81,5 +88,32 @@ export function useRpSocket(socket: Socket | null) {
     [rpProfile],
   );
 
-  return { rpProfile, rpToasts, dismissToast, pushToast, canDriveVehicle };
+  /** Emit rp:interact to the server (e.g. start_driver_test at licensing_office). */
+  const emitInteract = useCallback(
+    (building: string, action: string) => {
+      socket?.emit("rp:interact", { building, action });
+    },
+    [socket],
+  );
+
+  /**
+   * Emit rp:licenseTestCheckpoint when the client detects proximity to a
+   * checkpoint.  Server validates against its own vehicle position.
+   */
+  const emitLicenseCheckpoint = useCallback(
+    (idx: number) => {
+      socket?.emit("rp:licenseTestCheckpoint", { idx });
+    },
+    [socket],
+  );
+
+  return {
+    rpProfile,
+    rpToasts,
+    dismissToast,
+    pushToast,
+    canDriveVehicle,
+    emitInteract,
+    emitLicenseCheckpoint,
+  };
 }

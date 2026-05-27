@@ -11,7 +11,8 @@ import {
 } from "../rp/rpValidators";
 import { rpCache, rpTestState, buildProfile } from "../rp/rpCache";
 import { upsertPlayer } from "../rp/rpPlayerService";
-import { setupRpHandlers } from "../rp/setupRpHandlers";
+import { setupRpHandlers, type LicenseContext } from "../rp/setupRpHandlers";
+import { failTest, cleanupOnDisconnect } from "../rp/rpLicenseService";
 
 // Clamp a horizontal world coordinate so a hacked client cannot push a
 // player or vehicle outside the playable map. The margin keeps the
@@ -89,6 +90,9 @@ const vehicles = new Map<string, VehicleState>(
   INITIAL_VEHICLES.map((v) => [v.id, { ...v }])
 );
 
+// Per-socket test timers (Phase 2). Cleared in cleanupOnDisconnect / failTest.
+const testTimers = new Map<string, ReturnType<typeof setTimeout>>();
+
 /**
  * Phase 1B: all players spawn at Central Station with per-connection jitter.
  * safeStationSpawn() tries 10 random positions within ±JITTER bounds and
@@ -110,25 +114,15 @@ function getGameStateSnapshot() {
 
 export function setupGameServer(httpServer: HttpServer) {
   // ── Startup validation ─────────────────────────────────────────────────
-  // Throw early if any RP marker coordinate is invalid. This prevents a bad
-  // position from slipping into production unnoticed. Pass [] for obstacles
-  // in Phase 1B — pre-validated manually. Wire in STATIC_OBSTACLES in Phase 2.
   try {
     validateRpMarkers([]);
     validateRpMarkerVehicleClearance(Array.from(vehicles.values()));
 
     // OBB check: all four corners of the test-vehicle body must clear every
-    // road carriageway (3 N-S at x ∈ {−45,0,45}, 3 E-W at z ∈ {−45,0,45},
-    // each 20 m wide). This proves the car does not spawn clipping live traffic
-    // lanes — not just the centre point.
-    //
-    // Static building obstacles (STATIC_OBSTACLES in city-sandbox/shared/
-    // collision.ts) are NOT available server-side in Phase 1B; they are pure
-    // client geometry.  Those clearances were pre-validated manually in
-    // NEMOVERSE_RP_PLAN.md §5.3.  Wire in the static-obstacle list in Phase 2
-    // once a shared obstacle catalogue exists in lib/db or a shared package.
-    const TEST_VEH_X = 13;  // centre x of TEST_VEHICLE_SPAWN
-    const TEST_VEH_Z = -30; // centre z of TEST_VEHICLE_SPAWN
+    // road carriageway. Static building obstacles are not available server-side
+    // in Phase 1B/2 — pre-validated in NEMOVERSE_RP_PLAN.md §5.3.
+    const TEST_VEH_X = 13;
+    const TEST_VEH_Z = -30;
     if (!validateVehicleSpawnOBB(TEST_VEH_X, TEST_VEH_Z)) {
       throw new Error(
         `[rp] TEST_VEHICLE_SPAWN OBB (x=${TEST_VEH_X}, z=${TEST_VEH_Z}) ` +
@@ -148,13 +142,14 @@ export function setupGameServer(httpServer: HttpServer) {
     cors: { origin: "*", methods: ["GET", "POST"] },
   });
 
+  // Shared context for all RP handlers — single reference, mutations visible everywhere.
+  const ctx: LicenseContext = { players, vehicles, rpCache, rpTestState, testTimers, io };
+
   io.on("connection", (socket: Socket) => {
     logger.info({ socketId: socket.id }, "Player connected");
 
     socket.on("join", async (data: { username: string; token?: string }) => {
       const username = (data?.username ?? "Player").slice(0, 20);
-      // token is a client-generated UUID stored in localStorage. Slice to 36
-      // chars (UUID length) so an oversized value is safely ignored.
       const token = typeof data?.token === "string" ? data.token.slice(0, 36) : "";
       const [sx, sy, sz] = getSpawn();
       const player: PlayerState = {
@@ -185,18 +180,12 @@ export function setupGameServer(httpServer: HttpServer) {
         ...snapshot,
       });
 
-      // Broadcast new player to others
       socket.broadcast.emit("playerJoined", player);
-
-      // Broadcast player count to all
       io.emit("playerCount", players.size);
 
       logger.info({ socketId: socket.id, username }, "Player joined");
 
       // ── RP layer — DB upsert + profile emit ─────────────────────────────
-      // Only run when the client sent a token (new clients always do; old or
-      // test clients may not). Failures are non-fatal — the player joins with
-      // a null RP profile and the HUD simply hides the wallet display.
       if (token) {
         upsertPlayer(token, username)
           .then((rpEntry) => {
@@ -212,35 +201,25 @@ export function setupGameServer(httpServer: HttpServer) {
           });
       }
 
-      // Register per-socket RP event listeners (rp:interact stub, etc.)
-      setupRpHandlers(socket, io);
+      // Register per-socket RP event listeners (rp:interact, rp:licenseTestCheckpoint)
+      setupRpHandlers(socket, ctx);
     });
 
     socket.on("playerUpdate", (data: Partial<PlayerState>) => {
       const player = players.get(socket.id);
       if (!player) return;
 
-      // Basic sanity check — reject teleportation
       const dx = (data.x ?? player.x) - player.x;
       const dy = (data.y ?? player.y) - player.y;
       const dz = (data.z ?? player.z) - player.z;
       const distSq = dx * dx + dy * dy + dz * dz;
       if (distSq > 100) {
-        // Clamp to last known position (anti-cheat lite)
         data.x = player.x; data.y = player.y; data.z = player.z;
       }
 
-      // World-bounds clamp. Even if the per-tick delta passes the
-      // anti-teleport check above, any absolute coordinate is hard-
-      // clamped so a hacked client can never report being outside
-      // the 1000x1000 map.
       if (typeof data.x === "number") data.x = clampWorld(data.x, 1);
       if (typeof data.z === "number") data.z = clampWorld(data.z, 1);
 
-      // ---------- Animation / attack field validation ----------
-      // animState: must be a string from the whitelist. Anything else
-      // (number, null, object, unknown string) is scrubbed so the
-      // spread below leaves the previous server-stored value intact.
       if (data.animState !== undefined) {
         if (
           typeof data.animState !== "string" ||
@@ -249,8 +228,6 @@ export function setupGameServer(httpServer: HttpServer) {
           delete data.animState;
         }
       }
-      // attackKind: must be "light" | "heavy" | null. Anything else
-      // is scrubbed (previous value retained).
       if (
         data.attackKind !== undefined &&
         data.attackKind !== null &&
@@ -259,7 +236,6 @@ export function setupGameServer(httpServer: HttpServer) {
       ) {
         delete data.attackKind;
       }
-      // attackSeq: monotonic, bounded growth per packet, integer-only.
       if (typeof data.attackSeq === "number" && Number.isFinite(data.attackSeq)) {
         const next = Math.floor(data.attackSeq);
         const floor = player.attackSeq;
@@ -268,7 +244,6 @@ export function setupGameServer(httpServer: HttpServer) {
       } else if (data.attackSeq !== undefined) {
         delete data.attackSeq;
       }
-      // attackStartedAt: number | null only.
       if (
         data.attackStartedAt !== undefined &&
         data.attackStartedAt !== null &&
@@ -277,14 +252,9 @@ export function setupGameServer(httpServer: HttpServer) {
       ) {
         delete data.attackStartedAt;
       }
-      // isGrounded: boolean.
-      if (
-        data.isGrounded !== undefined &&
-        typeof data.isGrounded !== "boolean"
-      ) {
+      if (data.isGrounded !== undefined && typeof data.isGrounded !== "boolean") {
         delete data.isGrounded;
       }
-      // moveSpeed: non-negative bounded number.
       if (typeof data.moveSpeed === "number" && Number.isFinite(data.moveSpeed)) {
         data.moveSpeed = Math.max(0, Math.min(50, data.moveSpeed));
       } else if (data.moveSpeed !== undefined) {
@@ -301,21 +271,12 @@ export function setupGameServer(httpServer: HttpServer) {
       const vehicle = vehicles.get(data.id);
       if (!vehicle) return;
 
-      // Strict ownership check: if this vehicle is occupied by someone
-      // else, reject ALL updates unconditionally. The previous gate let
-      // a non-driver send `driverId: null` to forcibly eject the real
-      // driver and teleport the car (griefing / IDOR). An unoccupied
-      // vehicle (driverId === null) may still be claimed by anyone,
-      // which is how `enter vehicle` works.
+      // Strict ownership check: reject if another player is driving.
       if (vehicle.driverId !== null && vehicle.driverId !== socket.id) {
         return;
       }
 
-      // Authoritative driverId: a client may only ever assign its own
-      // socket id (claim the car) or null (release the car). Without
-      // this, a malicious client could spoof `driverId: "<victim-id>"`
-      // and frame another player as the driver of a vehicle they never
-      // entered.
+      // Spoof check: driverId can only be socket.id or null.
       if (
         data.driverId !== undefined &&
         data.driverId !== null &&
@@ -324,24 +285,14 @@ export function setupGameServer(httpServer: HttpServer) {
         return;
       }
 
-      // ── Unoccupied-car gate + license check (Phase 1B) ──────────────────
-      //
-      // An unoccupied vehicle (vehicle.driverId === null) may ONLY be updated
-      // by a packet that simultaneously claims it (data.driverId === socket.id)
-      // AND passes the license check.  Motion-only packets (x/z/speed/rotY
-      // with no driverId claim) on an unoccupied car are rejected — the driver
-      // must claim first, not just move.
-      //
-      // Once the car is occupied by this socket (vehicle.driverId === socket.id)
-      // all movement packets and the release packet (data.driverId: null) flow
-      // through without a further license re-check.
+      // ── Unoccupied-car gate + license check ──────────────────────────────
+      // An unoccupied vehicle may ONLY be updated by a packet that simultaneously
+      // claims it (driverId === socket.id) AND passes the license check.
+      // Motion-only packets on an unoccupied car are rejected.
       if (vehicle.driverId === null) {
         if (data.driverId !== socket.id) {
-          // Motion-only packet on an unoccupied car, or driverId not set — reject.
-          // No toast: a legitimate client never sends this; a hacked one gets silence.
           return;
         }
-        // Valid claim form — enforce license.
         if (!canDriveVehicle(socket.id, data.id, rpCache, rpTestState)) {
           socket.emit("rp:toast", {
             msg:      "You need a Driver License to drive. Visit the Licensing Office.",
@@ -352,17 +303,27 @@ export function setupGameServer(httpServer: HttpServer) {
         }
       }
 
-      // `variant` and `color` are visual-only fields established by the
-      // server's INITIAL_VEHICLES on boot and must NEVER be mutated from
-      // the client. Stripping them here prevents a malicious client from
-      // injecting an invalid variant string that could crash other
-      // clients when they look it up in VARIANT_DIMENSIONS.
+      // ── Test-vehicle exit detection (Phase 2) ────────────────────────────
+      // If the current driver releases the test vehicle (driverId → null),
+      // and there is an active test for this socket using that vehicle, fail.
+      const wasDriver  = vehicle.driverId === socket.id;
+      const isRelease  = data.driverId === null;
+      if (wasDriver && isRelease) {
+        const testState = rpTestState.get(socket.id);
+        if (testState && testState.vehicleId === data.id) {
+          // Merge state first so other clients see the released vehicle, then fail.
+          const released: VehicleState = { ...vehicle, driverId: null, speed: 0 };
+          vehicles.set(data.id, released);
+          socket.broadcast.emit("vehicleMoved", released);
+          failTest(socket.id, ctx);
+          return;
+        }
+      }
+
+      // Strip visual-only fields (variant, color) — must not be mutated by client.
       // eslint-disable-next-line @typescript-eslint/no-unused-vars
       const { variant: _v, color: _c, ...safe } = data;
 
-      // World-bounds clamp on incoming vehicle position. Driver-side
-      // clamps already enforce this on a fair client, but the server
-      // must not relay an out-of-map vehicle to other players.
       if (typeof safe.x === "number") safe.x = clampWorld(safe.x, 7);
       if (typeof safe.z === "number") safe.z = clampWorld(safe.z, 7);
 
@@ -372,13 +333,18 @@ export function setupGameServer(httpServer: HttpServer) {
     });
 
     socket.on("disconnect", () => {
-      // Clean up RP cache entries first (before player record is deleted).
+      // Phase 2: clean up active license test BEFORE clearing rpCache so
+      // cleanupOnDisconnect can still read the entry for DB logging.
+      if (rpTestState.has(socket.id)) {
+        cleanupOnDisconnect(socket.id, ctx);
+      }
+
+      // Clear RP cache (after test cleanup).
       rpCache.delete(socket.id);
-      rpTestState.delete(socket.id);
 
       const player = players.get(socket.id);
       if (player) {
-        // Release any vehicle the player was driving
+        // Release any (non-test) vehicle the player was driving.
         vehicles.forEach((v, vid) => {
           if (v.driverId === socket.id) {
             const released = { ...v, driverId: null, speed: 0 };

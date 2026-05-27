@@ -85,3 +85,27 @@ export const STATION_SPAWN_JITTER_X = 4;
 
 /** Jitter half-depth on Z: final z ∈ [STATION_SPAWN[2]−3, STATION_SPAWN[2]+3]. */
 export const STATION_SPAWN_JITTER_Z = 3;
+
+// ── Licensing Office (Phase 2) ─────────────────────────────────────────────
+
+/** Entrance of the Licensing Office — SE inner block, east-facing sidewalk. */
+export const LICENSING_OFFICE_POS: [number, number, number] = [14, 0, -30];
+
+/** Test vehicle spawn — 2 m clear of the x=0 road edge at x=10. */
+export const TEST_VEHICLE_SPAWN: [number, number, number] = [13, 0.6, -30];
+
+/** Cash required to attempt the driver license test. */
+export const TEST_FEE = 200;
+
+/**
+ * Server-authoritative license-test checkpoint route.
+ * MUST stay in sync with LICENSE_TEST_CHECKPOINTS in
+ * artifacts/city-sandbox/src/shared/rpTypes.ts.
+ * rotY=0 → front toward -Z (matches vehicleObb + LocalPlayer).
+ */
+export const LICENSE_TEST_CHECKPOINTS: [number, number, number][] = [
+  [  2, 0.5, -40],  // CP0 — south on x=0 road, approaching z=−45
+  [ 42, 0.5, -44],  // CP1 — east on z=−45 road, at x=45 intersection
+  [ 42, 0.5, -14],  // CP2 — north on x=45 road, mid-block
+  [ 14, 0.5, -26],  // CP3 — finish line near Licensing Office entrance
+];

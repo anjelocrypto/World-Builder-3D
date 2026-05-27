@@ -3,6 +3,8 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
 import * as THREE from "three";
 import type { VehicleState } from "../shared/types";
+import type { ActiveTest } from "../shared/rpTypes";
+import { LICENSING_OFFICE_POS } from "../shared/rpTypes";
 import {
   SPAWN_POINTS,
   CHECKPOINTS,
@@ -121,6 +123,7 @@ interface LocalPlayerProps {
     racePassed: number[];
     px: number;
     pz: number;
+    nearOffice: boolean;
   }) => void;
   playerPosRef: React.MutableRefObject<THREE.Vector3>;
   // Authoritative spawn from the server's gameState. Falls back to a
@@ -142,6 +145,21 @@ interface LocalPlayerProps {
    * so the server never sends its own rp:toast).
    */
   pushToast?: (msg: string, color: string, duration?: number) => void;
+  /**
+   * Emit rp:interact to the server (e.g. start_driver_test at the Licensing Office).
+   * Called when the player presses E near the office entrance.
+   */
+  emitRpInteract?: (building: string, action: string) => void;
+  /**
+   * Emit rp:licenseTestCheckpoint when the client detects proximity to the
+   * next expected checkpoint. Server validates independently.
+   */
+  emitLicenseCheckpoint?: (idx: number) => void;
+  /**
+   * Active driver-license test state from the server profile. Non-null only
+   * while a test is in progress. Used to drive checkpoint proximity detection.
+   */
+  activeTest?: ActiveTest | null;
 }
 
 export default function LocalPlayer({
@@ -157,6 +175,9 @@ export default function LocalPlayer({
   initialSpawn,
   canDriveVehicle,
   pushToast,
+  emitRpInteract,
+  emitLicenseCheckpoint,
+  activeTest,
 }: LocalPlayerProps) {
   const { camera, gl } = useThree();
   const [, getKeys] = useKeyboardControls<Controls>();
@@ -235,6 +256,9 @@ export default function LocalPlayer({
   const raceStart = useRef(0);
   const racePassed = useRef<number[]>([]);
   const interactCooldown = useRef(0);
+  // License-test checkpoint: track last emitted CP index so we don't spam
+  // the server. Resets to -1 whenever activeTest becomes null.
+  const lastEmittedCpRef = useRef(-1);
 
   // Emit timing
   const lastEmit = useRef(0);
@@ -254,6 +278,7 @@ export default function LocalPlayer({
     racePassed: [] as number[],
     px: pos.current.x,
     pz: pos.current.z,
+    nearOffice: false,
   });
 
   // Pointer lock
@@ -375,6 +400,31 @@ export default function LocalPlayer({
       }
     }
 
+    // ── License-test checkpoint proximity detection ──────────────────────────
+    // Only active when a test is running AND the player is driving the test
+    // vehicle. Emits rp:licenseTestCheckpoint once per checkpoint (lastEmitted
+    // guard prevents duplicate events). Resets lastEmitted when test ends.
+    if (!activeTest) {
+      lastEmittedCpRef.current = -1;
+    } else if (
+      inVehicle.current &&
+      drivingVehicleId.current === activeTest.vehicleId
+    ) {
+      const nextCpIdx = activeTest.nextCp;
+      if (
+        nextCpIdx < activeTest.checkpoints.length &&
+        nextCpIdx !== lastEmittedCpRef.current
+      ) {
+        const [cpx, , cpz] = activeTest.checkpoints[nextCpIdx];
+        const dvx = vehiclePos.current.x - cpx;
+        const dvz = vehiclePos.current.z - cpz;
+        if (dvx * dvx + dvz * dvz < 8 * 8) {
+          lastEmittedCpRef.current = nextCpIdx;
+          emitLicenseCheckpoint?.(nextCpIdx);
+        }
+      }
+    }
+
     // Update playerPosRef for minimap / HUD
     const curPos = inVehicle.current ? vehiclePos.current : pos.current;
     playerPosRef.current.copy(curPos);
@@ -387,6 +437,13 @@ export default function LocalPlayer({
       : vel.current.length();
     const raceTime = raceActive.current ? Date.now() - raceStart.current : 0;
 
+    // Proximity to Licensing Office entrance (walking player only, 6m radius)
+    const [offX, , offZ] = LICENSING_OFFICE_POS;
+    const odx = curPos.x - offX;
+    const odz = curPos.z - offZ;
+    const nearOffice =
+      !inVehicle.current && odx * odx + odz * odz < 6 * 6;
+
     const newUI = {
       health: health.current,
       speed,
@@ -398,6 +455,7 @@ export default function LocalPlayer({
       racePassed: racePassed.current,
       px: curPos.x,
       pz: curPos.z,
+      nearOffice,
     };
 
     // Throttled per-field UI diff. JSON.stringify on a 10-key object
@@ -416,7 +474,8 @@ export default function LocalPlayer({
       newUI.showInteract !== cache.showInteract ||
       newUI.vehicleLabel !== cache.vehicleLabel ||
       newUI.raceActive !== cache.raceActive ||
-      newUI.racePassed !== cache.racePassed;
+      newUI.racePassed !== cache.racePassed ||
+      newUI.nearOffice !== cache.nearOffice;
     const timeChanged = Math.abs(newUI.raceTime - cache.raceTime) > 100;
     const sinceLast = now - lastUIEmit.current;
     if (
@@ -726,7 +785,7 @@ export default function LocalPlayer({
     // Camera
     updateCamera(pos.current, dt, "walking");
 
-    // Enter vehicle
+    // Enter vehicle / Licensing Office interact
     if (keys.interact && interactCooldown.current <= 0) {
       const near = findNearestVehicle(pos.current);
       if (near && !near.driverId) {
@@ -746,6 +805,15 @@ export default function LocalPlayer({
         } else {
           enterVehicle(near);
           interactCooldown.current = 0.5;
+        }
+      } else {
+        // No vehicle nearby — check for Licensing Office (Phase 2).
+        const [offX2, , offZ2] = LICENSING_OFFICE_POS;
+        const odx2 = pos.current.x - offX2;
+        const odz2 = pos.current.z - offZ2;
+        if (odx2 * odx2 + odz2 * odz2 < 6 * 6) {
+          emitRpInteract?.("licensing_office", "start_driver_test");
+          interactCooldown.current = 1.0;
         }
       }
     }
