@@ -1839,6 +1839,21 @@ async function handlePolicePatrolCheckpoint(
     return;
   }
 
+  // Strict order + bounds guard — must match nextCp exactly (server-authoritative).
+  // Rejects: out-of-order replays, invalid indexes, negative values, floats.
+  if (
+    !Number.isInteger(idx) ||
+    idx < 0 ||
+    idx >= state.policePatrolRoute.length ||
+    idx !== state.nextCp
+  ) {
+    logger.debug(
+      { socketId: socket.id, idx, nextCp: state.nextCp },
+      "[rp] police_patrol checkpoint out of order — ignored",
+    );
+    return;
+  }
+
   // Anti-farm: minimum interval between stages
   if (state.lastCpAt > 0 && now - state.lastCpAt < POLICE_PATROL_MIN_STAGE_INTERVAL_MS) {
     socket.emit("rp:toast", {
