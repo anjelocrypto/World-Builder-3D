@@ -186,6 +186,12 @@ export async function bankDeposit(
     return;
   }
 
+  // Phase 6D: jailed players cannot use the ATM.
+  if (entry.jailUntil !== null) {
+    socket.emit("rp:toast", { msg: "You cannot use the ATM while in jail.", color: "yellow", duration: 3000 });
+    return;
+  }
+
   if (player.isInVehicle) {
     socket.emit("rp:toast", { msg: "Exit your vehicle to use the ATM.", color: "yellow", duration: 3000 });
     return;
@@ -262,6 +268,12 @@ export async function bankWithdraw(
   const entry  = ctx.rpCache.get(socket.id);
   if (!player || !entry) {
     logger.debug({ socketId: socket.id }, "[rp] bankWithdraw: no player/cache entry");
+    return;
+  }
+
+  // Phase 6D: jailed players cannot use the ATM.
+  if (entry.jailUntil !== null) {
+    socket.emit("rp:toast", { msg: "You cannot use the ATM while in jail.", color: "yellow", duration: 3000 });
     return;
   }
 

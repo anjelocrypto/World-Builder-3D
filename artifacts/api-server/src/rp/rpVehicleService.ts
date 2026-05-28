@@ -184,6 +184,16 @@ export async function buyVehicle(
   }
 
   // ── Fast-fail pre-condition checks (outside transaction) ─────────────────
+  // Phase 6D: jailed players cannot purchase vehicles.
+  if (entry.jailUntil !== null) {
+    socket.emit("rp:toast", {
+      msg:      "You cannot buy a vehicle while in jail.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
   if (!entry.driverLicense) {
     socket.emit("rp:toast", {
       msg:      "You need a Driver License to buy a vehicle.",
@@ -539,6 +549,16 @@ export async function toggleLock(
 ): Promise<void> {
   const entry = ctx.rpCache.get(socket.id);
   if (!entry) return;
+
+  // Phase 6D: jailed players cannot toggle vehicle locks.
+  if (entry.jailUntil !== null) {
+    socket.emit("rp:toast", {
+      msg:      "You cannot interact with vehicles while in jail.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
 
   const vehicle = ctx.vehicles.get(vehicleId);
   if (!vehicle || !vehicle.owned) {

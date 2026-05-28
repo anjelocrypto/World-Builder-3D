@@ -574,3 +574,20 @@ export const POLICE_CUFF_RADIUS = 4;
 
 /** Phase 6C: Seconds before an unresolved cuff auto-expires (in-memory only). */
 export const POLICE_CUFF_TIMEOUT_SECS = 120;
+
+/**
+ * Phase 6D: Booking Desk — inside the police station, used by officers to
+ * log a booking after escorting a cuffed suspect.
+ *
+ * Position: x=-62, y=0, z=14.
+ *   x=-62: |−62−(−45)|=17 > 10 ✅ (off NS road at x=−45)
+ *   z=14:  |14−0|=14 > 10 ✅, |14−45|=31 > 10 ✅ (off EW roads)
+ *   Nearest parked car (car-5 at [−55, 0.6, −8]): dist ≈ 23.1 m > 8 ✅
+ */
+export const POLICE_BOOKING_DESK_POS: [number, number, number] = [-62, 0, 14];
+
+/** Radius (m) within which officer/suspect interact with the Booking Desk. */
+export const POLICE_BOOKING_RADIUS = 4;
+
+/** Radius (m) within which a sentence-expired inmate can trigger their release. */
+export const POLICE_RELEASE_RADIUS = 4;

@@ -274,6 +274,16 @@ export async function toggleDuty(
   const entry = ctx.rpCache.get(socket.id);
   if (!entry) return;
 
+  // Phase 6D: jailed players cannot start or switch jobs.
+  if (entry.jailUntil !== null) {
+    socket.emit("rp:toast", {
+      msg:      "You cannot work while in jail.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
   const player = ctx.players.get(socket.id);
   if (!player) return;
 
@@ -552,6 +562,9 @@ export async function handleJobCheckpoint(
 ): Promise<void> {
   const entry = ctx.rpCache.get(socket.id);
   if (!entry) return;
+
+  // Phase 6D: jailed players cannot complete job checkpoints.
+  if (entry.jailUntil !== null) return;
 
   const state = rpJobState.get(socket.id);
   if (!state) return;

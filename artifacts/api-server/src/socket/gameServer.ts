@@ -8,6 +8,8 @@ import {
   DELIVERY_SLOT_OFFSETS,
   POLICE_JAIL_CELL,
   POLICE_JAIL_RADIUS,
+  POLICE_RELEASE_POS,
+  POLICE_RELEASE_RADIUS,
 } from "./cityData";
 import { releaseFromJail, jailReleaseInProgress } from "../rp/rpPoliceService";
 import {
@@ -297,23 +299,53 @@ export function setupGameServer(httpServer: HttpServer) {
         delete data.moveSpeed;
       }
 
-      // ── Phase 6A: Jail confinement ───────────────────────────────────────
+      // ── Phase 6A/6D: Jail confinement ────────────────────────────────────
       // Jailed players are confined to POLICE_JAIL_RADIUS around POLICE_JAIL_CELL.
       // All vehicle access is blocked while jailed.
+      //
+      // Phase 6D: Release is proximity-triggered rather than time-triggered.
+      //   - Sentence must have expired (nowMs >= jailUntil).
+      //   - Player must walk to the Release Exit marker (within POLICE_RELEASE_RADIUS).
+      //   - Until both conditions are met the player remains confined in the jail cell.
       const jailEntry = rpCache.get(socket.id);
       if (jailEntry?.jailUntil !== null && jailEntry?.jailUntil !== undefined) {
         const nowMs = Date.now();
 
         if (nowMs >= jailEntry.jailUntil.getTime()) {
-          // Sentence expired — trigger async release (guard prevents double-call).
-          if (!jailReleaseInProgress.has(socket.id)) {
-            releaseFromJail(socket.id, jailEntry, ctx).catch((err) => {
-              logger.error({ err, socketId: socket.id }, "[rp] releaseFromJail threw");
-            });
+          // Sentence expired — player must walk to the Release Exit to be freed.
+          // Check proximity to POLICE_RELEASE_POS.
+          const nx = data.x ?? player.x;
+          const nz = data.z ?? player.z;
+          const [relX, , relZ] = POLICE_RELEASE_POS;
+          const relDx = nx - relX;
+          const relDz = nz - relZ;
+          const relDist = Math.sqrt(relDx * relDx + relDz * relDz);
+
+          if (relDist <= POLICE_RELEASE_RADIUS) {
+            // Player reached the exit — trigger async release (guard prevents double-call).
+            if (!jailReleaseInProgress.has(socket.id)) {
+              releaseFromJail(socket.id, jailEntry, ctx).catch((err) => {
+                logger.error({ err, socketId: socket.id }, "[rp] releaseFromJail threw");
+              });
+            }
+            // Release will teleport them; let this update through.
+          } else {
+            // Sentence expired but player hasn't reached the exit yet.
+            // Keep confining to jail cell area so they understand they must walk out.
+            const [jailX, , jailZ] = POLICE_JAIL_CELL;
+            const jdx = nx - jailX;
+            const jdz = nz - jailZ;
+            const jdist = Math.sqrt(jdx * jdx + jdz * jdz);
+            if (jdist > POLICE_JAIL_RADIUS) {
+              const scale = POLICE_JAIL_RADIUS / jdist;
+              data.x = jailX + jdx * scale;
+              data.z = jailZ + jdz * scale;
+            }
+            data.isInVehicle = false;
+            data.vehicleId   = null;
           }
-          // Let the player move freely once expired (release will teleport them).
         } else {
-          // Still jailed — clamp position inside jail radius.
+          // Still serving sentence — clamp position inside jail radius.
           const [jailX, , jailZ] = POLICE_JAIL_CELL;
           const nx = data.x ?? player.x;
           const nz = data.z ?? player.z;

@@ -35,6 +35,7 @@ import {
   ATM_LOCATIONS,
   POLICE_JAIL_CELL,
   POLICE_RELEASE_POS,
+  POLICE_BOOKING_DESK_POS,
 } from "../socket/cityData";
 import type { RpCacheEntry, TestState } from "./rpCache";
 
@@ -162,9 +163,11 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
   // Phase 5E: Police Station must be off-road
   // Phase 6A: Jail cell + release position must be off-road
   const policeOffRoadMarkers = [
-    { label: "POLICE_STATION",    x: POLICE_STATION[0],    z: POLICE_STATION[2] },
-    { label: "POLICE_JAIL_CELL",  x: POLICE_JAIL_CELL[0],  z: POLICE_JAIL_CELL[2] },
-    { label: "POLICE_RELEASE_POS", x: POLICE_RELEASE_POS[0], z: POLICE_RELEASE_POS[2] },
+    { label: "POLICE_STATION",       x: POLICE_STATION[0],          z: POLICE_STATION[2] },
+    { label: "POLICE_JAIL_CELL",     x: POLICE_JAIL_CELL[0],        z: POLICE_JAIL_CELL[2] },
+    { label: "POLICE_RELEASE_POS",   x: POLICE_RELEASE_POS[0],      z: POLICE_RELEASE_POS[2] },
+    // Phase 6D: booking desk inside station
+    { label: "POLICE_BOOKING_DESK",  x: POLICE_BOOKING_DESK_POS[0], z: POLICE_BOOKING_DESK_POS[2] },
   ];
 
   // Phase 5F: ATM machines must be off-road
@@ -277,6 +280,8 @@ export function validateRpMarkerVehicleClearance(vehicles: VehiclePos[]): void {
     // Phase 6A — jail cell + release position
     { label: "POLICE_JAIL_CELL",        x: POLICE_JAIL_CELL[0],        z: POLICE_JAIL_CELL[2] },
     { label: "POLICE_RELEASE_POS",      x: POLICE_RELEASE_POS[0],      z: POLICE_RELEASE_POS[2] },
+    // Phase 6D — booking desk
+    { label: "POLICE_BOOKING_DESK",     x: POLICE_BOOKING_DESK_POS[0], z: POLICE_BOOKING_DESK_POS[2] },
   ];
   for (const m of markers) {
     if (isNearParkedCar(m.x, m.z, vehicles)) {

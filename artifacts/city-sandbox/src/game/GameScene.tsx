@@ -6,7 +6,7 @@ import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
 import type { RpProfile, RpToast } from "../shared/rpTypes";
-import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS } from "../shared/rpTypes";
+import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
 import LicenseTestHUD from "./LicenseTestHUD";
@@ -142,6 +142,7 @@ export default function GameScene({
     nearMedicCenter: false,
     nearPoliceStation: false,
     nearATM: false,
+    nearBookingDesk: false,
   });
 
   // Phase 3: dealership shop panel visibility
@@ -641,6 +642,7 @@ export default function GameScene({
         nearCuffTarget={nearCuffTarget}
         nearUncuffTarget={nearUncuffTarget}
         cuffedUntil={rpProfile?.cuffedUntil}
+        nearBookingDesk={uiState.nearBookingDesk}
       />
     </div>
   );

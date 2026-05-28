@@ -28,6 +28,8 @@ import {
   POLICE_PATROL_ACCEPT_RADIUS,
   ATM_LOCATIONS,
   ATM_INTERACT_RADIUS,
+  POLICE_BOOKING_DESK_POS,
+  POLICE_BOOKING_RADIUS,
 } from "../shared/rpTypes";
 import {
   SPAWN_POINTS,
@@ -165,6 +167,8 @@ interface LocalPlayerProps {
     nearPoliceStation: boolean;
     /** Phase 5F: true when walking player is within ATM_INTERACT_RADIUS of any ATM. */
     nearATM: boolean;
+    /** Phase 6D: true when walking player is within POLICE_BOOKING_RADIUS of the Booking Desk. */
+    nearBookingDesk: boolean;
   }) => void;
   playerPosRef: React.MutableRefObject<THREE.Vector3>;
   // Authoritative spawn from the server's gameState. Falls back to a
@@ -366,6 +370,8 @@ export default function LocalPlayer({
   const nearPoliceStationRef  = useRef(false);
   // Phase 5F: ATM proximity ref (walk-up; never true while in a vehicle)
   const nearATMRef            = useRef(false);
+  // Phase 6D: Booking Desk proximity ref (walk-up; for officer prompt)
+  const nearBookingDeskRef    = useRef(false);
   // Phase 4: job checkpoint retry state (same pattern as license-test cpRetryRef)
   const jobCpRetryRef = useRef<{ nextCp: number; lastAttemptAt: number } | null>(null);
 
@@ -390,6 +396,7 @@ export default function LocalPlayer({
     nearMedicCenter: false,
     nearPoliceStation: false,
     nearATM: false,
+    nearBookingDesk: false,
   });
 
   // Pointer lock
@@ -815,6 +822,15 @@ export default function LocalPlayer({
     }
     nearATMRef.current = nearATM;
 
+    // Phase 6D: Booking Desk proximity (walk-up only; officer prompt)
+    const [bdX, , bdZ] = POLICE_BOOKING_DESK_POS;
+    const bddx = curPos.x - bdX;
+    const bddz = curPos.z - bdZ;
+    const nearBookingDesk =
+      !inVehicle.current &&
+      bddx * bddx + bddz * bddz < POLICE_BOOKING_RADIUS * POLICE_BOOKING_RADIUS;
+    nearBookingDeskRef.current = nearBookingDesk;
+
     // Phase 3: nearest owned vehicle within 6 m (for lock/unlock prompt)
     let nearOwnedVehicleId: string | null = null;
     if (!inVehicle.current) {
@@ -853,6 +869,7 @@ export default function LocalPlayer({
       nearMedicCenter,
       nearPoliceStation,
       nearATM,
+      nearBookingDesk,
     };
 
     // Throttled per-field UI diff. JSON.stringify on a 10-key object
@@ -881,7 +898,8 @@ export default function LocalPlayer({
       newUI.nearMechanicGarage !== cache.nearMechanicGarage ||
       newUI.nearMedicCenter !== cache.nearMedicCenter ||
       newUI.nearPoliceStation !== cache.nearPoliceStation ||
-      newUI.nearATM !== cache.nearATM;
+      newUI.nearATM !== cache.nearATM ||
+      newUI.nearBookingDesk !== cache.nearBookingDesk;
     const timeChanged = Math.abs(newUI.raceTime - cache.raceTime) > 100;
     const sinceLast = now - lastUIEmit.current;
     if (

@@ -522,6 +522,14 @@ export async function handleArrest(
     color:    "green",
     duration: 4000,
   });
+  // Phase 6D: booking desk tip — encourage officer to escort suspect to desk.
+  setTimeout(() => {
+    socket.emit("rp:toast", {
+      msg:      "📋 Escort the suspect to the Booking Desk inside the station.",
+      color:    "blue",
+      duration: 5000,
+    });
+  }, 2500);
 
   logger.info(
     {

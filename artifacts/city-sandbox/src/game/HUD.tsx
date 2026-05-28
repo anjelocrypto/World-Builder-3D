@@ -132,6 +132,12 @@ interface HUDProps {
    * Non-null triggers the RESTRAINED overlay.
    */
   cuffedUntil?: number | null;
+  /**
+   * Phase 6D: true when the officer (on-duty) is within POLICE_BOOKING_RADIUS of
+   * the Booking Desk inside the station. Shows a contextual prompt for next steps
+   * after arresting a suspect.
+   */
+  nearBookingDesk?: boolean;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -210,9 +216,36 @@ function JailOverlay({
           {jailReason}
         </div>
       )}
-      <div style={{ fontSize: 11, color: "#555", marginTop: 8 }}>
-        Serve your sentence and be released automatically
+      {/* Restrictions reminder */}
+      <div style={{
+        fontSize:      11,
+        color:         "#884444",
+        maxWidth:      340,
+        textAlign:     "center",
+        lineHeight:    1.6,
+        border:        "1px solid rgba(200,50,50,0.2)",
+        borderRadius:  6,
+        padding:       "4px 10px",
+        marginTop:     4,
+      }}>
+        🚫 No jobs · No vehicles · No ATM · No license test
       </div>
+      {remaining === 0 ? (
+        <div style={{
+          fontSize:    14,
+          fontWeight:  700,
+          color:       "#00ff88",
+          marginTop:   10,
+          animation:   "none",
+          textAlign:   "center",
+        }}>
+          ✅ Fine processed — walk to the <span style={{ color: "#aaffcc" }}>Release Exit</span> to leave
+        </div>
+      ) : (
+        <div style={{ fontSize: 11, color: "#555", marginTop: 8 }}>
+          Serve your sentence, then walk to the Release Exit
+        </div>
+      )}
     </div>
   );
 }
@@ -623,6 +656,7 @@ export default function HUD({
   nearCuffTarget,
   nearUncuffTarget,
   cuffedUntil,
+  nearBookingDesk,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -1442,6 +1476,39 @@ export default function HUD({
               Open ATM
             </span>{" "}
             <span style={{ color: "#9bb", fontSize: 11 }}>· Bank / Withdraw</span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Booking Desk officer prompt (Phase 6D)
+          Only shown when the on-duty officer is near the Booking Desk.
+          ============================================================ */}
+      {nearBookingDesk && isOfficerOnDuty && !inVehicle && (
+        <div
+          style={{
+            position:             "absolute",
+            bottom:               130,
+            left:                 "50%",
+            transform:            "translateX(-50%)",
+            background:           PANEL_BG,
+            border:               "1px solid rgba(204, 102, 0, 0.65)",
+            borderRadius:         PANEL_RADIUS,
+            padding:              "8px 14px 8px 12px",
+            display:              "flex",
+            alignItems:           "center",
+            gap:                  10,
+            boxShadow:            `${PANEL_SHADOW}, 0 0 20px rgba(204,102,0,0.22)`,
+            backdropFilter:       "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div style={{ fontSize: 20 }}>📋</div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 0.5 }}>
+            <span style={{ color: "#ffaa44", fontWeight: "bold" }}>Booking Desk</span>
+            <span style={{ color: "#9bb", fontSize: 11, marginLeft: 6 }}>
+              · Escort cuffed suspects here to book them
+            </span>
           </div>
         </div>
       )}

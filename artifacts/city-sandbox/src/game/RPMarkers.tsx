@@ -29,6 +29,9 @@ import {
   MEDIC_ER_BAY,
   POLICE_STATION,
   ATM_LOCATIONS,
+  POLICE_JAIL_CELL,
+  POLICE_RELEASE_POS,
+  POLICE_BOOKING_DESK_POS,
 } from "../shared/rpTypes";
 
 interface RPMarkersProps {
@@ -109,6 +112,11 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
     useRef<THREE.MeshStandardMaterial>(null!),
     useRef<THREE.MeshStandardMaterial>(null!),
   ];
+  // Phase 6D: Booking Desk, Jail Cell ring, Release Exit
+  const bookingDeskRingRef = useRef<THREE.MeshStandardMaterial>(null!);
+  const bookingDeskSignRef = useRef<THREE.MeshStandardMaterial>(null!);
+  const jailCellRingRef    = useRef<THREE.MeshStandardMaterial>(null!);
+  const releaseExitRingRef = useRef<THREE.MeshStandardMaterial>(null!);
   // Phase 5F: one ring ref per ATM (5 total — matches ATM_LOCATIONS.length).
   const atmRingRefs = [
     useRef<THREE.MeshStandardMaterial>(null!),
@@ -188,6 +196,15 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
         ref.current.emissiveIntensity = 0.4 + 0.25 * Math.sin(t * 1.7 + i * 0.8);
       }
     });
+
+    // Phase 6D: Booking Desk — amber/brown pulse
+    const bookingDeskPulse = 0.4 + 0.3 * Math.sin(t * 2.1 + 0.9);
+    if (bookingDeskRingRef.current) bookingDeskRingRef.current.emissiveIntensity = bookingDeskPulse;
+    if (bookingDeskSignRef.current) bookingDeskSignRef.current.emissiveIntensity = 0.7 + 0.2 * Math.sin(t * 2.9 + 0.5);
+    // Phase 6D: Jail Cell ring — slow red pulse
+    if (jailCellRingRef.current) jailCellRingRef.current.emissiveIntensity = 0.3 + 0.2 * Math.sin(t * 1.4);
+    // Phase 6D: Release Exit — green pulse
+    if (releaseExitRingRef.current) releaseExitRingRef.current.emissiveIntensity = 0.4 + 0.3 * Math.sin(t * 2.2 + 1.5);
 
     // Police patrol checkpoint rings — only animate when job is police_patrol.
     if (aj?.job === "police_patrol") {
@@ -1173,6 +1190,183 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
           </group>
         );
       })}
+
+      {/* ════ Phase 6D: Booking Desk marker ════════════════════════════════════ */}
+      <group position={[POLICE_BOOKING_DESK_POS[0], POLICE_BOOKING_DESK_POS[1], POLICE_BOOKING_DESK_POS[2]]}>
+        {/* Ground ring — 4 m radius */}
+        <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[3.5, 4.5, 40]} />
+          <meshStandardMaterial
+            ref={bookingDeskRingRef}
+            color="#3d1a00"
+            emissive="#cc6600"
+            emissiveIntensity={0.4}
+            transparent
+            opacity={0.55}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+
+        {/* Sign post */}
+        <mesh position={[0, 2, -2]}>
+          <boxGeometry args={[0.12, 4, 0.12]} />
+          <meshStandardMaterial color="#2a1a0a" roughness={0.7} metalness={0.4} />
+        </mesh>
+
+        {/* Sign board */}
+        <mesh position={[0, 3.6, -2]}>
+          <boxGeometry args={[3.6, 0.8, 0.1]} />
+          <meshStandardMaterial
+            ref={bookingDeskSignRef}
+            color="#1a0a00"
+            emissive="#cc6600"
+            emissiveIntensity={0.7}
+            roughness={0.3}
+            metalness={0.2}
+          />
+        </mesh>
+
+        {/* Sign text strip */}
+        <mesh position={[0, 3.85, -1.94]}>
+          <boxGeometry args={[3.2, 0.1, 0.005]} />
+          <meshStandardMaterial color="#ffffff" emissive="#ffcc88" emissiveIntensity={2} />
+        </mesh>
+
+        <pointLight
+          position={[0, 3.6, -1.8]}
+          color="#cc6600"
+          intensity={1.4}
+          distance={10}
+          decay={2}
+        />
+      </group>
+
+      {/* ════ Phase 6D: Jail Cell confinement ring ══════════════════════════════ */}
+      <group position={[POLICE_JAIL_CELL[0], POLICE_JAIL_CELL[1], POLICE_JAIL_CELL[2]]}>
+        {/* Ground ring — matches POLICE_JAIL_RADIUS (8 m) */}
+        <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[7.5, 8.5, 48]} />
+          <meshStandardMaterial
+            ref={jailCellRingRef}
+            color="#200000"
+            emissive="#cc0000"
+            emissiveIntensity={0.3}
+            transparent
+            opacity={0.35}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+
+        {/* Corner bar pillars — four corners of the cell perimeter */}
+        {([[-5, -5], [5, -5], [5, 5], [-5, 5]] as const).map(([px, pz], i) => (
+          <mesh key={i} position={[px, 2, pz]}>
+            <cylinderGeometry args={[0.08, 0.08, 4, 6]} />
+            <meshStandardMaterial
+              color="#440000"
+              emissive="#880000"
+              emissiveIntensity={0.4}
+              roughness={0.5}
+              metalness={0.6}
+            />
+          </mesh>
+        ))}
+
+        <pointLight
+          position={[0, 3, 0]}
+          color="#cc2200"
+          intensity={0.8}
+          distance={12}
+          decay={2}
+        />
+      </group>
+
+      {/* ════ Phase 6D: Release Exit gate ═══════════════════════════════════════ */}
+      <group position={[POLICE_RELEASE_POS[0], POLICE_RELEASE_POS[1], POLICE_RELEASE_POS[2]]}>
+        {/* Ground ring — matches POLICE_RELEASE_RADIUS (4 m) */}
+        <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <ringGeometry args={[3.5, 4.5, 40]} />
+          <meshStandardMaterial
+            ref={releaseExitRingRef}
+            color="#002010"
+            emissive="#00cc55"
+            emissiveIntensity={0.4}
+            transparent
+            opacity={0.55}
+            side={THREE.DoubleSide}
+            depthWrite={false}
+          />
+        </mesh>
+
+        {/* Gate arch — left post */}
+        <mesh position={[-1.5, 2, 0]}>
+          <boxGeometry args={[0.2, 4, 0.2]} />
+          <meshStandardMaterial
+            color="#003310"
+            emissive="#00aa44"
+            emissiveIntensity={0.5}
+            roughness={0.4}
+            metalness={0.5}
+          />
+        </mesh>
+
+        {/* Gate arch — right post */}
+        <mesh position={[1.5, 2, 0]}>
+          <boxGeometry args={[0.2, 4, 0.2]} />
+          <meshStandardMaterial
+            color="#003310"
+            emissive="#00aa44"
+            emissiveIntensity={0.5}
+            roughness={0.4}
+            metalness={0.5}
+          />
+        </mesh>
+
+        {/* Gate arch — crossbar */}
+        <mesh position={[0, 4.1, 0]}>
+          <boxGeometry args={[3.2, 0.2, 0.2]} />
+          <meshStandardMaterial
+            color="#003310"
+            emissive="#00cc66"
+            emissiveIntensity={0.7}
+            roughness={0.3}
+            metalness={0.5}
+          />
+        </mesh>
+
+        {/* Sign post */}
+        <mesh position={[0, 2.2, -2.5]}>
+          <boxGeometry args={[0.12, 4, 0.12]} />
+          <meshStandardMaterial color="#0a2a12" roughness={0.7} metalness={0.4} />
+        </mesh>
+
+        {/* Sign board */}
+        <mesh position={[0, 3.8, -2.5]}>
+          <boxGeometry args={[4.0, 0.75, 0.1]} />
+          <meshStandardMaterial
+            color="#001a0a"
+            emissive="#00cc55"
+            emissiveIntensity={0.7}
+            roughness={0.3}
+            metalness={0.2}
+          />
+        </mesh>
+
+        {/* Sign text strip */}
+        <mesh position={[0, 4.0, -2.44]}>
+          <boxGeometry args={[3.6, 0.1, 0.005]} />
+          <meshStandardMaterial color="#ffffff" emissive="#aaffcc" emissiveIntensity={2} />
+        </mesh>
+
+        <pointLight
+          position={[0, 4, 0]}
+          color="#00cc55"
+          intensity={1.6}
+          distance={12}
+          decay={2}
+        />
+      </group>
 
       {/* ════ License-test checkpoint rings — only while test is active ════════
           Passed rings are dimmed. The next target pulses brightly.

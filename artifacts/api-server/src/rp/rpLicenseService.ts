@@ -153,6 +153,16 @@ export async function startLicenseTest(
     return;
   }
 
+  // Phase 6D: jailed players cannot take the license test.
+  if (entry.jailUntil !== null) {
+    socket.emit("rp:toast", {
+      msg:      "You cannot take the license test while in jail.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
   // Already licensed
   if (entry.driverLicense) {
     socket.emit("rp:toast", {

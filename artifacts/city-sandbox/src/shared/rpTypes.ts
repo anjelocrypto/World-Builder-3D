@@ -263,6 +263,15 @@ export const POLICE_ARREST_RADIUS = 4;
 /** Phase 6C: Radius (m) within which an officer can cuff a suspect. */
 export const POLICE_CUFF_RADIUS = 4;
 
+/** Phase 6D: Booking Desk world position — inside police station. */
+export const POLICE_BOOKING_DESK_POS: [number, number, number] = [-62, 0, 14];
+
+/** Phase 6D: Radius (m) of the Booking Desk interaction zone. */
+export const POLICE_BOOKING_RADIUS = 4;
+
+/** Phase 6D: Radius (m) of the Release Exit trigger zone. */
+export const POLICE_RELEASE_RADIUS = 4;
+
 // ── Phase 5F: Bank / ATM constants ────────────────────────────────────────
 // These MUST stay in sync with ATM_* in api-server/src/socket/cityData.ts.
 
