@@ -235,9 +235,10 @@ export function useRpSocket(socket: Socket | null) {
       setGangJoinRequestSent(null);
     };
 
-    // Phase 7E: rp:gangJoinRequestSent — confirmation the server queued the request.
-    const onGangJoinRequestSent = (data: GangJoinRequestSent) => {
-      setGangJoinRequestSent(data);
+    // Phase 7E: rp:gangJoinRequestSent — queued confirmation, or null when an
+    // expired request is cleared server-side so the join button reappears.
+    const onGangJoinRequestSent = (data: GangJoinRequestSent | null) => {
+      setGangJoinRequestSent(data ?? null);
     };
 
     // Phase 7A: rp:factionChat — a faction member sent a message.

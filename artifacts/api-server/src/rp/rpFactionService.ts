@@ -707,6 +707,19 @@ export async function handleGangJoinRequest(
     socket.emit("rp:toast", { msg: "You are already in a faction.", color: "yellow", duration: 3000 });
     return;
   }
+  // ── P2: Prune own expired request before duplicate check ─────────────────
+  // Without this, a player whose 60s TTL elapsed would be blocked from sending
+  // a new request until an unrelated gang event triggered broadcastPendingRequests.
+  {
+    const existing = pendingGangRequests.get(socket.id);
+    if (existing && Date.now() - existing.ts > GANG_REQUEST_TTL_MS) {
+      pendingGangRequests.delete(socket.id);
+      // Reset client state so the join button reappears.
+      socket.emit("rp:gangJoinRequestSent", null);
+      logger.debug({ socketId: socket.id }, "[rpGang] requester's own pending request expired — cleared for retry");
+    }
+  }
+
   // ── Reject duplicate pending request ──────────────────────────────────────
   if (pendingGangRequests.has(socket.id)) {
     socket.emit("rp:toast", { msg: "You already have a pending join request.", color: "yellow", duration: 3000 });
