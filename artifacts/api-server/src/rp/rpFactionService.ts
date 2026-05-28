@@ -1119,17 +1119,30 @@ export async function handleGangSetRank(
   }
 
   // ── DB write — safe WHERE includes factionId to guard against race ────────
-  await db
+  // .returning() lets us detect whether the guarded WHERE matched any row.
+  const updated = await db
     .update(rpPlayers)
     .set({ factionRank: newRank })
     .where(and(
       eq(rpPlayers.id, targetPlayerId),
       eq(rpPlayers.factionId, entry.factionId!),
-    ));
+    ))
+    .returning({ id: rpPlayers.id });
+
+  // ── P1: If 0 rows updated, the target left the faction between SELECT and UPDATE.
+  // Do NOT mutate cache. Notify the leader and push a fresh roster.
+  if (updated.length !== 1) {
+    socket.emit("rp:toast", { msg: "Member changed; refresh roster.", color: "yellow", duration: 4000 });
+    const roster = await fetchGangRoster(ctx, entry.factionId!);
+    socket.emit("rp:gangRoster", roster);
+    logger.debug({ leader: socket.id, target: targetPlayerId }, "[rpGang] gangSetRank: guarded UPDATE matched 0 rows — skipping cache mutation");
+    return;
+  }
 
   // ── Cache + live notification if target is online ─────────────────────────
   for (const [sid, cacheEntry] of ctx.rpCache.entries()) {
-    if (cacheEntry.playerId === targetPlayerId) {
+    // P1: also guard factionId so a race-replaced cache entry is never mutated.
+    if (cacheEntry.playerId === targetPlayerId && cacheEntry.factionId === entry.factionId) {
       cacheEntry.factionRank = newRank;
       ctx.io.to(sid).emit("rp:profileUpdate", {
         factionId:    cacheEntry.factionId,
@@ -1139,6 +1152,28 @@ export async function handleGangSetRank(
         factionColor: cacheEntry.factionColor,
         factionRank:  newRank,
       });
+      // P2: also push updated gangStatus so GangHUD stays consistent if open.
+      {
+        let memberCountOnline = 0;
+        for (const ce of ctx.rpCache.values()) {
+          if (ce.factionId === cacheEntry.factionId) memberCountOnline++;
+        }
+        const isGroveStreetTarget = cacheEntry.factionSlug === "grove_street";
+        ctx.io.to(sid).emit("rp:gangStatus", {
+          isMember:         true,
+          isGroveStreet:    isGroveStreetTarget,
+          factionSlug:      cacheEntry.factionSlug,
+          factionName:      cacheEntry.factionName,
+          factionColor:     cacheEntry.factionColor,
+          factionRank:      newRank,
+          turfName:         isGroveStreetTarget ? "Grove Street" : null,
+          memberCountOnline,
+          hangoutPos:    GROVE_STREET_HANGOUT_POS,
+          hangoutRadius: GROVE_STREET_HANGOUT_RADIUS,
+          turfCenter:    GROVE_STREET_TURF_CENTER,
+          turfRadius:    GROVE_STREET_TURF_RADIUS,
+        });
+      }
       break;
     }
   }
@@ -1234,17 +1269,29 @@ export async function handleGangRemoveMember(
   }
 
   // ── DB-first: clear faction with AND guard so a race never over-clears ────
-  await db
+  // .returning() lets us detect whether the guarded WHERE matched any row.
+  const updated = await db
     .update(rpPlayers)
     .set({ factionId: null, factionRank: 0 })
     .where(and(
       eq(rpPlayers.id, targetPlayerId),
       eq(rpPlayers.factionId, entry.factionId!),
-    ));
+    ))
+    .returning({ id: rpPlayers.id });
+
+  // ── P1: If 0 rows updated, the target already left the faction. Skip cache mutation.
+  if (updated.length !== 1) {
+    socket.emit("rp:toast", { msg: "Member changed; refresh roster.", color: "yellow", duration: 4000 });
+    const roster = await fetchGangRoster(ctx, entry.factionId!);
+    socket.emit("rp:gangRoster", roster);
+    logger.debug({ leader: socket.id, target: targetPlayerId }, "[rpGang] gangRemoveMember: guarded UPDATE matched 0 rows — skipping cache mutation");
+    return;
+  }
 
   // ── Cache wipe + live notification if target is online ────────────────────
   for (const [sid, cacheEntry] of ctx.rpCache.entries()) {
-    if (cacheEntry.playerId === targetPlayerId) {
+    // P1: also guard factionId to avoid wiping a cache entry that already changed.
+    if (cacheEntry.playerId === targetPlayerId && cacheEntry.factionId === entry.factionId) {
       cacheEntry.factionId    = null;
       cacheEntry.factionSlug  = null;
       cacheEntry.factionName  = null;
@@ -1258,6 +1305,21 @@ export async function handleGangRemoveMember(
         factionType:  null,
         factionColor: null,
         factionRank:  0,
+      });
+      // P2: push updated gangStatus so GangHUD immediately reflects removal.
+      ctx.io.to(sid).emit("rp:gangStatus", {
+        isMember:         false,
+        isGroveStreet:    false,
+        factionSlug:      null,
+        factionName:      null,
+        factionColor:     null,
+        factionRank:      0,
+        turfName:         null,
+        memberCountOnline: 0,
+        hangoutPos:    GROVE_STREET_HANGOUT_POS,
+        hangoutRadius: GROVE_STREET_HANGOUT_RADIUS,
+        turfCenter:    GROVE_STREET_TURF_CENTER,
+        turfRadius:    GROVE_STREET_TURF_RADIUS,
       });
       ctx.io.to(sid).emit("rp:toast", {
         msg:      "You have been removed from the gang.",
