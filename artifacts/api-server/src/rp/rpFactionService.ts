@@ -1535,11 +1535,10 @@ export async function handleGangMissionCheckpoint(
   const isFinal = idx === mission.points.length - 1;
 
   if (isFinal) {
-    // ── Final checkpoint: persist payout, clean up, emit complete ──────────
-    activeGangMissions.delete(socket.id);
-    gangMissionCooldowns.set(entry.playerId, now);
-
-    // DB-first: update cash in rpWallets via transaction, then update cache.
+    // ── Final checkpoint: DB transaction FIRST, then clean up ─────────────
+    // P1 fix: do NOT touch activeGangMissions or gangMissionCooldowns until
+    // after the wallet transaction commits. If the DB call fails the mission
+    // stays active so the client can retry the final tag point immediately.
     let newCash = entry.cash;
     try {
       await db.transaction(async (tx) => {
@@ -1569,11 +1568,18 @@ export async function handleGangMissionCheckpoint(
       });
     } catch (err) {
       logger.error({ err, socketId: socket.id }, "[rpGang] Tag Turf mission: payment tx failed");
-      socket.emit("rp:toast", { msg: "Mission complete! (Payout error — contact staff.)", color: "yellow", duration: 5000 });
+      // Mission stays active — player can retry the final tag point.
+      socket.emit("rp:toast", {
+        msg:      "Payout failed — walk back to the final tag and try again.",
+        color:    "yellow",
+        duration: 5000,
+      });
       return;
     }
 
-    // DB committed — update cache.
+    // DB committed — now safe to clear state and reward the player.
+    activeGangMissions.delete(socket.id);
+    gangMissionCooldowns.set(entry.playerId, now);
     entry.cash = newCash;
 
     socket.emit("rp:profileUpdate", { cash: newCash });

@@ -742,8 +742,11 @@ export default function LocalPlayer({
     }
 
     // ── Phase 7G: gang mission tag-point proximity — retry throttle ──────────────
-    // Walking only (not in vehicle). Uses player pos; server validates with its
-    // own authoritative position. 1s retry throttle while within GROVE_TAG_RADIUS.
+    // Walking only (not in vehicle) — per spec "player walks to each tag point".
+    // Driving to a tag point will never emit a checkpoint; the mission stays open
+    // until the player exits the vehicle and walks into range.
+    // Uses player pos; server re-validates with its own authoritative position.
+    // 1s retry throttle while within GROVE_TAG_RADIUS.
     if (!activeGangMission || inVehicle.current) {
       gangMissionCpRetryRef.current = null;
     } else {
