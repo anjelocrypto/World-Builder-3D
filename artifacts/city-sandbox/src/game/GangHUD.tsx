@@ -201,6 +201,12 @@ export default function GangHUD({
                   <div style={{ fontSize: 10, color: "#668", marginTop: 1 }}>
                     Rank {gangStatus?.factionRank ?? 0} · {gangStatus?.factionSlug ?? "grove_street"}
                   </div>
+                  {/* P2: turf name + online count */}
+                  {gangStatus?.turfName && (
+                    <div style={{ fontSize: 10, color: "#556", marginTop: 2 }}>
+                      {gangStatus.turfName} · {gangStatus.memberCountOnline} online
+                    </div>
+                  )}
                 </div>
               </div>
 
@@ -274,7 +280,7 @@ export default function GangHUD({
                       .reverse()
                       .map((evt, i) => (
                         <div
-                          key={`${evt.socketId}-${evt.ts}-${i}`}
+                          key={`${evt.fromId}-${evt.createdAt}-${i}`}
                           style={{
                             display:       "flex",
                             justifyContent: "space-between",
@@ -283,9 +289,9 @@ export default function GangHUD({
                             borderBottom:  "1px solid rgba(76,175,80,0.06)",
                           }}
                         >
-                          <span style={{ fontSize: 10, color: "#cdd" }}>{evt.username}</span>
+                          <span style={{ fontSize: 10, color: "#cdd" }}>{evt.fromName}</span>
                           <span style={{ fontSize: 9, color: "#4a7a4e", letterSpacing: 0.5 }}>
-                            r{evt.rank} · {new Date(evt.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
+                            {evt.turfName} · {new Date(evt.createdAt).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}
                           </span>
                         </div>
                       ))}

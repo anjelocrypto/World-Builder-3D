@@ -422,13 +422,24 @@ export function handleGangStatus(
   const isMember    = isGang(entry);
   const isGroveStreetMember = isGroveStreet(entry);
 
+  // P2: count online members in the same faction for memberCountOnline.
+  let memberCountOnline = 0;
+  if (isMember && entry.factionId) {
+    for (const cacheEntry of ctx.rpCache.values()) {
+      if (cacheEntry.factionId === entry.factionId) memberCountOnline++;
+    }
+  }
+
   socket.emit("rp:gangStatus", {
     isMember,
-    isGroveStreet: isGroveStreetMember,
-    factionSlug:   entry.factionSlug,
-    factionName:   entry.factionName,
-    factionColor:  entry.factionColor,
-    factionRank:   entry.factionRank,
+    isGroveStreet:      isGroveStreetMember,
+    factionSlug:        entry.factionSlug,
+    factionName:        entry.factionName,
+    factionColor:       entry.factionColor,
+    factionRank:        entry.factionRank,
+    // P2: required fields from prompt.
+    turfName:           isGroveStreetMember ? "Grove Street" : null,
+    memberCountOnline,
     // Turf geometry for the HUD — allows future server-driven turf changes.
     hangoutPos:    GROVE_STREET_HANGOUT_POS,
     hangoutRadius: GROVE_STREET_HANGOUT_RADIUS,
@@ -461,6 +472,26 @@ export function handleGangAction(
   const entry = ctx.rpCache.get(socket.id);
   if (!entry) return;
 
+  // ── P1: Reject jailed players ────────────────────────────────────────────
+  if (entry.jailUntil !== null && entry.jailUntil.getTime() > Date.now()) {
+    socket.emit("rp:toast", {
+      msg:      "You cannot use gang actions while in jail.",
+      color:    "red",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // ── P1: Reject cuffed players ─────────────────────────────────────────────
+  if (entry.cuffedBy !== null) {
+    socket.emit("rp:toast", {
+      msg:      "You cannot use gang actions while restrained.",
+      color:    "red",
+      duration: 3000,
+    });
+    return;
+  }
+
   // ── Validate gang membership ──────────────────────────────────────────────
   if (!isGang(entry)) {
     socket.emit("rp:toast", {
@@ -486,6 +517,17 @@ export function handleGangAction(
   const action  = typeof payload?.action === "string" ? payload.action : "";
 
   if (action === "claim_presence") {
+    // ── P2: claim_presence is Grove Street-specific until multi-gang turf
+    //        mapping is added in a later phase. ────────────────────────────
+    if (!isGroveStreet(entry)) {
+      socket.emit("rp:toast", {
+        msg:      "Your gang does not have a turf assigned yet.",
+        color:    "yellow",
+        duration: 3000,
+      });
+      return;
+    }
+
     // ── Validate turf proximity (server-authoritative position) ───────────
     const playerState = ctx.players.get(socket.id);
     if (!playerState) return;
@@ -503,14 +545,13 @@ export function handleGangAction(
       return;
     }
 
+    // ── P1/P2: Safe presence payload — no coordinates. ────────────────────
     const presencePayload = {
-      socketId:    socket.id,
-      username:    playerState.username ?? socket.id,
+      fromId:      socket.id,
+      fromName:    playerState.username ?? socket.id,
       factionSlug: entry.factionSlug!,
-      rank:        entry.factionRank,
-      x:           playerState.x,
-      z:           playerState.z,
-      ts:          Date.now(),
+      turfName:    "Grove Street",
+      createdAt:   Date.now(),
     };
 
     // Broadcast to every online socket in the same faction.

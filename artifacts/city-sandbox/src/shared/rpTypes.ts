@@ -145,12 +145,16 @@ export interface RpFactionMessage {
  * Non-gang players receive isMember=false (all other fields are null/0).
  */
 export interface GangStatus {
-  isMember:      boolean;
-  isGroveStreet: boolean;
-  factionSlug:   string | null;
-  factionName:   string | null;
-  factionColor:  string | null;
-  factionRank:   number;
+  isMember:           boolean;
+  isGroveStreet:      boolean;
+  factionSlug:        string | null;
+  factionName:        string | null;
+  factionColor:       string | null;
+  factionRank:        number;
+  /** P2: human-readable turf name (e.g. "Grove Street"); null for non-members. */
+  turfName:           string | null;
+  /** P2: count of online players in the same faction. */
+  memberCountOnline:  number;
   /** Turf geometry as reported by server (allows future server-driven turf changes). */
   hangoutPos:    [number, number, number];
   hangoutRadius: number;
@@ -161,18 +165,18 @@ export interface GangStatus {
 /**
  * Phase 7D: Broadcast by server to faction members when a member claims presence
  * in the turf zone via rp:gangAction { action: "claim_presence" }.
- * Server validates position before broadcasting.
+ * Safe payload — no coordinates exposed.
  */
 export interface GangPresenceEvent {
-  socketId:    string;
-  username:    string;
+  /** Socket ID of the broadcasting member. */
+  fromId:      string;
+  /** Display name of the broadcasting member. */
+  fromName:    string;
   factionSlug: string;
-  rank:        number;
-  /** Server-authoritative position (x, z). */
-  x:           number;
-  z:           number;
+  /** Human-readable turf name, e.g. "Grove Street". */
+  turfName:    string;
   /** Server Unix ms timestamp. */
-  ts:          number;
+  createdAt:   number;
 }
 
 // ── World coordinate constants ─────────────────────────────────────────────

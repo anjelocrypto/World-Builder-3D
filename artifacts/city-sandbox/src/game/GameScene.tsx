@@ -218,6 +218,11 @@ export default function GameScene({
   const [showGangHUD, setShowGangHUD] = useState(false);
   const showGangHUDRef = useRef(showGangHUD);
   showGangHUDRef.current = showGangHUD;
+  // P2: G key may only open when player is a gang member OR near the hangout.
+  // These refs are written during render so the keydown handler (stable closure)
+  // can read them without re-registering the listener.
+  const isGangMemberRef      = useRef(false);
+  const nearGangHangoutRef   = useRef(false);
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -404,13 +409,13 @@ export default function GameScene({
       }
 
       // Phase 7D: G toggles gang HUD.
-      // Close is always allowed. Open is allowed from anywhere (no faction requirement
-      // client-side — non-members see the locked view).
+      // Close is always allowed.
+      // Open: only when no modal is blocking AND (player is a gang member OR near the hangout).
       if (e.code === "KeyG") {
         if (showGangHUDRef.current) {
-          setShowGangHUD(false);  // close — always allowed
-        } else if (!anyModalOpen) {
-          setShowGangHUD(true);   // open — only when no other modal blocking
+          setShowGangHUD(false); // close — always allowed
+        } else if (!anyModalOpen && (isGangMemberRef.current || nearGangHangoutRef.current)) {
+          setShowGangHUD(true);
         }
         return;
       }
@@ -654,6 +659,9 @@ export default function GameScene({
     const dz = pos.z - tz;
     return Math.sqrt(dx * dx + dz * dz) <= GROVE_STREET_TURF_RADIUS;
   })();
+  // P2: keep refs in sync so the stable G-key handler can gate HUD open.
+  nearGangHangoutRef.current  = nearGangHangout;
+  isGangMemberRef.current     = rpProfile?.factionType === "gang";
 
   return (
     <div

@@ -66,7 +66,7 @@ export function useRpSocket(socket: Socket | null) {
   /**
    * Phase 7D: Rolling log of gang presence events received via rp:gangPresence.
    * Server broadcasts these only to faction members after a validate claim_presence action.
-   * Kept to last 20 entries.
+   * Kept to last 10 entries (per spec).
    */
   const [gangPresenceEvents, setGangPresenceEvents] = useState<GangPresenceEvent[]>([]);
 
@@ -202,7 +202,8 @@ export function useRpSocket(socket: Socket | null) {
     // Phase 7D: rp:gangPresence — a faction member claimed presence in the turf.
     // Server validates position before broadcasting; we just store it.
     const onGangPresence = (data: GangPresenceEvent) => {
-      setGangPresenceEvents((prev) => [...prev.slice(-19), data]);
+      // P3: keep last 10 per spec.
+      setGangPresenceEvents((prev) => [...prev.slice(-9), data]);
     };
 
     // Phase 7A: rp:factionChat — a faction member sent a message.
