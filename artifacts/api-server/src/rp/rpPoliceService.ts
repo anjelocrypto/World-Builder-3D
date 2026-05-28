@@ -66,7 +66,7 @@ function isOfficerValid(entry: RpCacheEntry): boolean {
  *  4. targetSocketId resolves to an active, non-jailed player
  *  5. Officer within POLICE_WARRANT_RADIUS (2D) of target
  *  6. DB: INSERT rp_warrants, query new MAX(stars) for wantedStars cache
- *  7. Update cache + emit rp:wantedUpdate to target
+ *  7. Update cache + broadcast rp:wantedUpdate to all clients + emit rp:profileUpdate / toast to target
  */
 export async function handleIssueWarrant(
   socket:         Socket,
@@ -200,6 +200,17 @@ export async function handleIssueWarrant(
   );
 }
 
+// ── Sentinel error for atomic warrant check ───────────────────────────────────
+
+/**
+ * Thrown inside the arrest DB transaction when no active warrant row is found.
+ * Caught in handleArrest's catch block to distinguish "no warrant" (expected
+ * race-condition outcome) from a genuine DB error.
+ */
+class NoActiveWarrantError extends Error {
+  constructor() { super("no_active_warrant"); }
+}
+
 // ── handleArrest ──────────────────────────────────────────────────────────────
 
 /**
@@ -287,55 +298,25 @@ export async function handleArrest(
     return;
   }
 
-  // ── DB warrant existence check (cache-stale guard) ───────────────────────
-  // Verify at least one active warrant row exists before touching the wallet.
-  // Prevents arrests when the cache is stale (warrant already cleared elsewhere).
-  try {
-    const [activeWarrant] = await db
-      .select({ id: rpWarrants.id })
-      .from(rpWarrants)
-      .where(and(eq(rpWarrants.playerId, targetEntry.playerId), isNull(rpWarrants.clearedAt)))
-      .limit(1);
-
-    if (!activeWarrant) {
-      // Cache was stale — reconcile and reject.
-      targetEntry.wantedStars = 0;
-      const staleSocket = ctx.io.sockets.sockets.get(targetSocketId);
-      staleSocket?.emit("rp:profileUpdate", { wantedStars: 0 });
-      ctx.io.emit("rp:wantedUpdate", { playerId: targetSocketId, wantedStars: 0 });
-      socket.emit("rp:toast", {
-        msg:      "That player has no active warrants (warrant may have just been cleared).",
-        color:    "yellow",
-        duration: 4000,
-      });
-      return;
-    }
-  } catch (err) {
-    logger.error({ err, socketId: socket.id }, "[rp] handleArrest: warrant existence check failed");
-    socket.emit("rp:toast", { msg: "Server error — arrest failed. Try again.", color: "red", duration: 4000 });
-    return;
-  }
-
-  // ── Sentence parameters ──────────────────────────────────────────────────
-  const sentenceSecs = Math.min(
-    POLICE_DEFAULT_SENTENCE_SECS * targetEntry.wantedStars,
-    POLICE_MAX_SENTENCE_SECS,
-  );
-  const fine = Math.min(
-    POLICE_DEFAULT_FINE * targetEntry.wantedStars,
-    POLICE_MAX_FINE,
-  );
-  const reason = `Arrested by officer — ${targetEntry.wantedStars}★ warrant`;
-  const jailUntil = new Date(Date.now() + sentenceSecs * 1000);
-
-  // ── DB transaction ───────────────────────────────────────────────────────
-  let newCash: number;
-  let newBank: number;
-  let actualFine: number;
+  // ── DB transaction (atomic warrant claim) ───────────────────────────────
+  //
+  // The warrant existence check is intentionally INSIDE the transaction, placed
+  // after locking the wallet row with SELECT … FOR UPDATE.  This serialises
+  // concurrent arrest attempts on the same suspect: the second officer to acquire
+  // the wallet lock will find no active warrants (the first already cleared them)
+  // and abort cleanly before touching wallet / jail state.  A pre-transaction
+  // SELECT would be non-atomic — two officers could both pass the check and then
+  // both execute the fine / jail / log writes.
+  let newCash:      number;
+  let newBank:      number;
+  let actualFine:   number;
+  let sentenceSecs: number;
+  let jailUntil:    Date;
+  let reason:       string;
 
   try {
     const result = await db.transaction(async (tx) => {
-      // Lock wallet row to prevent races.
+      // 1. Lock wallet row — serialises concurrent arrests on the same suspect.
       const [wallet] = await tx
         .select()
         .from(rpWallets)
@@ -344,16 +325,33 @@ export async function handleArrest(
 
       if (!wallet) throw new Error(`[rp] handleArrest: no wallet for ${targetEntry.playerId}`);
 
-      // Cash-first fine deduction — never go negative.
+      // 2. Atomically verify active warrants exist under the wallet lock.
+      //    If another officer already arrested this suspect the warrants will be
+      //    cleared; we throw a sentinel so the catch block can handle it cleanly.
+      const [{ maxStars }] = await tx
+        .select({ maxStars: max(rpWarrants.stars) })
+        .from(rpWarrants)
+        .where(and(eq(rpWarrants.playerId, targetEntry.playerId), isNull(rpWarrants.clearedAt)));
+
+      if (!maxStars) throw new NoActiveWarrantError();
+
+      // 3. Compute sentence / fine from the authoritative DB star count.
+      const dbStars        = Number(maxStars);
+      const dbSentenceSecs = Math.min(POLICE_DEFAULT_SENTENCE_SECS * dbStars, POLICE_MAX_SENTENCE_SECS);
+      const dbFine         = Math.min(POLICE_DEFAULT_FINE * dbStars, POLICE_MAX_FINE);
+      const dbReason       = `Arrested by officer — ${dbStars}★ warrant`;
+      const dbJailUntil    = new Date(Date.now() + dbSentenceSecs * 1000);
+
+      // 4. Cash-first fine deduction — never go negative.
       let cashDeduct = 0;
       let bankDeduct = 0;
 
-      if (fine > 0) {
-        if (wallet.cash >= fine) {
-          cashDeduct = fine;
+      if (dbFine > 0) {
+        if (wallet.cash >= dbFine) {
+          cashDeduct = dbFine;
         } else {
           cashDeduct = wallet.cash;
-          const remaining = fine - cashDeduct;
+          const remaining = dbFine - cashDeduct;
           bankDeduct = Math.min(remaining, wallet.bank);
         }
       }
@@ -376,7 +374,7 @@ export async function handleArrest(
           bankDelta: -bankDeduct,
           cashAfter: nc,
           bankAfter: nb,
-          note:      `Arrest fine — ${targetEntry.wantedStars}★ warrant`,
+          note:      `Arrest fine — ${dbStars}★ warrant`,
         });
       }
 
@@ -395,24 +393,48 @@ export async function handleArrest(
       await tx.insert(rpArrests).values({
         playerId:     targetEntry.playerId,
         arrestedBy:   officerEntry.playerId,
-        reason,
-        sentenceSecs,
+        reason:       dbReason,
+        sentenceSecs: dbSentenceSecs,
         fine:         af,
       });
 
       // Set jail sentence on the player row.
       await tx
         .update(rpPlayers)
-        .set({ jailUntil, jailReason: reason })
+        .set({ jailUntil: dbJailUntil, jailReason: dbReason })
         .where(eq(rpPlayers.id, targetEntry.playerId));
 
-      return { newCash: nc, newBank: nb, actualFine: af };
+      return {
+        newCash:      nc,
+        newBank:      nb,
+        actualFine:   af,
+        sentenceSecs: dbSentenceSecs,
+        jailUntil:    dbJailUntil,
+        reason:       dbReason,
+      };
     });
 
-    newCash    = result.newCash;
-    newBank    = result.newBank;
-    actualFine = result.actualFine;
+    newCash      = result.newCash;
+    newBank      = result.newBank;
+    actualFine   = result.actualFine;
+    sentenceSecs = result.sentenceSecs;
+    jailUntil    = result.jailUntil;
+    reason       = result.reason;
   } catch (err) {
+    if (err instanceof NoActiveWarrantError) {
+      // Race lost — another officer arrested this suspect first.
+      // Reconcile the stale cache entry so all clients reflect reality.
+      targetEntry.wantedStars = 0;
+      const staleSocket = ctx.io.sockets.sockets.get(targetSocketId);
+      staleSocket?.emit("rp:profileUpdate", { wantedStars: 0 });
+      ctx.io.emit("rp:wantedUpdate", { playerId: targetSocketId, wantedStars: 0 });
+      socket.emit("rp:toast", {
+        msg:      "That player has no active warrants (warrant may have just been cleared).",
+        color:    "yellow",
+        duration: 4000,
+      });
+      return;
+    }
     logger.error({ err, socketId: socket.id, targetSocketId }, "[rp] handleArrest: tx failed");
     socket.emit("rp:toast", {
       msg:      "Server error — arrest failed. Try again.",
