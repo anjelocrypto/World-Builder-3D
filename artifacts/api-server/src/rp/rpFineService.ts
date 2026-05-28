@@ -114,10 +114,10 @@ export async function issueFine(
     return;
   }
 
-  // Sanitise reason (max 200 chars, non-empty).
+  // Sanitise reason (max 120 chars, non-empty).
   const reason =
     typeof rawReason === "string" && rawReason.trim().length > 0
-      ? rawReason.trim().slice(0, 200)
+      ? rawReason.trim().slice(0, 120)
       : "Violation";
 
   // Proximity check — 2D distance between officer and target.
@@ -137,8 +137,15 @@ export async function issueFine(
     return;
   }
 
-  // Cancel any existing pending fine for this target before issuing a new one.
-  clearFinesForTarget(targetSocketId);
+  // Reject if target already has a pending fine — one fine at a time.
+  if (pendingFines.has(targetSocketId)) {
+    socket.emit("rp:toast", {
+      msg:      "Target already has a pending fine.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
 
   const expiresAt = Date.now() + POLICE_FINE_EXPIRE_MS;
 
@@ -214,14 +221,13 @@ export async function respondFine(
     return;
   }
 
-  // Remove fine + cancel timer immediately (idempotent guard).
-  clearTimeout(fine.timerId);
-  pendingFines.delete(targetSocketId);
-
   const accept = rawAccept === true;
 
   if (!accept) {
-    // ── Rejected ─────────────────────────────────────────────────────────────
+    // ── Rejected: clear immediately, no DB needed ─────────────────────────────
+    clearTimeout(fine.timerId);
+    pendingFines.delete(targetSocketId);
+
     socket.emit("rp:fineResolved", { accepted: false, amount: fine.amount });
     socket.emit("rp:toast", {
       msg:      "Fine rejected.",
@@ -242,8 +248,21 @@ export async function respondFine(
   }
 
   // ── Accepted: DB-first cash/bank deduction ─────────────────────────────────
+  // NOTE: keep pendingFines entry alive until the DB transaction commits so the
+  // target can retry payment if the DB fails (DB-first pattern, Phase 6E P1 fix).
   const targetEntry = ctx.rpCache.get(targetSocketId);
-  if (!targetEntry) return;
+  if (!targetEntry) {
+    // Cache entry missing (race with disconnect) — clear fine and notify both.
+    clearTimeout(fine.timerId);
+    pendingFines.delete(targetSocketId);
+    ctx.io.to(fine.officerSocketId).emit("rp:toast", {
+      msg:      "Fine cancelled — player left the server.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    logger.warn({ targetSocketId }, "[rp] respondFine: targetEntry missing on accept");
+    return;
+  }
 
   let newCash       = targetEntry.cash;
   let newBank       = targetEntry.bank;
@@ -303,6 +322,7 @@ export async function respondFine(
     newBank        = result.nb;
     actualDeducted = result.deducted;
   } catch (err) {
+    // DB failed — leave pendingFine in place so target can retry before expiry.
     logger.error({ err, targetSocketId }, "[rp] respondFine: DB transaction failed");
     socket.emit("rp:toast", {
       msg:      "Server error processing fine payment — try again.",
@@ -312,7 +332,10 @@ export async function respondFine(
     return;
   }
 
-  // ── Update cache and notify both parties ──────────────────────────────────
+  // ── DB committed: now clear the fine + update cache + notify both parties ──
+  clearTimeout(fine.timerId);
+  pendingFines.delete(targetSocketId);
+
   targetEntry.cash = newCash;
   targetEntry.bank = newBank;
 
