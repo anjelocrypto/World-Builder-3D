@@ -31,6 +31,8 @@ import {
   POLICE_RELEASE_POS,
   POLICE_CUFF_RADIUS,
   POLICE_CUFF_TIMEOUT_SECS,
+  POLICE_BOOKING_DESK_POS,
+  POLICE_BOOKING_RADIUS,
 } from "../socket/cityData";
 
 // ── Guards ────────────────────────────────────────────────────────────────────
@@ -522,14 +524,23 @@ export async function handleArrest(
     color:    "green",
     duration: 4000,
   });
-  // Phase 6D: booking desk tip — encourage officer to escort suspect to desk.
-  setTimeout(() => {
-    socket.emit("rp:toast", {
-      msg:      "📋 Escort the suspect to the Booking Desk inside the station.",
-      color:    "blue",
-      duration: 5000,
-    });
-  }, 2500);
+  // Phase 6D: booking desk tip — only when officer is NOT already at the desk
+  // (if they're already there the HUD K-prompt gives all the context needed).
+  const officerNow = ctx.players.get(socket.id);
+  if (officerNow) {
+    const bdx = officerNow.x - POLICE_BOOKING_DESK_POS[0];
+    const bdz = officerNow.z - POLICE_BOOKING_DESK_POS[2];
+    const distToDesk = Math.sqrt(bdx * bdx + bdz * bdz);
+    if (distToDesk > POLICE_BOOKING_RADIUS) {
+      setTimeout(() => {
+        socket.emit("rp:toast", {
+          msg:      "📋 Escort the suspect to the Booking Desk inside the station.",
+          color:    "blue",
+          duration: 5000,
+        });
+      }, 2500);
+    }
+  }
 
   logger.info(
     {

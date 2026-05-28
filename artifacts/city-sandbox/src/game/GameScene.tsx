@@ -469,6 +469,25 @@ export default function GameScene({
     return best;
   })();
 
+  // Phase 6D: Cuffed suspect (by this officer) near the Booking Desk.
+  // Checks desk position, not officer position — confirms the suspect was
+  // actually escorted there before showing the "K — Book" prompt.
+  const nearBookingTarget: { id: string; name: string } | null = (() => {
+    if (!isOfficerOnDuty || !uiState.nearBookingDesk || uiState.inVehicle) return null;
+    const [bdX, , bdZ] = POLICE_BOOKING_DESK_POS;
+    for (const p of remotePlayers) {
+      const cuffState = cuffedPlayers[p.id];
+      if (!cuffState || cuffState.cuffedBy !== myId) continue;
+      const dx = p.x - bdX;
+      const dz = p.z - bdZ;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist <= POLICE_BOOKING_RADIUS) {
+        return { id: p.id, name: (p as { username?: string }).username ?? p.id };
+      }
+    }
+    return null;
+  })();
+
   return (
     <div
       ref={wrapperRef}
@@ -643,6 +662,7 @@ export default function GameScene({
         nearUncuffTarget={nearUncuffTarget}
         cuffedUntil={rpProfile?.cuffedUntil}
         nearBookingDesk={uiState.nearBookingDesk}
+        nearBookingTarget={nearBookingTarget}
       />
     </div>
   );

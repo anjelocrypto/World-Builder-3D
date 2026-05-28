@@ -138,6 +138,12 @@ interface HUDProps {
    * after arresting a suspect.
    */
   nearBookingDesk?: boolean;
+  /**
+   * Phase 6D: non-null when a cuffed suspect (cuffed by this officer) is within
+   * POLICE_BOOKING_RADIUS of the Booking Desk. Upgrades the desk prompt to the
+   * K — Book / Arrest Suspect action.
+   */
+  nearBookingTarget?: { id: string; name: string } | null;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -657,6 +663,7 @@ export default function HUD({
   nearUncuffTarget,
   cuffedUntil,
   nearBookingDesk,
+  nearBookingTarget,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -1481,10 +1488,13 @@ export default function HUD({
       )}
 
       {/* ============================================================
-          BOTTOM-CENTER — Booking Desk officer prompt (Phase 6D)
-          Only shown when the on-duty officer is near the Booking Desk.
+          BOTTOM-CENTER — Booking Desk officer prompts (Phase 6D)
+          Two states:
+            1. Suspect present at desk → K — Book / Arrest Suspect
+            2. No suspect at desk     → guidance to bring one
           ============================================================ */}
-      {nearBookingDesk && isOfficerOnDuty && !inVehicle && (
+      {nearBookingDesk && isOfficerOnDuty && !inVehicle && nearBookingTarget && (
+        /* State 1: cuffed suspect is at the desk — show K action */
         <div
           style={{
             position:             "absolute",
@@ -1492,22 +1502,70 @@ export default function HUD({
             left:                 "50%",
             transform:            "translateX(-50%)",
             background:           PANEL_BG,
-            border:               "1px solid rgba(204, 102, 0, 0.65)",
+            border:               "1px solid rgba(204, 102, 0, 0.85)",
+            borderRadius:         PANEL_RADIUS,
+            padding:              "8px 14px 8px 8px",
+            display:              "flex",
+            alignItems:           "center",
+            gap:                  12,
+            boxShadow:            `${PANEL_SHADOW}, 0 0 28px rgba(204,102,0,0.35)`,
+            backdropFilter:       "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width:          28,
+              height:         28,
+              borderRadius:   6,
+              background:     "rgba(204, 102, 0, 0.18)",
+              border:         "1px solid rgba(204, 102, 0, 0.8)",
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              fontSize:       13,
+              fontWeight:     "bold",
+              color:          "#ffaa44",
+              boxShadow:      "inset 0 -2px 0 rgba(204,102,0,0.4)",
+            }}
+          >
+            K
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 0.5 }}>
+            <span style={{ color: "#ffaa44", fontWeight: "bold" }}>
+              Book / Arrest Suspect
+            </span>
+            <span style={{ color: "#9bb", fontSize: 11, marginLeft: 6 }}>
+              · {nearBookingTarget.name}
+            </span>
+          </div>
+        </div>
+      )}
+      {nearBookingDesk && isOfficerOnDuty && !inVehicle && !nearBookingTarget && (
+        /* State 2: at desk but no suspect — guidance prompt */
+        <div
+          style={{
+            position:             "absolute",
+            bottom:               130,
+            left:                 "50%",
+            transform:            "translateX(-50%)",
+            background:           PANEL_BG,
+            border:               "1px solid rgba(204, 102, 0, 0.45)",
             borderRadius:         PANEL_RADIUS,
             padding:              "8px 14px 8px 12px",
             display:              "flex",
             alignItems:           "center",
             gap:                  10,
-            boxShadow:            `${PANEL_SHADOW}, 0 0 20px rgba(204,102,0,0.22)`,
+            boxShadow:            `${PANEL_SHADOW}, 0 0 16px rgba(204,102,0,0.15)`,
             backdropFilter:       "blur(6px)",
             WebkitBackdropFilter: "blur(6px)",
           }}
         >
-          <div style={{ fontSize: 20 }}>📋</div>
+          <div style={{ fontSize: 18 }}>📋</div>
           <div style={{ fontSize: 13, color: "#fff", letterSpacing: 0.5 }}>
-            <span style={{ color: "#ffaa44", fontWeight: "bold" }}>Booking Desk</span>
+            <span style={{ color: "#cc8833", fontWeight: "bold" }}>Booking Desk</span>
             <span style={{ color: "#9bb", fontSize: 11, marginLeft: 6 }}>
-              · Escort cuffed suspects here to book them
+              · Bring a cuffed suspect here to book them
             </span>
           </div>
         </div>
@@ -1727,7 +1785,7 @@ export default function HUD({
           FULL-SCREEN — Jail overlay (Phase 6A)
           Renders on top of everything except modals (z-index 2500).
           ============================================================ */}
-      {jailUntil != null && jailUntil > Date.now() && (
+      {jailUntil != null && (
         <JailOverlay jailUntil={jailUntil} jailReason={jailReason} />
       )}
 
