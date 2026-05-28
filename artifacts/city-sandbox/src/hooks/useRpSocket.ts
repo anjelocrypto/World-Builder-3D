@@ -22,6 +22,8 @@ import type { VehicleState } from "../shared/types";
 export function useRpSocket(socket: Socket | null) {
   const [rpProfile, setRpProfile] = useState<RpProfile | null>(null);
   const [rpToasts, setRpToasts] = useState<RpToast[]>([]);
+  /** Map of socketId → wantedStars for all players on the server. */
+  const [wantedByPlayerId, setWantedByPlayerId] = useState<Record<string, number>>({});
 
   useEffect(() => {
     if (!socket) return;
@@ -47,9 +49,11 @@ export function useRpSocket(socket: Socket | null) {
     // so no additional state mutation is needed here.
     const onLicenseTestActive = () => {};
 
-    // Phase 6A: rp:wantedUpdate — server pushes a new wantedStars count.
-    const onWantedUpdate = (data: { wantedStars: number }) => {
-      setRpProfile((prev) => (prev ? { ...prev, wantedStars: data.wantedStars } : null));
+    // Phase 6B: rp:wantedUpdate — server broadcasts a new wantedStars count for
+    // a specific player. Update the global map only; own wantedStars flows via
+    // rp:profileUpdate which already handles it through onProfileUpdate.
+    const onWantedUpdate = (data: { playerId: string; wantedStars: number }) => {
+      setWantedByPlayerId((prev) => ({ ...prev, [data.playerId]: data.wantedStars }));
     };
 
     // Phase 6A: rp:jailStatus — player jailed or released.
@@ -217,6 +221,7 @@ export function useRpSocket(socket: Socket | null) {
     dismissToast,
     pushToast,
     canDriveVehicle,
+    wantedByPlayerId,
     emitInteract,
     emitLicenseCheckpoint,
     emitBuyVehicle,

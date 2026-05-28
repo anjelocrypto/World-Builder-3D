@@ -29,6 +29,7 @@ export default function Game({ username }: GameProps) {
     dismissToast,
     pushToast,
     canDriveVehicle,
+    wantedByPlayerId,
     emitInteract,
     emitLicenseCheckpoint,
     emitBuyVehicle,
@@ -93,6 +94,7 @@ export default function Game({ username }: GameProps) {
       emitBankWithdraw={emitBankWithdraw}
       emitIssueWarrant={emitIssueWarrant}
       emitArrest={emitArrest}
+      wantedByPlayerId={wantedByPlayerId}
     />
   );
 }

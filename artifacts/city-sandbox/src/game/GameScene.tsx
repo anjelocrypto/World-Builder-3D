@@ -79,6 +79,8 @@ interface GameSceneProps {
   emitIssueWarrant: (targetId: string, stars: number, reason: string) => void;
   /** Phase 6A: Emit rp:arrest — officer arrests a wanted player. */
   emitArrest: (targetId: string) => void;
+  /** Phase 6B: map of socketId → wantedStars for all players. */
+  wantedByPlayerId: Record<string, number>;
 }
 
 export default function GameScene({
@@ -105,6 +107,7 @@ export default function GameScene({
   emitBankWithdraw,
   emitIssueWarrant,
   emitArrest,
+  wantedByPlayerId,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -133,6 +136,13 @@ export default function GameScene({
   const [showShop, setShowShop] = useState(false);
   // Phase 5F: ATM panel visibility
   const [showATM, setShowATM] = useState(false);
+
+  // Stable refs for modal state — read inside the J/K keydown handler
+  // (registered once with empty deps) without stale closure issues.
+  const showShopRef = useRef(showShop);
+  showShopRef.current = showShop;
+  const showATMRef = useRef(showATM);
+  showATMRef.current = showATM;
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -243,8 +253,8 @@ export default function GameScene({
     ? Object.values(gameState.vehicles).find(v => v.driverId === myId)?.id
     : undefined;
 
-  // Phase 6A: stable refs so the J/K keydown handler always reads current values
-  // without needing to be re-registered every render.
+  // Phase 6A/6B: stable refs so the J/K keydown handler always reads current
+  // values without needing to be re-registered every render.
   const remotePlayersRef = useRef(remotePlayers);
   remotePlayersRef.current = remotePlayers;
   const rpProfileRef = useRef(rpProfile);
@@ -253,18 +263,33 @@ export default function GameScene({
   emitIssueWarrantRef.current = emitIssueWarrant;
   const emitArrestRef = useRef(emitArrest);
   emitArrestRef.current = emitArrest;
+  // Phase 6B: needed to gate K-key on actual wanted stars.
+  const wantedByPlayerIdRef = useRef(wantedByPlayerId);
+  wantedByPlayerIdRef.current = wantedByPlayerId;
 
-  // Phase 6A: J/K police action keys.
+  // Phase 6A/6B: J/K police action keys.
   // J = Issue 1★ warrant against the nearest player within POLICE_WARRANT_RADIUS.
-  // K = Arrest the nearest player within POLICE_ARREST_RADIUS (server validates wantedStars).
+  // K = Arrest the nearest WANTED player within POLICE_ARREST_RADIUS.
+  // Safety guards: ignore repeated events, ignore while typing, ignore while modal is open.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.code !== "KeyJ" && e.code !== "KeyK") return;
+      // Ignore key-repeat (held key firing continuously).
+      if (e.repeat) return;
+      // Ignore while the user is typing in an input/textarea/contenteditable.
+      const active = document.activeElement as HTMLElement | null;
+      if (active) {
+        const tag = active.tagName;
+        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active.isContentEditable) return;
+      }
+      // Ignore while any modal overlay is open.
+      if (showShopRef.current || showATMRef.current) return;
+
       const profile = rpProfileRef.current;
       if (!profile?.onDuty || profile.currentJob !== "police_patrol") return;
       if (profile.jailUntil !== null && profile.jailUntil !== undefined) return;
 
-      const pos    = playerPosRef.current;
+      const pos     = playerPosRef.current;
       const players = remotePlayersRef.current;
 
       if (e.code === "KeyJ") {
@@ -286,7 +311,10 @@ export default function GameScene({
       if (e.code === "KeyK") {
         let nearestId: string | null = null;
         let nearestDist = Infinity;
+        const wanted = wantedByPlayerIdRef.current;
         for (const p of players) {
+          // Only target players with active wanted stars.
+          if ((wanted[p.id] ?? 0) <= 0) continue;
           const dx = p.x - pos.x;
           const dz = p.z - pos.z;
           const dist = Math.sqrt(dx * dx + dz * dz);
@@ -304,24 +332,43 @@ export default function GameScene({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Intentionally empty — all state accessed via refs above.
 
-  // Phase 6A: officer J/K prompt visibility — computed on each render from
-  // current remotePlayers + playerPosRef (updated by LocalPlayer every frame).
+  // Phase 6A/6B: officer state — computed each render.
   const isOfficerOnDuty =
-    (rpProfile?.onDuty === true) &&
+    rpProfile?.onDuty === true &&
     rpProfile.currentJob === "police_patrol" &&
     !rpProfile.jailUntil;
 
-  const nearPoliceTarget = isOfficerOnDuty && !uiState.inVehicle && remotePlayers.some((p) => {
-    const dx = p.x - playerPosRef.current.x;
-    const dz = p.z - playerPosRef.current.z;
-    return Math.sqrt(dx * dx + dz * dz) <= POLICE_WARRANT_RADIUS;
-  });
+  // Nearest player within warrant range (any player, regardless of wanted status).
+  const nearPoliceTarget: { id: string; name: string; dist: number } | null = (() => {
+    if (!isOfficerOnDuty || uiState.inVehicle) return null;
+    let best: { id: string; name: string; dist: number } | null = null;
+    for (const p of remotePlayers) {
+      const dx = p.x - playerPosRef.current.x;
+      const dz = p.z - playerPosRef.current.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist <= POLICE_WARRANT_RADIUS && (!best || dist < best.dist)) {
+        best = { id: p.id, name: (p as { username?: string }).username ?? p.id, dist };
+      }
+    }
+    return best;
+  })();
 
-  const nearArrestTarget = isOfficerOnDuty && !uiState.inVehicle && remotePlayers.some((p) => {
-    const dx = p.x - playerPosRef.current.x;
-    const dz = p.z - playerPosRef.current.z;
-    return Math.sqrt(dx * dx + dz * dz) <= POLICE_ARREST_RADIUS;
-  });
+  // Nearest WANTED player within arrest range (must have wantedStars > 0).
+  const nearArrestTarget: { id: string; name: string; dist: number; stars: number } | null = (() => {
+    if (!isOfficerOnDuty || uiState.inVehicle) return null;
+    let best: { id: string; name: string; dist: number; stars: number } | null = null;
+    for (const p of remotePlayers) {
+      const stars = wantedByPlayerId[p.id] ?? 0;
+      if (stars <= 0) continue;
+      const dx = p.x - playerPosRef.current.x;
+      const dz = p.z - playerPosRef.current.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist <= POLICE_ARREST_RADIUS && (!best || dist < best.dist)) {
+        best = { id: p.id, name: (p as { username?: string }).username ?? p.id, dist, stars };
+      }
+    }
+    return best;
+  })();
 
   return (
     <div

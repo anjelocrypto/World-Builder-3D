@@ -107,15 +107,16 @@ interface HUDProps {
    */
   isOfficerOnDuty?: boolean;
   /**
-   * Phase 6A: true when a non-jailed player is within POLICE_WARRANT_RADIUS.
-   * Shows J — Issue Warrant prompt.
+   * Phase 6B: nearest player within POLICE_WARRANT_RADIUS, with display info.
+   * Null means no target in range. Shows J — Issue Warrant prompt.
    */
-  nearPoliceTarget?: boolean;
+  nearPoliceTarget?: { id: string; name: string; dist: number } | null;
   /**
-   * Phase 6A: true when a wanted player is within POLICE_ARREST_RADIUS.
-   * Shows K — Arrest prompt.
+   * Phase 6B: nearest WANTED player within POLICE_ARREST_RADIUS, with
+   * display info and stars count. Null means no wanted target in range.
+   * Shows K — Arrest prompt only when non-null.
    */
-  nearArrestTarget?: boolean;
+  nearArrestTarget?: { id: string; name: string; dist: number; stars: number } | null;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -1597,8 +1598,8 @@ export default function HUD({
       )}
 
       {/* ============================================================
-          BOTTOM-CENTER — Officer: Issue Warrant prompt (Phase 6A)
-          J key — shown when officer is on duty + non-jailed player nearby
+          BOTTOM-CENTER — Officer: Issue Warrant prompt (Phase 6B)
+          J key — shown when officer is on duty + any player nearby
           ============================================================ */}
       {isOfficerOnDuty && nearPoliceTarget && !inVehicle && (
         <div
@@ -1642,14 +1643,17 @@ export default function HUD({
             <span style={{ color: "#ffc832", fontWeight: "bold" }}>
               Issue Warrant
             </span>{" "}
-            <span style={{ color: "#9bb", fontSize: 11 }}>· 1★ default</span>
+            <span style={{ color: "#9bb", fontSize: 11 }}>
+              · {nearPoliceTarget.name}
+              {" "}({Math.round(nearPoliceTarget.dist)}m)
+            </span>
           </div>
         </div>
       )}
 
       {/* ============================================================
-          BOTTOM-CENTER — Officer: Arrest prompt (Phase 6A)
-          K key — shown when officer is on duty + wanted player in range
+          BOTTOM-CENTER — Officer: Arrest prompt (Phase 6B)
+          K key — shown only when a WANTED player is within arrest range
           ============================================================ */}
       {isOfficerOnDuty && nearArrestTarget && !inVehicle && (
         <div
@@ -1693,7 +1697,11 @@ export default function HUD({
             <span style={{ color: "#ff4444", fontWeight: "bold" }}>
               Arrest
             </span>{" "}
-            <span style={{ color: "#9bb", fontSize: 11 }}>· Wanted suspect nearby</span>
+            <span style={{ color: "#9bb", fontSize: 11 }}>
+              · {nearArrestTarget.name}
+              {" "}{"⭐".repeat(nearArrestTarget.stars)}
+              {" "}({Math.round(nearArrestTarget.dist)}m)
+            </span>
           </div>
         </div>
       )}

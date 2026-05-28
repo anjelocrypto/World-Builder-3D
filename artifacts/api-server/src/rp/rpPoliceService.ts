@@ -168,9 +168,12 @@ export async function handleIssueWarrant(
     targetEntry.wantedStars = Math.max(targetEntry.wantedStars, stars);
   }
 
-  // ── Emit to target ───────────────────────────────────────────────────────
+  // ── Broadcast wanted update to ALL clients + emit profile/toast to target ──
+  // Broadcast so every officer's client can maintain its wantedByPlayerId map.
+  // playerId field carries targetSocketId so clients know which player is wanted.
+  ctx.io.emit("rp:wantedUpdate", { playerId: targetSocketId, wantedStars: targetEntry.wantedStars });
+
   const targetSocket = ctx.io.sockets.sockets.get(targetSocketId);
-  targetSocket?.emit("rp:wantedUpdate", { wantedStars: targetEntry.wantedStars });
   targetSocket?.emit("rp:profileUpdate", { wantedStars: targetEntry.wantedStars });
   targetSocket?.emit("rp:toast", {
     msg:      `⭐ You have been issued a ${stars}-star warrant: ${reason}`,
@@ -281,6 +284,35 @@ export async function handleArrest(
       color:    "yellow",
       duration: 3000,
     });
+    return;
+  }
+
+  // ── DB warrant existence check (cache-stale guard) ───────────────────────
+  // Verify at least one active warrant row exists before touching the wallet.
+  // Prevents arrests when the cache is stale (warrant already cleared elsewhere).
+  try {
+    const [activeWarrant] = await db
+      .select({ id: rpWarrants.id })
+      .from(rpWarrants)
+      .where(and(eq(rpWarrants.playerId, targetEntry.playerId), isNull(rpWarrants.clearedAt)))
+      .limit(1);
+
+    if (!activeWarrant) {
+      // Cache was stale — reconcile and reject.
+      targetEntry.wantedStars = 0;
+      const staleSocket = ctx.io.sockets.sockets.get(targetSocketId);
+      staleSocket?.emit("rp:profileUpdate", { wantedStars: 0 });
+      ctx.io.emit("rp:wantedUpdate", { playerId: targetSocketId, wantedStars: 0 });
+      socket.emit("rp:toast", {
+        msg:      "That player has no active warrants (warrant may have just been cleared).",
+        color:    "yellow",
+        duration: 4000,
+      });
+      return;
+    }
+  } catch (err) {
+    logger.error({ err, socketId: socket.id }, "[rp] handleArrest: warrant existence check failed");
+    socket.emit("rp:toast", { msg: "Server error — arrest failed. Try again.", color: "red", duration: 4000 });
     return;
   }
 
@@ -396,6 +428,9 @@ export async function handleArrest(
   targetEntry.wantedStars = 0;
   targetEntry.jailUntil   = jailUntil;
   targetEntry.jailReason  = reason;
+
+  // ── Broadcast warrant cleared to all clients ─────────────────────────────
+  ctx.io.emit("rp:wantedUpdate", { playerId: targetSocketId, wantedStars: 0 });
 
   // ── Server-authoritative teleport to jail cell ────────────────────────────
   // Update the players Map so the confinement logic sees the correct position
@@ -526,6 +561,10 @@ export async function releaseFromJail(
       ctx.players.set(socketId, teleported);
       ctx.io.emit("playerMoved", teleported);
     }
+
+    // Broadcast warrant-cleared to all clients so their wantedByPlayerId maps
+    // reflect the release (wantedStars already cleared on arrest, but be explicit).
+    ctx.io.emit("rp:wantedUpdate", { playerId: socketId, wantedStars: 0 });
 
     const socket = ctx.io.sockets.sockets.get(socketId);
     socket?.emit("rp:jailStatus", {
