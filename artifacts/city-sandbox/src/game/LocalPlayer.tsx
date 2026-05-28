@@ -3,7 +3,7 @@ import { useFrame, useThree } from "@react-three/fiber";
 import { useKeyboardControls } from "@react-three/drei";
 import * as THREE from "three";
 import type { VehicleState } from "../shared/types";
-import type { ActiveTest, ActiveJob } from "../shared/rpTypes";
+import type { ActiveTest, ActiveJob, ActiveGangMission } from "../shared/rpTypes";
 import {
   LICENSING_OFFICE_POS,
   DEALERSHIP_POS,
@@ -30,6 +30,7 @@ import {
   ATM_INTERACT_RADIUS,
   POLICE_BOOKING_DESK_POS,
   POLICE_BOOKING_RADIUS,
+  GROVE_TAG_RADIUS,
 } from "../shared/rpTypes";
 import {
   SPAWN_POINTS,
@@ -232,6 +233,16 @@ interface LocalPlayerProps {
    * GameScene uses this to open the ATMHUD panel.
    */
   onOpenATM?: () => void;
+  /**
+   * Phase 7G: Active gang Tag Turf mission state from the server.
+   * Non-null while a mission is in progress. Drives tag-point proximity detection.
+   */
+  activeGangMission?: ActiveGangMission | null;
+  /**
+   * Phase 7G: Emit rp:gangMissionCheckpoint when within GROVE_TAG_RADIUS of the
+   * current tag point. Server validates independently.
+   */
+  emitGangMissionCheckpoint?: (idx: number) => void;
 }
 
 export default function LocalPlayer({
@@ -256,6 +267,8 @@ export default function LocalPlayer({
   emitToggleDuty,
   emitJobCheckpoint,
   onOpenATM,
+  activeGangMission,
+  emitGangMissionCheckpoint,
 }: LocalPlayerProps) {
   const { camera, gl } = useThree();
   const [, getKeys] = useKeyboardControls<Controls>();
@@ -374,6 +387,8 @@ export default function LocalPlayer({
   const nearBookingDeskRef    = useRef(false);
   // Phase 4: job checkpoint retry state (same pattern as license-test cpRetryRef)
   const jobCpRetryRef = useRef<{ nextCp: number; lastAttemptAt: number } | null>(null);
+  // Phase 7G: gang mission tag-point checkpoint retry (walking only, 1s throttle)
+  const gangMissionCpRetryRef = useRef<{ nextCp: number; lastAttemptAt: number } | null>(null);
 
   const uiCache = useRef({
     health: 100,
@@ -724,6 +739,35 @@ export default function LocalPlayer({
     } else {
       // Mismatched mode — reset retry
       jobCpRetryRef.current = null;
+    }
+
+    // ── Phase 7G: gang mission tag-point proximity — retry throttle ──────────────
+    // Walking only (not in vehicle). Uses player pos; server validates with its
+    // own authoritative position. 1s retry throttle while within GROVE_TAG_RADIUS.
+    if (!activeGangMission || inVehicle.current) {
+      gangMissionCpRetryRef.current = null;
+    } else {
+      const nextIdx = activeGangMission.nextIdx;
+      if (nextIdx < activeGangMission.points.length) {
+        const [tpx, , tpz] = activeGangMission.points[nextIdx]!;
+        const tpdx = pos.current.x - tpx;
+        const tpdz = pos.current.z - tpz;
+        const inRange = tpdx * tpdx + tpdz * tpdz < GROVE_TAG_RADIUS * GROVE_TAG_RADIUS;
+
+        const gmRetry = gangMissionCpRetryRef.current;
+        if (!gmRetry || gmRetry.nextCp !== nextIdx) {
+          // nextIdx advanced (server accepted) — clear so next tick emits immediately
+          gangMissionCpRetryRef.current = null;
+        }
+
+        if (inRange) {
+          const r = gangMissionCpRetryRef.current;
+          if (!r || now - r.lastAttemptAt >= 1000) {
+            gangMissionCpRetryRef.current = { nextCp: nextIdx, lastAttemptAt: now };
+            emitGangMissionCheckpoint?.(nextIdx);
+          }
+        }
+      }
     }
 
     // Update playerPosRef for minimap / HUD

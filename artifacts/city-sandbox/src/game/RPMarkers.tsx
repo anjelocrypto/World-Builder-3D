@@ -14,7 +14,7 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import type { ActiveTest, ActiveJob } from "../shared/rpTypes";
+import type { ActiveTest, ActiveJob, ActiveGangMission } from "../shared/rpTypes";
 import {
   STATION_MARKER_POS,
   LICENSING_OFFICE_POS,
@@ -35,6 +35,7 @@ import {
   GROVE_STREET_HANGOUT_POS,
   GROVE_STREET_TURF_CENTER,
   GROVE_STREET_TURF_RADIUS,
+  GROVE_TAG_POINTS,
 } from "../shared/rpTypes";
 
 interface RPMarkersProps {
@@ -42,9 +43,11 @@ interface RPMarkersProps {
   activeTest: ActiveTest | null;
   /** Phase 4: Non-null while a City Worker route is active. */
   activeJob:  ActiveJob | null;
+  /** Phase 7G: Non-null while a Tag Turf gang mission is active. */
+  activeGangMission: ActiveGangMission | null;
 }
 
-export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
+export default function RPMarkers({ activeTest, activeJob, activeGangMission }: RPMarkersProps) {
   // Mirror props into refs so useFrame (non-reactive) always reads current value.
   const activeTestRef = useRef<ActiveTest | null>(activeTest);
   activeTestRef.current = activeTest;
@@ -132,6 +135,14 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
     useRef<THREE.MeshStandardMaterial>(null!),
     useRef<THREE.MeshStandardMaterial>(null!),
   ];
+  // Phase 7G: one ref per Tag Turf mission checkpoint ring (3 total).
+  const tagCpRingRefs = [
+    useRef<THREE.MeshStandardMaterial>(null!),
+    useRef<THREE.MeshStandardMaterial>(null!),
+    useRef<THREE.MeshStandardMaterial>(null!),
+  ];
+  const activeGangMissionRef = useRef<ActiveGangMission | null>(activeGangMission);
+  activeGangMissionRef.current = activeGangMission;
 
   useFrame(({ clock }) => {
     const t  = clock.getElapsedTime();
@@ -210,6 +221,17 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
     if (gangHangoutSignRef.current) gangHangoutSignRef.current.emissiveIntensity = 0.7 + 0.25 * Math.sin(t * 3.2 + 0.4);
     // Turf ring breathes slowly — territorial rather than urgent
     if (gangTurfRingRef.current) gangTurfRingRef.current.emissiveIntensity = 0.15 + 0.08 * Math.sin(t * 0.9 + 1.0);
+
+    // Phase 7G: Tag Turf mission checkpoint rings
+    const agm = activeGangMissionRef.current;
+    tagCpRingRefs.forEach((ref, i) => {
+      if (!ref.current) return;
+      if (!agm) { ref.current.opacity = 0; return; }
+      const done    = i < agm.nextIdx;
+      const current = i === agm.nextIdx;
+      ref.current.opacity           = done ? 0.12 : current ? 0.55 : 0.25;
+      ref.current.emissiveIntensity = done ? 0.05 : current ? (0.55 + 0.35 * Math.sin(t * 3.5)) : 0.2;
+    });
 
     // Phase 6D: Booking Desk — amber/brown pulse
     const bookingDeskPulse = 0.4 + 0.3 * Math.sin(t * 2.1 + 0.9);
@@ -1461,6 +1483,77 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
           </mesh>
         );
       })()}
+
+      {/* ════ Phase 7G: Tag Turf mission checkpoint rings ══════════════════════
+          Only rendered while activeGangMission is non-null.
+          Current target pulses brightly green-yellow; completed = dim; future = muted. */}
+      {activeGangMission &&
+        GROVE_TAG_POINTS.map(([px, py, pz], i) => {
+          const done    = i < activeGangMission.nextIdx;
+          const current = i === activeGangMission.nextIdx;
+          return (
+            <group key={`tag-cp-${i}`} position={[px, 0, pz]}>
+              {/* Ground ring */}
+              <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+                <ringGeometry args={[3.5, 4.5, 40]} />
+                <meshStandardMaterial
+                  ref={tagCpRingRefs[i]}
+                  color={done ? "#001a00" : current ? "#1a2a00" : "#0a1a0a"}
+                  emissive={current ? "#aaff00" : "#44aa00"}
+                  emissiveIntensity={done ? 0.05 : current ? 0.55 : 0.2}
+                  transparent
+                  opacity={done ? 0.12 : current ? 0.55 : 0.25}
+                  side={THREE.DoubleSide}
+                  depthWrite={false}
+                />
+              </mesh>
+
+              {/* Pillar + cap — only for pending/current rings */}
+              {!done && (
+                <>
+                  <mesh position={[0, 1.4, 0]}>
+                    <cylinderGeometry args={[0.10, 0.10, 2.8, 8]} />
+                    <meshStandardMaterial
+                      color={current ? "#aaff00" : "#44aa00"}
+                      emissive={current ? "#aaff00" : "#44aa00"}
+                      emissiveIntensity={current ? 0.7 : 0.3}
+                      roughness={0.4}
+                    />
+                  </mesh>
+                  <mesh position={[0, 2.9, 0]}>
+                    <sphereGeometry args={[0.18, 8, 8]} />
+                    <meshStandardMaterial
+                      color="#ffffff"
+                      emissive={current ? "#ccff44" : "#88cc00"}
+                      emissiveIntensity={current ? 1.4 : 0.5}
+                    />
+                  </mesh>
+                  <pointLight
+                    position={[0, 3.0, 0]}
+                    color={current ? "#aaff00" : "#66bb00"}
+                    intensity={current ? 1.8 : 0.7}
+                    distance={10}
+                    decay={2}
+                  />
+                </>
+              )}
+
+              {/* Number label (y offset above post) */}
+              <mesh position={[0, py + 3.6, 0]} rotation={[0, Math.PI / 4, 0]}>
+                <planeGeometry args={[0.6, 0.3]} />
+                <meshStandardMaterial
+                  color={current ? "#aaff00" : done ? "#334433" : "#446644"}
+                  emissive={current ? "#88cc00" : "#224422"}
+                  emissiveIntensity={current ? 0.8 : 0.2}
+                  transparent
+                  opacity={done ? 0.3 : 0.8}
+                  side={THREE.DoubleSide}
+                  depthWrite={false}
+                />
+              </mesh>
+            </group>
+          );
+        })}
 
       {activeTest &&
         LICENSE_TEST_CHECKPOINTS.map(([cx, , cz], i) => {

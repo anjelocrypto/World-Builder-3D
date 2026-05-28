@@ -4,6 +4,8 @@
  * Phase 7D: Added handleGangStatus (read-only) + handleGangAction (claim_presence).
  * Phase 7E: Added gang recruitment — handleGangJoinRequest, handleGangJoinResponse,
  *            cleanupPendingGangRequest, module-level pendingGangRequests Map.
+ * Phase 7G: Added Tag Turf repeatable mission — handleGangMissionStart,
+ *            handleGangMissionCheckpoint, cleanupGangMission.
  *
  * Provides:
  *   loadFactionForPlayer(playerId)          — DB lookup, returns faction row or null
@@ -19,6 +21,9 @@
  *   handleGangJoinRequest(socket, ctx, p)   — non-member requests to join a gang faction
  *   handleGangJoinResponse(socket, ctx, p)  — leader accepts or rejects a pending request
  *   cleanupPendingGangRequest(socketId)     — called on disconnect to remove stale requests
+ *   handleGangMissionStart(socket, ctx)     — Grove Street member starts Tag Turf mission
+ *   handleGangMissionCheckpoint(socket, ctx, payload) — player hits a tag checkpoint
+ *   cleanupGangMission(socketId)            — called on disconnect to remove active mission
  *
  * Admin gate (rp:adminSetFaction):
  *   - ONLY allowed when NODE_ENV !== "production".
@@ -29,7 +34,7 @@
  */
 
 import type { Socket } from "socket.io";
-import { db, rpPlayers, rpFactions } from "@workspace/db";
+import { db, rpPlayers, rpFactions, rpWallets, rpTransactionLog } from "@workspace/db";
 import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import type { LicenseContext } from "./rpLicenseService";
@@ -46,6 +51,10 @@ import {
   GROVE_STREET_HANGOUT_RADIUS,
   GROVE_STREET_TURF_CENTER,
   GROVE_STREET_TURF_RADIUS,
+  GROVE_TAG_POINTS,
+  GROVE_TAG_RADIUS,
+  GROVE_TAG_PAY,
+  GROVE_TAG_COOLDOWN_MS,
 } from "../socket/cityData";
 
 // ── Faction DB row (partial, fields we care about) ────────────────────────────
@@ -1340,4 +1349,256 @@ export async function handleGangRemoveMember(
   // ── Push refreshed roster to the leader ───────────────────────────────────
   const roster = await fetchGangRoster(ctx, entry.factionId!);
   socket.emit("rp:gangRoster", roster);
+}
+
+// ── Phase 7G: Gang Activity Missions ─────────────────────────────────────────
+//
+// Design constraints (verbatim from Phase 7G spec):
+//   - No SQL migration, server-authoritative, Grove Street only.
+//   - No combat/damage/guns/robbery/illegal economy/territory persistence.
+//   - Client never sends payout, points, or completion flag.
+//   - Server enforces: sequence, authoritative distance, cooldown,
+//     jailed/cuffed/non-Grove/non-member rejection, cleanup on disconnect.
+
+interface ActiveGangMission {
+  missionId:        string;
+  factionSlug:      string;
+  points:           [number, number, number][];
+  nextIdx:          number;
+  startedAt:        number;
+  lastCheckpointAt: number;
+}
+
+/** socketId → active mission state */
+const activeGangMissions = new Map<string, ActiveGangMission>();
+
+/** playerId → timestamp (ms) of last mission completion (for cooldown) */
+const gangMissionCooldowns = new Map<string, number>();
+
+/** Minimum wall-clock ms between two consecutive checkpoint accepts (anti-teleport). */
+const GANG_MISSION_MIN_CP_INTERVAL_MS = 3_000;
+
+// ── handleGangMissionStart ────────────────────────────────────────────────────
+
+/**
+ * Client emits `rp:gangMissionStart` (no payload).
+ * Server validates Grove Street membership, state, proximity, and cooldown,
+ * then assigns 3 ordered tag points and emits `rp:gangMissionActive`.
+ */
+export function handleGangMissionStart(
+  socket: Socket,
+  ctx:    LicenseContext,
+): void {
+  const entry = ctx.rpCache.get(socket.id);
+  if (!entry) return;
+
+  // ── Grove Street member only ──────────────────────────────────────────────
+  if (!isGroveStreet(entry)) {
+    socket.emit("rp:toast", { msg: "You are not in Grove Street.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Not jailed / cuffed ───────────────────────────────────────────────────
+  if (entry.jailUntil !== null && entry.jailUntil.getTime() > Date.now()) {
+    socket.emit("rp:toast", { msg: "Can't start a mission while jailed.", color: "red", duration: 3000 });
+    return;
+  }
+  if (entry.cuffedBy) {
+    socket.emit("rp:toast", { msg: "Can't start a mission while cuffed.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── No existing active mission ────────────────────────────────────────────
+  if (activeGangMissions.has(socket.id)) {
+    socket.emit("rp:toast", { msg: "Mission already in progress.", color: "yellow", duration: 3000 });
+    return;
+  }
+
+  // ── Cooldown check ────────────────────────────────────────────────────────
+  const lastCompleted = gangMissionCooldowns.get(entry.playerId);
+  if (lastCompleted && Date.now() - lastCompleted < GROVE_TAG_COOLDOWN_MS) {
+    const remainSec = Math.ceil((GROVE_TAG_COOLDOWN_MS - (Date.now() - lastCompleted)) / 1000);
+    socket.emit("rp:toast", {
+      msg:      `Mission on cooldown. Try again in ${remainSec}s.`,
+      color:    "yellow",
+      duration: 4000,
+    });
+    return;
+  }
+
+  // ── Server-authoritative proximity to Grove Street hangout ───────────────
+  const playerPos = ctx.players.get(socket.id);
+  if (!playerPos) {
+    socket.emit("rp:toast", { msg: "Position unknown; move and try again.", color: "red", duration: 3000 });
+    return;
+  }
+  const dx = playerPos.x - GROVE_STREET_HANGOUT_POS[0];
+  const dz = playerPos.z - GROVE_STREET_HANGOUT_POS[2];
+  if (Math.sqrt(dx * dx + dz * dz) > GROVE_STREET_HANGOUT_RADIUS) {
+    socket.emit("rp:toast", { msg: "Move closer to the Grove Street hangout.", color: "yellow", duration: 3000 });
+    return;
+  }
+
+  // ── Assign mission ────────────────────────────────────────────────────────
+  const missionId = `gm_${socket.id}_${Date.now()}`;
+  const mission: ActiveGangMission = {
+    missionId,
+    factionSlug:      entry.factionSlug!,
+    points:           GROVE_TAG_POINTS as [number, number, number][],
+    nextIdx:          0,
+    startedAt:        Date.now(),
+    lastCheckpointAt: Date.now(),
+  };
+  activeGangMissions.set(socket.id, mission);
+
+  socket.emit("rp:gangMissionActive", {
+    missionId,
+    factionSlug: entry.factionSlug,
+    points:      GROVE_TAG_POINTS,
+    nextIdx:     0,
+    startedAt:   mission.startedAt,
+    pay:         GROVE_TAG_PAY,
+  });
+
+  logger.debug({ socketId: socket.id, missionId }, "[rpGang] Tag Turf mission started");
+}
+
+// ── handleGangMissionCheckpoint ───────────────────────────────────────────────
+
+/**
+ * Client emits `rp:gangMissionCheckpoint { idx }` when it detects the player
+ * is near the current tag point.
+ * Server re-validates everything; client never gets to declare completion.
+ */
+export async function handleGangMissionCheckpoint(
+  socket:     Socket,
+  ctx:        LicenseContext,
+  rawPayload: unknown,
+): Promise<void> {
+  // ── Parse payload ─────────────────────────────────────────────────────────
+  if (typeof rawPayload !== "object" || rawPayload === null) return;
+  const payload = rawPayload as Record<string, unknown>;
+  const idx = typeof payload.idx === "number" ? payload.idx : NaN;
+  if (!Number.isInteger(idx) || idx < 0) return;
+
+  const entry = ctx.rpCache.get(socket.id);
+  if (!entry) return;
+
+  // ── Active mission exists ─────────────────────────────────────────────────
+  const mission = activeGangMissions.get(socket.id);
+  if (!mission) {
+    socket.emit("rp:toast", { msg: "No active mission.", color: "red", duration: 2000 });
+    return;
+  }
+
+  // ── Sequence: idx must equal mission.nextIdx ──────────────────────────────
+  if (idx !== mission.nextIdx) {
+    // Silently ignore out-of-order emits (client retry may fire early/late).
+    return;
+  }
+
+  // ── Not jailed / cuffed ───────────────────────────────────────────────────
+  if (entry.jailUntil !== null && entry.jailUntil.getTime() > Date.now()) {
+    activeGangMissions.delete(socket.id);
+    socket.emit("rp:gangMissionFailed", { reason: "jailed" });
+    socket.emit("rp:toast", { msg: "Mission failed: you were jailed.", color: "red", duration: 4000 });
+    return;
+  }
+  if (entry.cuffedBy) {
+    activeGangMissions.delete(socket.id);
+    socket.emit("rp:gangMissionFailed", { reason: "cuffed" });
+    socket.emit("rp:toast", { msg: "Mission failed: you were cuffed.", color: "red", duration: 4000 });
+    return;
+  }
+
+  // ── Anti-teleport: min interval between checkpoints ───────────────────────
+  const now = Date.now();
+  if (now - mission.lastCheckpointAt < GANG_MISSION_MIN_CP_INTERVAL_MS) {
+    // Too fast — ignore silently (client will retry via throttle).
+    return;
+  }
+
+  // ── Server-authoritative distance to tag point ────────────────────────────
+  const playerPos = ctx.players.get(socket.id);
+  if (!playerPos) return;
+  const [tx, ty, tz] = mission.points[idx]!;
+  const ddx = playerPos.x - tx;
+  const ddy = (playerPos.y ?? 0) - ty;
+  const ddz = playerPos.z - tz;
+  const dist = Math.sqrt(ddx * ddx + ddy * ddy + ddz * ddz);
+  if (dist > GROVE_TAG_RADIUS) {
+    // Not close enough yet — ignore, client will keep retrying.
+    return;
+  }
+
+  // ── Accepted ──────────────────────────────────────────────────────────────
+  const isFinal = idx === mission.points.length - 1;
+
+  if (isFinal) {
+    // ── Final checkpoint: persist payout, clean up, emit complete ──────────
+    activeGangMissions.delete(socket.id);
+    gangMissionCooldowns.set(entry.playerId, now);
+
+    // DB-first: update cash in rpWallets via transaction, then update cache.
+    let newCash = entry.cash;
+    try {
+      await db.transaction(async (tx) => {
+        const [wallet] = await tx
+          .select()
+          .from(rpWallets)
+          .where(eq(rpWallets.playerId, entry.playerId))
+          .for("update");
+        if (!wallet) throw new Error("no wallet row");
+
+        newCash = wallet.cash + GROVE_TAG_PAY;
+
+        await tx
+          .update(rpWallets)
+          .set({ cash: newCash, updatedAt: new Date() })
+          .where(eq(rpWallets.playerId, entry.playerId));
+
+        await tx.insert(rpTransactionLog).values({
+          playerId:  entry.playerId,
+          kind:      "gang_mission",
+          cashDelta: GROVE_TAG_PAY,
+          bankDelta: 0,
+          cashAfter: newCash,
+          bankAfter: wallet.bank,
+          note:      "Tag Turf mission complete",
+        });
+      });
+    } catch (err) {
+      logger.error({ err, socketId: socket.id }, "[rpGang] Tag Turf mission: payment tx failed");
+      socket.emit("rp:toast", { msg: "Mission complete! (Payout error — contact staff.)", color: "yellow", duration: 5000 });
+      return;
+    }
+
+    // DB committed — update cache.
+    entry.cash = newCash;
+
+    socket.emit("rp:profileUpdate", { cash: newCash });
+    socket.emit("rp:gangMissionComplete", { pay: GROVE_TAG_PAY });
+    socket.emit("rp:toast", { msg: `Tag Turf complete! +$${GROVE_TAG_PAY}`, color: "green", duration: 5000 });
+
+    logger.debug({ socketId: socket.id, pay: GROVE_TAG_PAY, newCash }, "[rpGang] Tag Turf mission completed");
+  } else {
+    // ── Intermediate checkpoint: advance mission state, emit progress ───────
+    mission.nextIdx          = idx + 1;
+    mission.lastCheckpointAt = now;
+
+    socket.emit("rp:gangMissionProgress", { nextIdx: mission.nextIdx });
+    logger.debug({ socketId: socket.id, completedIdx: idx, nextIdx: mission.nextIdx }, "[rpGang] Tag Turf checkpoint hit");
+  }
+}
+
+// ── cleanupGangMission ────────────────────────────────────────────────────────
+
+/**
+ * Called by gameServer.ts disconnect handler to remove any active mission for
+ * the disconnecting socket. Does NOT emit to the socket (already gone).
+ */
+export function cleanupGangMission(socketId: string): void {
+  if (activeGangMissions.delete(socketId)) {
+    logger.debug({ socketId }, "[rpGang] active mission cleaned up on disconnect");
+  }
 }

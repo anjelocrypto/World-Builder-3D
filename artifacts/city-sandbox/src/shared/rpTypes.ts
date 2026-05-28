@@ -429,6 +429,42 @@ export const GANG_ACTION_MIN_RANK = 0;
 /** Phase 7E: Minimum rank to accept/reject gang join requests. */
 export const GANG_LEADER_MIN_RANK = 4;
 
+// ── Phase 7G: Tag Turf mission ─────────────────────────────────────────────
+// MUST stay in sync with GROVE_TAG_* in api-server/src/socket/cityData.ts.
+
+/** Client-side representation of an active Tag Turf gang mission. */
+export interface ActiveGangMission {
+  missionId:   string;
+  factionSlug: string;
+  /** All 3 ordered tag-point world positions [x, y, z]. */
+  points:      [number, number, number][];
+  /** Index of the next tag point the player must visit (0-based). */
+  nextIdx:     number;
+  /** Server timestamp (ms) when the mission was started. */
+  startedAt:   number;
+  /** Cash payout on successful completion. */
+  pay:         number;
+}
+
+/**
+ * Three ordered tag points for the "Tag Turf" mission.
+ * Kept in sync with GROVE_TAG_POINTS on the server.
+ */
+export const GROVE_TAG_POINTS: [number, number, number][] = [
+  [90, 0.5, 56],
+  [108, 0.5, 72],
+  [82, 0.5, 78],
+];
+
+/** Client-side proximity threshold for the checkpoint hit indicator (purely visual). */
+export const GROVE_TAG_RADIUS = 8;
+
+/** Cash payout displayed to the player before completion. */
+export const GROVE_TAG_PAY = 150;
+
+/** Cooldown (ms) after a completed mission before another can be started. */
+export const GROVE_TAG_COOLDOWN_MS = 120_000;
+
 /** Phase 6E: Pending fine state received from server via rp:fineIssued. */
 export interface RpPendingFine {
   officerId:   string;

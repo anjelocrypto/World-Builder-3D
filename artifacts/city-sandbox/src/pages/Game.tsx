@@ -67,6 +67,10 @@ export default function Game({ username }: GameProps) {
     emitGangRoster,
     emitGangSetRank,
     emitGangRemoveMember,
+    activeGangMission,
+    missionCooldownUntil,
+    emitGangMissionStart,
+    emitGangMissionCheckpoint,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -149,6 +153,10 @@ export default function Game({ username }: GameProps) {
       emitGangRoster={emitGangRoster}
       emitGangSetRank={emitGangSetRank}
       emitGangRemoveMember={emitGangRemoveMember}
+      activeGangMission={activeGangMission}
+      missionCooldownUntil={missionCooldownUntil}
+      emitGangMissionStart={emitGangMissionStart}
+      emitGangMissionCheckpoint={emitGangMissionCheckpoint}
     />
   );
 }

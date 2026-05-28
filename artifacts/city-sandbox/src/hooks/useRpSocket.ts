@@ -15,8 +15,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember } from "../shared/rpTypes";
-import { canDriveVehicleClient } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission } from "../shared/rpTypes";
+import { canDriveVehicleClient, GROVE_TAG_COOLDOWN_MS } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
 export function useRpSocket(socket: Socket | null) {
@@ -93,6 +93,18 @@ export function useRpSocket(socket: Socket | null) {
    * Refreshed on open and after any rank/remove action.
    */
   const [gangRoster, setGangRoster] = useState<GangRosterMember[]>([]);
+
+  /**
+   * Phase 7G: Active Tag Turf gang mission, or null when not in a mission.
+   * Populated by rp:gangMissionActive, updated by rp:gangMissionProgress,
+   * cleared by rp:gangMissionComplete / rp:gangMissionFailed.
+   */
+  const [activeGangMission, setActiveGangMission] = useState<ActiveGangMission | null>(null);
+  /**
+   * Phase 7G: ms timestamp after which a new Tag Turf mission can be started.
+   * 0 = no cooldown. Set when rp:gangMissionComplete is received.
+   */
+  const [missionCooldownUntil, setMissionCooldownUntil] = useState<number>(0);
 
   useEffect(() => {
     if (!socket) return;
@@ -252,6 +264,23 @@ export function useRpSocket(socket: Socket | null) {
       setGangRoster(Array.isArray(data) ? data : []);
     };
 
+    // Phase 7G: Tag Turf mission lifecycle events.
+    const onGangMissionActive = (data: ActiveGangMission) => {
+      setActiveGangMission(data);
+    };
+    const onGangMissionProgress = (data: { nextIdx: number }) => {
+      setActiveGangMission((prev) =>
+        prev ? { ...prev, nextIdx: data.nextIdx } : prev,
+      );
+    };
+    const onGangMissionComplete = () => {
+      setActiveGangMission(null);
+      setMissionCooldownUntil(Date.now() + GROVE_TAG_COOLDOWN_MS);
+    };
+    const onGangMissionFailed = () => {
+      setActiveGangMission(null);
+    };
+
     // Phase 7A: rp:factionChat — a faction member sent a message.
     const onFactionChat = (data: {
       fromId:       string;
@@ -289,6 +318,10 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:gangJoinResult",       onGangJoinResult);
     socket.on("rp:gangJoinRequestSent",  onGangJoinRequestSent);
     socket.on("rp:gangRoster",           onGangRoster);
+    socket.on("rp:gangMissionActive",    onGangMissionActive);
+    socket.on("rp:gangMissionProgress",  onGangMissionProgress);
+    socket.on("rp:gangMissionComplete",  onGangMissionComplete);
+    socket.on("rp:gangMissionFailed",    onGangMissionFailed);
 
     return () => {
       socket.off("rp:profile",              onProfile);
@@ -311,6 +344,10 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:gangJoinResult",       onGangJoinResult);
       socket.off("rp:gangJoinRequestSent",  onGangJoinRequestSent);
       socket.off("rp:gangRoster",           onGangRoster);
+      socket.off("rp:gangMissionActive",    onGangMissionActive);
+      socket.off("rp:gangMissionProgress",  onGangMissionProgress);
+      socket.off("rp:gangMissionComplete",  onGangMissionComplete);
+      socket.off("rp:gangMissionFailed",    onGangMissionFailed);
     };
   }, [socket]);
 
@@ -574,6 +611,17 @@ export function useRpSocket(socket: Socket | null) {
     ),
     emitGangRemoveMember: useCallback(
       (targetPlayerId: string) => { socket?.emit("rp:gangRemoveMember", { targetPlayerId }); },
+      [socket],
+    ),
+    // Phase 7G: Tag Turf mission
+    activeGangMission,
+    missionCooldownUntil,
+    emitGangMissionStart: useCallback(
+      () => { socket?.emit("rp:gangMissionStart"); },
+      [socket],
+    ),
+    emitGangMissionCheckpoint: useCallback(
+      (idx: number) => { socket?.emit("rp:gangMissionCheckpoint", { idx }); },
       [socket],
     ),
   };

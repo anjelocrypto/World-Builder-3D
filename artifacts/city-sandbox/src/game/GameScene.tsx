@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission } from "../shared/rpTypes";
 import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
@@ -17,6 +17,7 @@ import { IssueFinePanel, PendingFineOverlay } from "./FineHUD";
 import FactionChatHUD from "./FactionChatHUD";
 import FactionAdminHUD from "./FactionAdminHUD";
 import GangHUD from "./GangHUD";
+import { GangMissionHUD } from "./GangMissionHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -142,6 +143,14 @@ interface GameSceneProps {
   emitGangSetRank: (targetPlayerId: string, rank: number) => void;
   /** Phase 7F: Remove a member from the faction by DB playerId. */
   emitGangRemoveMember: (targetPlayerId: string) => void;
+  /** Phase 7G: Active gang Tag Turf mission state (from useRpSocket). */
+  activeGangMission: ActiveGangMission | null;
+  /** Phase 7G: Cooldown timestamp for Tag Turf mission; 0 = no cooldown. */
+  missionCooldownUntil: number;
+  /** Phase 7G: Emit rp:gangMissionStart. */
+  emitGangMissionStart: () => void;
+  /** Phase 7G: Emit rp:gangMissionCheckpoint. */
+  emitGangMissionCheckpoint: (idx: number) => void;
 }
 
 export default function GameScene({
@@ -196,6 +205,10 @@ export default function GameScene({
   emitGangRoster,
   emitGangSetRank,
   emitGangRemoveMember,
+  activeGangMission,
+  missionCooldownUntil,
+  emitGangMissionStart,
+  emitGangMissionCheckpoint,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -763,6 +776,7 @@ export default function GameScene({
           <RPMarkers
             activeTest={rpProfile?.activeTest ?? null}
             activeJob={rpProfile?.activeJob ?? null}
+            activeGangMission={activeGangMission}
           />
 
           {/* Local player (manages its own mesh + camera) */}
@@ -788,6 +802,8 @@ export default function GameScene({
             activeJob={rpProfile?.activeJob ?? null}
             emitToggleDuty={emitToggleDuty}
             emitJobCheckpoint={emitJobCheckpoint}
+            activeGangMission={activeGangMission}
+            emitGangMissionCheckpoint={emitGangMissionCheckpoint}
           />
 
           <PerfMonitor />
@@ -945,9 +961,19 @@ export default function GameScene({
           emitGangRoster={emitGangRoster}
           emitGangSetRank={emitGangSetRank}
           emitGangRemoveMember={emitGangRemoveMember}
+          activeGangMission={activeGangMission}
+          missionCooldownUntil={missionCooldownUntil}
+          emitGangMissionStart={emitGangMissionStart}
           onClose={() => setShowGangHUD(false)}
         />
       )}
+
+      {/* Phase 7G: Gang mission HUD — always visible during an active Tag Turf mission */}
+      <GangMissionHUD
+        activeGangMission={activeGangMission}
+        localPos={[playerPosRef.current.x, playerPosRef.current.y, playerPosRef.current.z]}
+        factionColor={rpProfile?.factionColor ?? null}
+      />
     </div>
   );
 }

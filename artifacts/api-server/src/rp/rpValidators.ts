@@ -38,6 +38,7 @@ import {
   POLICE_BOOKING_DESK_POS,
   GROVE_STREET_HANGOUT_POS,
   GROVE_STREET_TURF_CENTER,
+  GROVE_TAG_POINTS,
 } from "../socket/cityData";
 import type { RpCacheEntry, TestState } from "./rpCache";
 
@@ -208,9 +209,11 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
   ];
 
   // Phase 7D: Grove Street gang markers must be off-road
+  // Phase 7G: Tag Turf mission points must also be off-road
   const gangOffRoadMarkers = [
     { label: "GROVE_STREET_HANGOUT_POS", x: GROVE_STREET_HANGOUT_POS[0], z: GROVE_STREET_HANGOUT_POS[2] },
     { label: "GROVE_STREET_TURF_CENTER", x: GROVE_STREET_TURF_CENTER[0],  z: GROVE_STREET_TURF_CENTER[2]  },
+    ...GROVE_TAG_POINTS.map(([px, , pz], i) => ({ label: `GROVE_TAG_POINT_${i}`, x: px, z: pz })),
   ];
 
   for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers, ...deliveryMarkers, ...mechanicMarkers, ...medicOffRoadMarkers, ...policeOffRoadMarkers, ...atmOffRoadMarkers, ...gangOffRoadMarkers]) {
@@ -292,6 +295,8 @@ export function validateRpMarkerVehicleClearance(vehicles: VehiclePos[]): void {
     { label: "POLICE_BOOKING_DESK",     x: POLICE_BOOKING_DESK_POS[0], z: POLICE_BOOKING_DESK_POS[2] },
     // Phase 7D — Grove Street gang hangout (turf center is same position, no duplicate needed)
     { label: "GROVE_STREET_HANGOUT",    x: GROVE_STREET_HANGOUT_POS[0], z: GROVE_STREET_HANGOUT_POS[2] },
+    // Phase 7G — Tag Turf mission points
+    ...GROVE_TAG_POINTS.map(([px, , pz], i) => ({ label: `GROVE_TAG_POINT_${i}`, x: px, z: pz })),
   ];
   for (const m of markers) {
     if (isNearParkedCar(m.x, m.z, vehicles)) {

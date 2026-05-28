@@ -13,8 +13,8 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember } from "../shared/rpTypes";
-import { GANG_LEADER_MIN_RANK } from "../shared/rpTypes";
+import type { GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission } from "../shared/rpTypes";
+import { GANG_LEADER_MIN_RANK, GROVE_TAG_PAY, GROVE_TAG_COOLDOWN_MS } from "../shared/rpTypes";
 
 // ── Styling constants ─────────────────────────────────────────────────────────
 const PANEL_BG       = "rgba(6, 18, 8, 0.97)";
@@ -43,6 +43,10 @@ interface GangHUDProps {
   emitGangRoster:          () => void;
   emitGangSetRank:         (targetPlayerId: string, rank: number) => void;
   emitGangRemoveMember:    (targetPlayerId: string) => void;
+  // Phase 7G: Tag Turf mission
+  activeGangMission:       ActiveGangMission | null;
+  missionCooldownUntil:    number;   // ms timestamp; 0 = no cooldown
+  emitGangMissionStart:    () => void;
   onClose:                 () => void;
 }
 
@@ -64,6 +68,9 @@ export default function GangHUD({
   emitGangRoster,
   emitGangSetRank,
   emitGangRemoveMember,
+  activeGangMission,
+  missionCooldownUntil,
+  emitGangMissionStart,
   onClose,
 }: GangHUDProps) {
   const [lastAction, setLastAction] = useState<string>("");
@@ -320,6 +327,41 @@ export default function GangHUD({
                   </div>
                 )}
               </div>
+
+              {/* Tag Turf mission button — Phase 7G */}
+              {(() => {
+                const inCooldown     = missionCooldownUntil > Date.now();
+                const missionActive  = activeGangMission !== null;
+                const canStart       = nearHangout && !missionActive && !inCooldown;
+                const cooldownRemSec = inCooldown
+                  ? Math.ceil((missionCooldownUntil - Date.now()) / 1000)
+                  : 0;
+                return (
+                  <div style={{ marginTop: 6 }}>
+                    <button
+                      onClick={() => { if (canStart) emitGangMissionStart(); }}
+                      onKeyDown={stopProp}
+                      style={btnStyle(canStart)}
+                      disabled={!canStart}
+                      title={
+                        missionActive  ? "Mission already in progress" :
+                        inCooldown     ? `Cooldown: ${cooldownRemSec}s remaining` :
+                        !nearHangout   ? "Must be near the Grove Street hangout" :
+                                         `Tag 3 spots in the turf — earn $${GROVE_TAG_PAY}`
+                      }
+                    >
+                      {missionActive ? "◉ Mission In Progress" :
+                       inCooldown    ? `⏳ Cooldown (${cooldownRemSec}s)` :
+                                       `▶ Start Tag Turf (+$${GROVE_TAG_PAY})`}
+                    </button>
+                    {!missionActive && !inCooldown && (
+                      <div style={{ fontSize: 10, color: "#556", marginTop: 4 }}>
+                        Cooldown: {GROVE_TAG_COOLDOWN_MS / 1000}s after completion
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
 
               {/* Presence log */}
               {gangPresenceEvents.length > 0 && (

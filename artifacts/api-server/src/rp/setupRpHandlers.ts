@@ -51,6 +51,8 @@ import {
   handleGangRoster,
   handleGangSetRank,
   handleGangRemoveMember,
+  handleGangMissionStart,
+  handleGangMissionCheckpoint,
 } from "./rpFactionService";
 
 export type { LicenseContext };
@@ -474,6 +476,24 @@ export function setupRpHandlers(
     handleGangRemoveMember(socket, ctx, data).catch((err) => {
       logger.error({ err, socketId: socket.id }, "[rp] handleGangRemoveMember threw");
       socket.emit("rp:toast", { msg: "Server error — member removal failed.", color: "red", duration: 4000 });
+    });
+  });
+
+  // ── rp:gangMissionStart ───────────────────────────────────────────────────
+  // Phase 7G: Grove Street member starts a Tag Turf mission.
+  // Auth entirely server-side: isGroveStreet, not jailed/cuffed, near hangout,
+  // no active mission, not in cooldown.
+  socket.on("rp:gangMissionStart", () => {
+    handleGangMissionStart(socket, ctx);
+  });
+
+  // ── rp:gangMissionCheckpoint ──────────────────────────────────────────────
+  // Phase 7G: Player reports proximity to the current tag point.
+  // Server re-validates: sequence, jailed/cuffed, anti-teleport interval,
+  // authoritative distance. Client never decides completion or payout.
+  socket.on("rp:gangMissionCheckpoint", (data: unknown) => {
+    handleGangMissionCheckpoint(socket, ctx, data).catch((err) => {
+      logger.error({ err, socketId: socket.id }, "[rp] handleGangMissionCheckpoint threw");
     });
   });
 }

@@ -629,3 +629,45 @@ export const GROVE_STREET_TURF_CENTER: [number, number, number] = [95, 0, 65];
  * Only visual in Phase 7D — persistent capture is a later phase.
  */
 export const GROVE_STREET_TURF_RADIUS = 30;
+
+// ── Phase 7G: Grove Street "Tag Turf" mission ─────────────────────────────────
+//
+// Three tag points inside the Grove Street turf ring (dist < GROVE_STREET_TURF_RADIUS=30
+// from GROVE_STREET_TURF_CENTER=[95,0,65]).
+//
+// Off-road verification (NS roads: x ∈ {−45,0,45}; EW roads: z ∈ {−45,0,45};
+// ROAD_HALF=10 — must satisfy |coord − road| > 10 strictly):
+//
+//   Point 0  [90, 0.5, 56]  SW tag
+//     x=90: |90−45|=45 > 10 ✅
+//     z=56: |56−45|=11 > 10 ✅
+//     dist to turf center: sqrt((90−95)²+(56−65)²) ≈ 10.3 m < 30 ✅
+//     nearest parked car: > 59 m ✅
+//
+//   Point 1  [108, 0.5, 72]  E tag
+//     x=108: |108−45|=63 > 10 ✅
+//     z=72:  |72−45|=27 > 10 ✅
+//     dist to turf center: sqrt((108−95)²+(72−65)²) ≈ 14.8 m < 30 ✅
+//     nearest parked car: > 60 m ✅
+//
+//   Point 2  [82, 0.5, 78]  NW tag
+//     x=82: |82−45|=37 > 10 ✅
+//     z=78: |78−45|=33 > 10 ✅
+//     dist to turf center: sqrt((82−95)²+(78−65)²) ≈ 18.4 m < 30 ✅
+//     nearest parked car: > 60 m ✅
+
+/** Three ordered tag points for the "Tag Turf" repeatable gang mission. */
+export const GROVE_TAG_POINTS: [number, number, number][] = [
+  [90, 0.5, 56],
+  [108, 0.5, 72],
+  [82, 0.5, 78],
+];
+
+/** Server-authoritative proximity radius (m) for accepting a checkpoint hit. */
+export const GROVE_TAG_RADIUS = 8;
+
+/** Cash payout on successful completion. */
+export const GROVE_TAG_PAY = 150;
+
+/** Cooldown (ms) before the same player can start another Tag Turf mission. */
+export const GROVE_TAG_COOLDOWN_MS = 120_000;
