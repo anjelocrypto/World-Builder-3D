@@ -150,6 +150,11 @@ interface HUDProps {
    */
   nearFineTarget?: { id: string; name: string; dist: number } | null;
   /**
+   * Phase 7A: faction type string (e.g. "police", "medic", "civilian"), null = no faction.
+   * Phase 7B: used to show/hide faction-required prompts at Police Station / Medical Center.
+   */
+  factionType?:  string | null;
+  /**
    * Phase 7A: faction display name, null = Civilian / no faction.
    */
   factionName?:  string | null;
@@ -682,6 +687,7 @@ export default function HUD({
   nearBookingDesk,
   nearBookingTarget,
   nearFineTarget,
+  factionType,
   factionName,
   factionColor,
   factionRank,
@@ -1363,100 +1369,160 @@ export default function HUD({
           BOTTOM-CENTER — Medical Center clock-in/out prompt (Phase 5D)
           ============================================================ */}
       {nearMedicCenter && !inVehicle && !showInteract && !nearOffice && !nearDealership && !nearDepot && !nearTaxiDepot && !nearDeliveryHub && !nearMechanicGarage && (
-        <div
-          style={{
-            position:             "absolute",
-            bottom:               130,
-            left:                 "50%",
-            transform:            "translateX(-50%)",
-            background:           PANEL_BG,
-            border:               "1px solid rgba(220, 50, 50, 0.65)",
-            borderRadius:         PANEL_RADIUS,
-            padding:              "8px 14px 8px 8px",
-            display:              "flex",
-            alignItems:           "center",
-            gap:                  12,
-            boxShadow:            `${PANEL_SHADOW}, 0 0 24px rgba(220,50,50,0.22)`,
-            backdropFilter:       "blur(6px)",
-            WebkitBackdropFilter: "blur(6px)",
-          }}
-        >
+        factionType === "medic" ? (
+          /* ── Has medic faction — show normal clock-in prompt ─────────── */
           <div
             style={{
-              width:          28,
-              height:         28,
-              borderRadius:   6,
-              background:     "rgba(220, 50, 50, 0.15)",
-              border:         "1px solid rgba(220, 50, 50, 0.7)",
-              display:        "flex",
-              alignItems:     "center",
-              justifyContent: "center",
-              fontSize:       13,
-              fontWeight:     "bold",
-              color:          "#dc3232",
-              boxShadow:      "inset 0 -2px 0 rgba(220,50,50,0.35)",
+              position:             "absolute",
+              bottom:               130,
+              left:                 "50%",
+              transform:            "translateX(-50%)",
+              background:           PANEL_BG,
+              border:               "1px solid rgba(220, 50, 50, 0.65)",
+              borderRadius:         PANEL_RADIUS,
+              padding:              "8px 14px 8px 8px",
+              display:              "flex",
+              alignItems:           "center",
+              gap:                  12,
+              boxShadow:            `${PANEL_SHADOW}, 0 0 24px rgba(220,50,50,0.22)`,
+              backdropFilter:       "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
             }}
           >
-            E
+            <div
+              style={{
+                width:          28,
+                height:         28,
+                borderRadius:   6,
+                background:     "rgba(220, 50, 50, 0.15)",
+                border:         "1px solid rgba(220, 50, 50, 0.7)",
+                display:        "flex",
+                alignItems:     "center",
+                justifyContent: "center",
+                fontSize:       13,
+                fontWeight:     "bold",
+                color:          "#dc3232",
+                boxShadow:      "inset 0 -2px 0 rgba(220,50,50,0.35)",
+              }}
+            >
+              E
+            </div>
+            <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+              🚑{" "}
+              <span style={{ color: "#dc3232", fontWeight: "bold" }}>
+                Clock In / Out
+              </span>{" "}
+              <span style={{ color: "#9bb", fontSize: 11 }}>· Paramedic</span>
+            </div>
           </div>
-          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
-            🚑{" "}
-            <span style={{ color: "#dc3232", fontWeight: "bold" }}>
-              Clock In / Out
-            </span>{" "}
-            <span style={{ color: "#9bb", fontSize: 11 }}>· Paramedic</span>
+        ) : (
+          /* ── No medic faction — show faction-required notice ─────────── */
+          <div
+            style={{
+              position:             "absolute",
+              bottom:               130,
+              left:                 "50%",
+              transform:            "translateX(-50%)",
+              background:           PANEL_BG,
+              border:               "1px solid rgba(220, 50, 50, 0.30)",
+              borderRadius:         PANEL_RADIUS,
+              padding:              "8px 14px 8px 8px",
+              display:              "flex",
+              alignItems:           "center",
+              gap:                  12,
+              boxShadow:            PANEL_SHADOW,
+              backdropFilter:       "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
+              opacity:              0.65,
+            }}
+          >
+            <div style={{ fontSize: 18 }}>🔒</div>
+            <div style={{ fontSize: 12, color: "#aaa", letterSpacing: 0.5 }}>
+              🚑{" "}
+              <span style={{ color: "#dc3232" }}>Medical faction required</span>
+            </div>
           </div>
-        </div>
+        )
       )}
 
       {/* ============================================================
           BOTTOM-CENTER — Police Station clock-in/out prompt (Phase 5E)
           ============================================================ */}
       {nearPoliceStation && !inVehicle && !showInteract && !nearOffice && !nearDealership && !nearDepot && !nearTaxiDepot && !nearDeliveryHub && !nearMechanicGarage && !nearMedicCenter && (
-        <div
-          style={{
-            position:             "absolute",
-            bottom:               130,
-            left:                 "50%",
-            transform:            "translateX(-50%)",
-            background:           PANEL_BG,
-            border:               "1px solid rgba(34, 85, 204, 0.65)",
-            borderRadius:         PANEL_RADIUS,
-            padding:              "8px 14px 8px 8px",
-            display:              "flex",
-            alignItems:           "center",
-            gap:                  12,
-            boxShadow:            `${PANEL_SHADOW}, 0 0 24px rgba(34,85,204,0.22)`,
-            backdropFilter:       "blur(6px)",
-            WebkitBackdropFilter: "blur(6px)",
-          }}
-        >
+        factionType === "police" ? (
+          /* ── Has police faction — show normal clock-in prompt ────────── */
           <div
             style={{
-              width:          28,
-              height:         28,
-              borderRadius:   6,
-              background:     "rgba(34, 85, 204, 0.15)",
-              border:         "1px solid rgba(34, 85, 204, 0.7)",
-              display:        "flex",
-              alignItems:     "center",
-              justifyContent: "center",
-              fontSize:       13,
-              fontWeight:     "bold",
-              color:          "#2255cc",
-              boxShadow:      "inset 0 -2px 0 rgba(34,85,204,0.35)",
+              position:             "absolute",
+              bottom:               130,
+              left:                 "50%",
+              transform:            "translateX(-50%)",
+              background:           PANEL_BG,
+              border:               "1px solid rgba(34, 85, 204, 0.65)",
+              borderRadius:         PANEL_RADIUS,
+              padding:              "8px 14px 8px 8px",
+              display:              "flex",
+              alignItems:           "center",
+              gap:                  12,
+              boxShadow:            `${PANEL_SHADOW}, 0 0 24px rgba(34,85,204,0.22)`,
+              backdropFilter:       "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
             }}
           >
-            E
+            <div
+              style={{
+                width:          28,
+                height:         28,
+                borderRadius:   6,
+                background:     "rgba(34, 85, 204, 0.15)",
+                border:         "1px solid rgba(34, 85, 204, 0.7)",
+                display:        "flex",
+                alignItems:     "center",
+                justifyContent: "center",
+                fontSize:       13,
+                fontWeight:     "bold",
+                color:          "#2255cc",
+                boxShadow:      "inset 0 -2px 0 rgba(34,85,204,0.35)",
+              }}
+            >
+              E
+            </div>
+            <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+              🚔{" "}
+              <span style={{ color: "#4488ff", fontWeight: "bold" }}>
+                Clock In / Out
+              </span>{" "}
+              <span style={{ color: "#9bb", fontSize: 11 }}>· Police Patrol</span>
+            </div>
           </div>
-          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
-            🚔{" "}
-            <span style={{ color: "#4488ff", fontWeight: "bold" }}>
-              Clock In / Out
-            </span>{" "}
-            <span style={{ color: "#9bb", fontSize: 11 }}>· Police Patrol</span>
+        ) : (
+          /* ── No police faction — show faction-required notice ────────── */
+          <div
+            style={{
+              position:             "absolute",
+              bottom:               130,
+              left:                 "50%",
+              transform:            "translateX(-50%)",
+              background:           PANEL_BG,
+              border:               "1px solid rgba(34, 85, 204, 0.30)",
+              borderRadius:         PANEL_RADIUS,
+              padding:              "8px 14px 8px 8px",
+              display:              "flex",
+              alignItems:           "center",
+              gap:                  12,
+              boxShadow:            PANEL_SHADOW,
+              backdropFilter:       "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
+              opacity:              0.65,
+            }}
+          >
+            <div style={{ fontSize: 18 }}>🔒</div>
+            <div style={{ fontSize: 12, color: "#aaa", letterSpacing: 0.5 }}>
+              🚔{" "}
+              <span style={{ color: "#4488ff" }}>Police faction required</span>
+            </div>
           </div>
-        </div>
+        )
       )}
 
       {/* ============================================================

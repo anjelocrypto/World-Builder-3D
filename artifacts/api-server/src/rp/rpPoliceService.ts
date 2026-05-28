@@ -21,6 +21,11 @@ import { logger }                   from "../lib/logger";
 import type { RpCacheEntry }        from "./rpCache";
 import type { LicenseContext }      from "./rpLicenseService";
 import {
+  isPolice,
+  isFactionRankAtLeast,
+  POLICE_ARREST_MIN_RANK,
+} from "./rpFactionHelpers";
+import {
   POLICE_ARREST_RADIUS,
   POLICE_WARRANT_RADIUS,
   POLICE_DEFAULT_SENTENCE_SECS,
@@ -51,8 +56,16 @@ function dist2d(ax: number, az: number, bx: number, bz: number): number {
   return Math.sqrt((ax - bx) ** 2 + (az - bz) ** 2);
 }
 
+/**
+ * Phase 7B: officer must be police faction, on duty as police_patrol,
+ * not jailed, and not cuffed.
+ * Belt-and-suspenders — clock-in already requires police faction (rpJobService),
+ * so a player could only have currentJob === "police_patrol" if they passed
+ * that gate. This guard closes any future edge-case paths.
+ */
 function isOfficerValid(entry: RpCacheEntry): boolean {
   return (
+    isPolice(entry) &&
     entry.currentJob === "police_patrol" &&
     entry.onDuty &&
     entry.jailUntil === null &&
@@ -253,6 +266,16 @@ export async function handleArrest(
     socket.emit("rp:toast", {
       msg:      "You must be on duty as a Police Officer to make arrests.",
       color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Phase 7B: arrest requires minimum rank (rank >= POLICE_ARREST_MIN_RANK).
+  if (!isFactionRankAtLeast(officerEntry, POLICE_ARREST_MIN_RANK)) {
+    socket.emit("rp:toast", {
+      msg:      `Higher police rank required. (min rank ${POLICE_ARREST_MIN_RANK})`,
+      color:    "red",
       duration: 3000,
     });
     return;

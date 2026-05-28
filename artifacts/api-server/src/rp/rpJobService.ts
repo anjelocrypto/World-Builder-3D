@@ -104,6 +104,7 @@ import {
   POLICE_PATROL_MIN_STAGE_INTERVAL_MS,
   POLICE_PATROL_ROUTE_COOLDOWN_MS,
 } from "../socket/cityData";
+import { isPolice, isMedic } from "./rpFactionHelpers";
 
 // ── Context ────────────────────────────────────────────────────────────────────
 
@@ -1434,9 +1435,17 @@ async function clockInMedic(
   entry:  RpCacheEntry,
   player: PlayerState,
 ): Promise<void> {
-  // TODO (Phase 7B): Require factionType === "medic" for clock-in.
-  // Until faction assignment UI/admin flow is live, allow any player in DEV.
-  // Requires driver license
+  // Phase 7B: require medic faction membership.
+  if (!isMedic(entry)) {
+    socket.emit("rp:toast", {
+      msg:      "Medical faction required.",
+      color:    "red",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Requires driver license.
   if (!entry.driverLicense) {
     socket.emit("rp:toast", {
       msg:      "A driver license is required to work as a paramedic.",
@@ -1743,10 +1752,17 @@ async function clockInPolicePatrol(
   entry:  RpCacheEntry,
   player: PlayerState,
 ): Promise<void> {
-  // TODO (Phase 7B): Require factionType === "police" for clock-in.
-  // Until faction assignment UI/admin flow is live, allow any player in DEV.
-  // In production, gating will require: entry.factionType === "police"
-  // Requires driver license
+  // Phase 7B: require police faction membership.
+  if (!isPolice(entry)) {
+    socket.emit("rp:toast", {
+      msg:      "Police faction required.",
+      color:    "red",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Requires driver license.
   if (!entry.driverLicense) {
     socket.emit("rp:toast", {
       msg:      "A driver license is required to work as a Police Officer.",

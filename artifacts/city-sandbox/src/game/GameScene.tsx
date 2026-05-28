@@ -761,6 +761,7 @@ export default function GameScene({
         nearBookingDesk={uiState.nearBookingDesk}
         nearBookingTarget={nearBookingTarget}
         nearFineTarget={nearFineTarget}
+        factionType={rpProfile?.factionType ?? null}
         factionName={rpProfile?.factionName ?? null}
         factionColor={rpProfile?.factionColor ?? null}
         factionRank={rpProfile?.factionRank ?? undefined}

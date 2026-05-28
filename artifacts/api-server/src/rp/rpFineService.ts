@@ -26,6 +26,7 @@ import { db, rpWallets, rpTransactionLog } from "@workspace/db";
 import { eq }              from "drizzle-orm";
 import { logger }          from "../lib/logger";
 import type { LicenseContext } from "./rpLicenseService";
+import { isPolice } from "./rpFactionHelpers";
 import {
   POLICE_FINE_RADIUS,
   POLICE_MIN_FINE,
@@ -63,8 +64,9 @@ export async function issueFine(
   const officerEntry = ctx.rpCache.get(socket.id);
   if (!officerEntry) return;
 
-  // Officer must be on duty as police_patrol, not jailed, not cuffed.
+  // Phase 7B: Officer must be police faction, on duty, not jailed, not cuffed.
   if (
+    !isPolice(officerEntry) ||
     officerEntry.currentJob !== "police_patrol" ||
     !officerEntry.onDuty ||
     officerEntry.jailUntil !== null ||
