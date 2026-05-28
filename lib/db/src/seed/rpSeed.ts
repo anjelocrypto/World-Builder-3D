@@ -37,6 +37,13 @@ async function main(): Promise<void> {
       type:  "government",
       color: "#d4aa00",
     },
+    // Phase 7A: civilian faction — default for unassigned players.
+    {
+      slug:  "civilian",
+      name:  "Civilian",
+      type:  "civilian",
+      color: "#ffffff",
+    },
   ]).onConflictDoNothing();
 
   // ── Jobs ────────────────────────────────────────────────────────────────────

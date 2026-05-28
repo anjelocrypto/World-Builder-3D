@@ -3,8 +3,8 @@
  * return an RpCacheEntry ready to store in rpCache.
  */
 
-import { db, rpPlayers, rpWallets, rpWarrants } from "@workspace/db";
-import { eq, and, isNull, max }                from "drizzle-orm";
+import { db, rpPlayers, rpWallets, rpWarrants, rpFactions } from "@workspace/db";
+import { eq, and, isNull, max }                              from "drizzle-orm";
 import type { RpCacheEntry } from "./rpCache";
 
 /**
@@ -63,6 +63,25 @@ export async function upsertPlayer(
     ? Number(warrantRow.maxStars)
     : 0;
 
+  // Phase 7A: JOIN rp_factions to load slug, name, type, color if player has a faction.
+  let factionSlug:  string | null = null;
+  let factionName:  string | null = null;
+  let factionType:  string | null = null;
+  let factionColor: string | null = null;
+
+  if (player.factionId) {
+    const [faction] = await db
+      .select()
+      .from(rpFactions)
+      .where(eq(rpFactions.id, player.factionId));
+    if (faction) {
+      factionSlug  = faction.slug;
+      factionName  = faction.name;
+      factionType  = faction.type;
+      factionColor = faction.color;
+    }
+  }
+
   return {
     playerId:       player.id,
     cash:           wallet?.cash  ?? 500,
@@ -72,8 +91,10 @@ export async function upsertPlayer(
     jailUntil:      player.jailUntil ?? null,
     jailReason:     player.jailReason ?? null,
     factionId:      player.factionId ?? null,
-    // Phase 2: JOIN to rp_factions to populate factionSlug.
-    factionSlug:    null,
+    factionSlug,
+    factionName,
+    factionType,
+    factionColor,
     factionRank:    player.factionRank,
     currentJob:     player.currentJob ?? null,
     // Phase 4: in-memory job route state is never persisted across reconnects.

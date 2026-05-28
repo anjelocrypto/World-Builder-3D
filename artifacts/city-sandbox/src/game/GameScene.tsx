@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
-import type { RpProfile, RpToast, RpPendingFine } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage } from "../shared/rpTypes";
 import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
@@ -14,6 +14,7 @@ import JobHUD from "./JobHUD";
 import VehicleShopHUD from "./VehicleShopHUD";
 import ATMHUD from "./ATMHUD";
 import { IssueFinePanel, PendingFineOverlay } from "./FineHUD";
+import FactionChatHUD from "./FactionChatHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -97,6 +98,10 @@ interface GameSceneProps {
   emitIssueFine: (targetId: string, amount: number, reason: string) => void;
   /** Phase 6E: Emit rp:respondFine — target accepts or rejects a pending fine. */
   emitRespondFine: (accept: boolean) => void;
+  /** Phase 7A: Faction chat history (max 20), from useRpSocket. */
+  factionMessages: RpFactionMessage[];
+  /** Phase 7A: Emit rp:factionChat — sends a message to faction members. */
+  emitFactionChat: (msg: string) => void;
 }
 
 export default function GameScene({
@@ -130,6 +135,8 @@ export default function GameScene({
   pendingFine,
   emitIssueFine,
   emitRespondFine,
+  factionMessages,
+  emitFactionChat,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -170,6 +177,10 @@ export default function GameScene({
   showATMRef.current = showATM;
   const showFinePanelRef = useRef(showFinePanel);
   showFinePanelRef.current = showFinePanel;
+  // Phase 7A: faction chat panel visibility
+  const [showFactionChat, setShowFactionChat] = useState(false);
+  const showFactionChatRef = useRef(showFactionChat);
+  showFactionChatRef.current = showFactionChat;
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -317,7 +328,8 @@ export default function GameScene({
         e.code !== "KeyK" &&
         e.code !== "KeyU" &&
         e.code !== "KeyI" &&
-        e.code !== "KeyH"
+        e.code !== "KeyH" &&
+        e.code !== "KeyY"
       ) return;
       // Ignore key-repeat (held key firing continuously).
       if (e.repeat) return;
@@ -328,7 +340,13 @@ export default function GameScene({
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active.isContentEditable) return;
       }
       // Ignore while any modal overlay is open.
-      if (showShopRef.current || showATMRef.current || showFinePanelRef.current) return;
+      if (showShopRef.current || showATMRef.current || showFinePanelRef.current || showFactionChatRef.current) return;
+
+      // Phase 7A: Y toggles faction chat regardless of job/duty status.
+      if (e.code === "KeyY") {
+        setShowFactionChat((prev) => !prev);
+        return;
+      }
 
       const profile = rpProfileRef.current;
       if (!profile?.onDuty || profile.currentJob !== "police_patrol") return;
@@ -743,7 +761,22 @@ export default function GameScene({
         nearBookingDesk={uiState.nearBookingDesk}
         nearBookingTarget={nearBookingTarget}
         nearFineTarget={nearFineTarget}
+        factionName={rpProfile?.factionName ?? null}
+        factionColor={rpProfile?.factionColor ?? null}
+        factionRank={rpProfile?.factionRank ?? undefined}
+        showFactionChat={showFactionChat}
       />
+
+      {/* Phase 7A: Faction chat panel */}
+      {showFactionChat && (
+        <FactionChatHUD
+          factionName={rpProfile?.factionName ?? null}
+          factionColor={rpProfile?.factionColor ?? null}
+          messages={factionMessages}
+          onSend={(msg) => emitFactionChat(msg)}
+          onClose={() => setShowFactionChat(false)}
+        />
+      )}
     </div>
   );
 }

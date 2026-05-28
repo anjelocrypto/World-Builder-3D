@@ -39,6 +39,10 @@ import {
   issueFine,
   respondFine,
 } from "./rpFineService";
+import {
+  handleFactionChat,
+  handleAdminSetFaction,
+} from "./rpFactionService";
 
 export type { LicenseContext };
 
@@ -333,6 +337,38 @@ export function setupRpHandlers(
         logger.error({ err, socketId: socket.id }, "[rp] respondFine threw");
         socket.emit("rp:toast", {
           msg:      "Server error — could not process fine response. Try again.",
+          color:    "red",
+          duration: 4000,
+        });
+      });
+    },
+  );
+
+  // ── rp:factionChat ────────────────────────────────────────────────────────
+  // Phase 7A: player emits { msg } to send a message to faction members.
+  // Server validates faction membership, jail state, and message content.
+  // Broadcast is faction-scoped; client never decides recipients.
+  socket.on(
+    "rp:factionChat",
+    (data: { msg?: unknown } | null | undefined) => {
+      handleFactionChat(socket, ctx, data?.msg);
+    },
+  );
+
+  // ── rp:adminSetFaction ────────────────────────────────────────────────────
+  // Phase 7A: DEV/admin-only event to assign a faction to an online player.
+  // Gate: NODE_ENV !== "production" OR username === "admin".
+  // A full admin system will replace this in a later phase.
+  socket.on(
+    "rp:adminSetFaction",
+    (data: { targetId?: unknown; factionSlug?: unknown; rank?: unknown } | null | undefined) => {
+      handleAdminSetFaction(
+        socket, ctx,
+        data?.targetId, data?.factionSlug, data?.rank,
+      ).catch((err) => {
+        logger.error({ err, socketId: socket.id }, "[rp] handleAdminSetFaction threw");
+        socket.emit("rp:toast", {
+          msg:      "Server error — faction assignment failed.",
           color:    "red",
           duration: 4000,
         });

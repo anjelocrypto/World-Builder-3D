@@ -149,6 +149,18 @@ interface HUDProps {
    * POLICE_FINE_RADIUS. Shows H — Issue Fine prompt.
    */
   nearFineTarget?: { id: string; name: string; dist: number } | null;
+  /**
+   * Phase 7A: faction display name, null = Civilian / no faction.
+   */
+  factionName?:  string | null;
+  /**
+   * Phase 7A: faction colour hex string, null = fallback grey.
+   */
+  factionColor?: string | null;
+  /** Phase 7A: rank integer (0 = no rank / civilian). */
+  factionRank?:  number;
+  /** Phase 7A: true when FactionChatHUD is visible. Shows Y chip. */
+  showFactionChat?: boolean;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -670,6 +682,10 @@ export default function HUD({
   nearBookingDesk,
   nearBookingTarget,
   nearFineTarget,
+  factionName,
+  factionColor,
+  factionRank,
+  showFactionChat,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -1784,6 +1800,66 @@ export default function HUD({
           >
             {driverLicense ? "🪪 Licensed" : "🚫 No License"}
           </div>
+
+          {/* Phase 7A: Faction badge */}
+          <div
+            style={{
+              background:    PANEL_BG,
+              border:        `1px solid ${factionColor ? factionColor + "66" : "rgba(100,100,120,0.35)"}`,
+              borderRadius:  PANEL_RADIUS,
+              padding:       "3px 10px",
+              fontSize:      12,
+              color:         factionColor ?? "#778899",
+              letterSpacing: 0.5,
+              display:       "flex",
+              alignItems:    "center",
+              gap:           5,
+            }}
+          >
+            <span
+              style={{
+                width:        6,
+                height:       6,
+                borderRadius: "50%",
+                background:   factionColor ?? "#556",
+                display:      "inline-block",
+                flexShrink:   0,
+              }}
+            />
+            {factionName
+              ? `${factionName}${factionRank ? ` · Rank ${factionRank}` : ""}`
+              : "Civilian"}
+          </div>
+
+          {/* Phase 7A: Y — Faction Chat hint (shown when not in faction chat) */}
+          {!showFactionChat && (
+            <div
+              style={{
+                display:       "flex",
+                alignItems:    "center",
+                gap:           5,
+                fontSize:      11,
+                color:         "#445",
+                letterSpacing: 0.5,
+              }}
+            >
+              <span
+                style={{
+                  background:    "rgba(255,255,255,0.07)",
+                  border:        "1px solid rgba(255,255,255,0.12)",
+                  borderRadius:  4,
+                  padding:       "1px 5px",
+                  fontSize:      10,
+                  color:         "#667",
+                  fontWeight:    "bold",
+                  fontFamily:    "'Courier New', monospace",
+                }}
+              >
+                Y
+              </span>
+              <span style={{ color: "#334" }}>Faction Chat</span>
+            </div>
+          )}
         </div>
       )}
 

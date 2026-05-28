@@ -32,6 +32,12 @@ export interface RpCacheEntry {
   factionId:      string | null;
   /** Denormalised from rp_factions.slug — null when player has no faction. */
   factionSlug:    string | null;
+  /** Denormalised from rp_factions.name — null when player has no faction. */
+  factionName:    string | null;
+  /** Denormalised from rp_factions.type — null when player has no faction. */
+  factionType:    string | null;
+  /** Denormalised from rp_factions.color — null when player has no faction. */
+  factionColor:   string | null;
   factionRank:    number;
   currentJob:     string | null;
   onDuty:         boolean;
@@ -158,6 +164,9 @@ export function buildProfile(
     jailReason:    entry.jailReason,
     factionId:     entry.factionId,
     factionSlug:   entry.factionSlug,
+    factionName:   entry.factionName,
+    factionType:   entry.factionType,
+    factionColor:  entry.factionColor,
     factionRank:   entry.factionRank,
     currentJob:    entry.currentJob,
     onDuty:        entry.onDuty,

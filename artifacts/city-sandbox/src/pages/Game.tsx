@@ -46,6 +46,8 @@ export default function Game({ username }: GameProps) {
     emitUncuff,
     emitIssueFine,
     emitRespondFine,
+    factionMessages,
+    emitFactionChat,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -107,6 +109,8 @@ export default function Game({ username }: GameProps) {
       pendingFine={pendingFine}
       emitIssueFine={emitIssueFine}
       emitRespondFine={emitRespondFine}
+      factionMessages={factionMessages}
+      emitFactionChat={emitFactionChat}
     />
   );
 }

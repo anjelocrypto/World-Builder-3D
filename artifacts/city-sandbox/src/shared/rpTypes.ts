@@ -66,6 +66,12 @@ export interface RpProfile {
   factionId:     string | null;
   /** Denormalised from rp_factions.slug for fast HUD render. */
   factionSlug:   string | null;
+  /** Denormalised from rp_factions.name — null when player has no faction. */
+  factionName:   string | null;
+  /** Denormalised from rp_factions.type — null when player has no faction. */
+  factionType:   string | null;
+  /** Denormalised from rp_factions.color — null when player has no faction. */
+  factionColor:  string | null;
   factionRank:   number;
   currentJob:    string | null;
   onDuty:        boolean;
@@ -90,6 +96,20 @@ export interface RpToast {
   msg:       string;
   color:     "red" | "green" | "yellow" | "blue" | string;
   duration?: number;   // ms; default 3000
+}
+
+/** Phase 7A: one faction chat message received from server via rp:factionChat. */
+export interface RpFactionMessage {
+  /** client-assigned monotonic id for React keying */
+  id:           number;
+  fromId:       string;
+  fromName:     string;
+  factionSlug:  string;
+  factionName:  string;
+  factionColor: string;
+  msg:          string;
+  /** Unix ms — server createdAt */
+  createdAt:    number;
 }
 
 // ── World coordinate constants ─────────────────────────────────────────────

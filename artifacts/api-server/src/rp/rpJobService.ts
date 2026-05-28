@@ -1434,6 +1434,8 @@ async function clockInMedic(
   entry:  RpCacheEntry,
   player: PlayerState,
 ): Promise<void> {
+  // TODO (Phase 7B): Require factionType === "medic" for clock-in.
+  // Until faction assignment UI/admin flow is live, allow any player in DEV.
   // Requires driver license
   if (!entry.driverLicense) {
     socket.emit("rp:toast", {
@@ -1741,6 +1743,9 @@ async function clockInPolicePatrol(
   entry:  RpCacheEntry,
   player: PlayerState,
 ): Promise<void> {
+  // TODO (Phase 7B): Require factionType === "police" for clock-in.
+  // Until faction assignment UI/admin flow is live, allow any player in DEV.
+  // In production, gating will require: entry.factionType === "police"
   // Requires driver license
   if (!entry.driverLicense) {
     socket.emit("rp:toast", {

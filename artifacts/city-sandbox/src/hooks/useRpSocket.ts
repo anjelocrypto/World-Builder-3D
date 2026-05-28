@@ -15,7 +15,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast, RpPendingFine } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage } from "../shared/rpTypes";
 import { canDriveVehicleClient } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
@@ -38,6 +38,12 @@ export function useRpSocket(socket: Socket | null) {
    * Null = no active fine. Set by rp:fineIssued; cleared by rp:fineResolved or rp:fineExpired.
    */
   const [pendingFine, setPendingFine] = useState<RpPendingFine | null>(null);
+
+  /**
+   * Phase 7A: Last 20 faction chat messages received via rp:factionChat.
+   * Transient client state — not persisted across reconnects.
+   */
+  const [factionMessages, setFactionMessages] = useState<RpFactionMessage[]>([]);
 
   useEffect(() => {
     if (!socket) return;
@@ -139,6 +145,23 @@ export function useRpSocket(socket: Socket | null) {
       setPendingFine(null);
     };
 
+    // Phase 7A: rp:factionChat — a faction member sent a message.
+    const onFactionChat = (data: {
+      fromId:       string;
+      fromName:     string;
+      factionSlug:  string;
+      factionName:  string;
+      factionColor: string;
+      msg:          string;
+      createdAt:    number;
+    }) => {
+      setFactionMessages((prev) => [
+        // Keep at most 20 messages; drop the oldest if needed.
+        ...prev.slice(-19),
+        { ...data, id: Date.now() + Math.random() },
+      ]);
+    };
+
     socket.on("rp:profile",            onProfile);
     socket.on("rp:profileUpdate",      onProfileUpdate);
     socket.on("rp:toast",              onToast);
@@ -149,6 +172,7 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:fineIssued",         onFineIssued);
     socket.on("rp:fineResolved",       onFineResolved);
     socket.on("rp:fineExpired",        onFineExpired);
+    socket.on("rp:factionChat",        onFactionChat);
 
     return () => {
       socket.off("rp:profile",            onProfile);
@@ -161,6 +185,7 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:fineIssued",         onFineIssued);
       socket.off("rp:fineResolved",       onFineResolved);
       socket.off("rp:fineExpired",        onFineExpired);
+      socket.off("rp:factionChat",        onFactionChat);
     };
   }, [socket]);
 
@@ -316,6 +341,14 @@ export function useRpSocket(socket: Socket | null) {
     [socket],
   );
 
+  /** Phase 7A: emit rp:factionChat — sends a message to faction members. */
+  const emitFactionChat = useCallback(
+    (msg: string) => {
+      socket?.emit("rp:factionChat", { msg });
+    },
+    [socket],
+  );
+
   return {
     rpProfile,
     rpToasts,
@@ -325,6 +358,7 @@ export function useRpSocket(socket: Socket | null) {
     wantedByPlayerId,
     cuffedPlayers,
     pendingFine,
+    factionMessages,
     emitInteract,
     emitLicenseCheckpoint,
     emitBuyVehicle,
@@ -339,5 +373,6 @@ export function useRpSocket(socket: Socket | null) {
     emitUncuff,
     emitIssueFine,
     emitRespondFine,
+    emitFactionChat,
   };
 }
