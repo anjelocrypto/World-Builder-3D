@@ -356,23 +356,26 @@ export function setupRpHandlers(
   );
 
   // ── rp:adminSetFaction ────────────────────────────────────────────────────
-  // Phase 7A: DEV/admin-only event to assign a faction to an online player.
-  // Gate: NODE_ENV !== "production" OR username === "admin".
-  // A full admin system will replace this in a later phase.
-  socket.on(
-    "rp:adminSetFaction",
-    (data: { targetId?: unknown; factionSlug?: unknown; rank?: unknown } | null | undefined) => {
-      handleAdminSetFaction(
-        socket, ctx,
-        data?.targetId, data?.factionSlug, data?.rank,
-      ).catch((err) => {
-        logger.error({ err, socketId: socket.id }, "[rp] handleAdminSetFaction threw");
-        socket.emit("rp:toast", {
-          msg:      "Server error — faction assignment failed.",
-          color:    "red",
-          duration: 4000,
+  // Phase 7A: DEV-only event to assign a faction to an online player.
+  // NOT registered in production — faction assignment there must be done
+  // directly via the DB until a proper server-side admin system exists.
+  // username is client-controlled and is never used as an auth signal.
+  if (process.env["NODE_ENV"] !== "production") {
+    socket.on(
+      "rp:adminSetFaction",
+      (data: { targetId?: unknown; factionSlug?: unknown; rank?: unknown } | null | undefined) => {
+        handleAdminSetFaction(
+          socket, ctx,
+          data?.targetId, data?.factionSlug, data?.rank,
+        ).catch((err) => {
+          logger.error({ err, socketId: socket.id }, "[rp] handleAdminSetFaction threw");
+          socket.emit("rp:toast", {
+            msg:      "Server error — faction assignment failed.",
+            color:    "red",
+            duration: 4000,
+          });
         });
-      });
-    },
-  );
+      },
+    );
+  }
 }

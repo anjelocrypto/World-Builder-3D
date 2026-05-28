@@ -7,7 +7,7 @@
  *   clearPlayerFaction(targetPlayerId)      — DB write, nullifies faction fields
  *   canUseFactionChat(entry)                — cache check, returns true if player has a faction
  *   handleFactionChat(socket, ctx, rawMsg)  — validate + broadcast to faction members
- *   handleAdminSetFaction(socket, ctx, ...) — admin-only faction assignment via socket
+ *   handleAdminSetFaction(socket, ctx, ...) — dev-only faction assignment via socket
  *
  * Faction chat rules:
  *   - Player must have factionId set in rpCache (i.e. loaded from DB on join).
@@ -17,8 +17,10 @@
  *   - Server supplies fromName, factionSlug, factionName, factionColor, createdAt.
  *
  * Admin gate (rp:adminSetFaction):
- *   - Allowed in development mode (NODE_ENV !== "production") OR if username === "admin".
- *   - No public privilege escalation. Document as DEV/manual-only until admin system phase.
+ *   - ONLY allowed when NODE_ENV !== "production".
+ *   - In production the handler is not registered at all (see setupRpHandlers.ts).
+ *   - Faction assignment in production must be done directly via the DB.
+ *   - A proper server-side admin role system will replace this in a future phase.
  */
 
 import type { Socket } from "socket.io";
@@ -205,12 +207,11 @@ export function handleFactionChat(
 /**
  * Phase 7A: rp:adminSetFaction handler.
  *
- * Gate: allowed only if:
- *   a) NODE_ENV !== "production"  (development / staging), OR
- *   b) The requesting player's username is "admin" (dev placeholder).
+ * Gate: allowed ONLY when NODE_ENV !== "production".
+ * In production this handler is not registered (see setupRpHandlers.ts).
+ * The belt-and-suspenders check here protects against accidental mis-configuration.
  *
- * This is intentionally restrictive. A full admin system will be introduced
- * in a later phase. Until then, faction assignment is DB/manual or dev-only.
+ * username is client-controlled and is NEVER used as an auth signal.
  *
  * Payload: { targetId: string, factionSlug: string, rank: number }
  * targetId — socket.id of the target player (must be online)
@@ -222,12 +223,10 @@ export async function handleAdminSetFaction(
   rawFactionSlug: unknown,
   rawRank:        unknown,
 ): Promise<void> {
-  // ── Admin gate ────────────────────────────────────────────────────────────
-  const isDev      = process.env["NODE_ENV"] !== "production";
-  const player     = ctx.players.get(socket.id);
-  const isAdminUser = player?.username === "admin";
-
-  if (!isDev && !isAdminUser) {
+  // ── Dev-only gate ─────────────────────────────────────────────────────────
+  // Belt-and-suspenders: also reject here even though setupRpHandlers.ts
+  // already skips registration in production.
+  if (process.env["NODE_ENV"] === "production") {
     socket.emit("rp:toast", {
       msg:      "Permission denied.",
       color:    "red",
@@ -239,7 +238,10 @@ export async function handleAdminSetFaction(
   // ── Validate payload ──────────────────────────────────────────────────────
   const targetSocketId = typeof rawTargetId    === "string" ? rawTargetId.trim()    : "";
   const factionSlug    = typeof rawFactionSlug === "string" ? rawFactionSlug.trim() : "";
-  const rank           = typeof rawRank        === "number" ? Math.floor(rawRank)   : 0;
+  // Clamp rank here so the same value is written to DB, cache, profile, and toast.
+  const rank           = typeof rawRank === "number"
+    ? Math.max(0, Math.min(10, Math.floor(rawRank)))
+    : 0;
 
   if (!targetSocketId) {
     socket.emit("rp:toast", { msg: "Missing targetId.", color: "red", duration: 3000 });
@@ -289,12 +291,13 @@ export async function handleAdminSetFaction(
   }
 
   // Update in-memory cache immediately.
+  // `rank` was already clamped during payload validation — use it directly.
   targetEntry.factionId    = faction.id;
   targetEntry.factionSlug  = faction.slug;
   targetEntry.factionName  = faction.name;
   targetEntry.factionType  = faction.type;
   targetEntry.factionColor = faction.color;
-  targetEntry.factionRank  = rank;
+  targetEntry.factionRank  = rank;   // clamped value
 
   // Notify the target player of their new profile fields.
   ctx.io.to(targetSocketId).emit("rp:profileUpdate", {
@@ -303,14 +306,14 @@ export async function handleAdminSetFaction(
     factionName:  faction.name,
     factionType:  faction.type,
     factionColor: faction.color,
-    factionRank:  rank,
+    factionRank:  rank,              // clamped value
   });
 
   // Notify the issuer.
   const targetPlayerState = ctx.players.get(targetSocketId);
   const targetName = targetPlayerState?.username ?? targetSocketId;
   socket.emit("rp:toast", {
-    msg:      `${targetName} assigned to ${faction.name} (rank ${rank}).`,
+    msg:      `${targetName} assigned to ${faction.name} (rank ${rank}).`,   // clamped value
     color:    "green",
     duration: 4000,
   });
