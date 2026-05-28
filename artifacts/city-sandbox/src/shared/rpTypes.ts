@@ -429,6 +429,35 @@ export const GANG_ACTION_MIN_RANK = 0;
 /** Phase 7E: Minimum rank to accept/reject gang join requests. */
 export const GANG_LEADER_MIN_RANK = 4;
 
+// ── Phase 8A: Government Office / Mayor constants ─────────────────────────────
+// MUST stay in sync with the corresponding exports in
+// artifacts/api-server/src/socket/cityData.ts.
+
+/** Government Office (City Hall) entrance position. */
+export const GOVERNMENT_OFFICE_POS: [number, number, number] = [-22, 0, -32];
+
+/** Interaction radius (m) for the Government Office. */
+export const GOVERNMENT_OFFICE_RADIUS = 8;
+
+/** Maximum characters a mayor may send in one city announcement. */
+export const MAYOR_ANNOUNCE_MAX_CHARS = 200;
+
+/** Minimum rank required to be a Mayor and broadcast city announcements. */
+export const MAYOR_MIN_RANK = 4;
+
+/**
+ * A city-wide announcement broadcast by the Mayor via rp:cityAnnounce.
+ * Safe payload: no faction slug, no socketId, no playerId, no coordinates.
+ */
+export interface CityAnnouncement {
+  /** Trimmed announcement text (1–MAYOR_ANNOUNCE_MAX_CHARS chars). */
+  msg:       string;
+  /** Server-authoritative display name of the Mayor who sent it. */
+  fromName:  string;
+  /** Unix ms when the server accepted and broadcast the announcement. */
+  createdAt: number;
+}
+
 // ── Phase 7H: Gang Territory Control types ───────────────────────────────────
 
 /**

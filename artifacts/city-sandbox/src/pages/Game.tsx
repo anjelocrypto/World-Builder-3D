@@ -74,6 +74,8 @@ export default function Game({ username }: GameProps) {
     gangTerritoryStatus,
     emitGangTerritoryStatus,
     emitGangTerritoryPulse,
+    cityAnnouncements,
+    emitCityAnnounce,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -163,6 +165,8 @@ export default function Game({ username }: GameProps) {
       gangTerritoryStatus={gangTerritoryStatus}
       emitGangTerritoryStatus={emitGangTerritoryStatus}
       emitGangTerritoryPulse={emitGangTerritoryPulse}
+      cityAnnouncements={cityAnnouncements}
+      emitCityAnnounce={emitCityAnnounce}
     />
   );
 }

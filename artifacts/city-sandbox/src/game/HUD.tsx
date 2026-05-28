@@ -176,6 +176,11 @@ interface HUDProps {
    * Hides the G key hint chip when the panel is open.
    */
   showGangHUD?: boolean;
+  /**
+   * Phase 8A: true when the local player is within GOVERNMENT_OFFICE_RADIUS
+   * of GOVERNMENT_OFFICE_POS. Shows the E — City Announcement prompt to mayors.
+   */
+  nearGovernmentOffice?: boolean;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -704,6 +709,7 @@ export default function HUD({
   showFactionChat,
   showFactionAdmin,
   showGangHUD,
+  nearGovernmentOffice,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -1991,6 +1997,60 @@ export default function HUD({
           )}
         </div>
       )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Government Office E — City Announcement (Phase 8A)
+          Shown only to Mayor (government faction + rank >= 4) near City Hall.
+          ============================================================ */}
+      {nearGovernmentOffice &&
+        !inVehicle &&
+        factionType === "government" &&
+        (factionRank ?? 0) >= 4 && (
+          <div
+            style={{
+              position:             "absolute",
+              bottom:               130,
+              left:                 "50%",
+              transform:            "translateX(-50%)",
+              background:           PANEL_BG,
+              border:               "1px solid rgba(51, 85, 204, 0.65)",
+              borderRadius:         PANEL_RADIUS,
+              padding:              "8px 14px 8px 8px",
+              display:              "flex",
+              alignItems:           "center",
+              gap:                  12,
+              boxShadow:            `${PANEL_SHADOW}, 0 0 24px rgba(51,85,204,0.22)`,
+              backdropFilter:       "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
+            }}
+          >
+            <div
+              style={{
+                width:          28,
+                height:         28,
+                borderRadius:   6,
+                background:     "rgba(51, 85, 204, 0.15)",
+                border:         "1px solid rgba(51, 85, 204, 0.7)",
+                display:        "flex",
+                alignItems:     "center",
+                justifyContent: "center",
+                fontSize:       13,
+                fontWeight:     "bold",
+                color:          "#3355cc",
+                boxShadow:      "inset 0 -2px 0 rgba(51,85,204,0.35)",
+              }}
+            >
+              E
+            </div>
+            <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+              🏛️{" "}
+              <span style={{ color: "#6688ff", fontWeight: "bold" }}>
+                City Announcement
+              </span>{" "}
+              <span style={{ color: "#9bb", fontSize: 11 }}>· Mayor Broadcast</span>
+            </div>
+          </div>
+        )}
 
       {/* ============================================================
           FULL-SCREEN — Jail overlay (Phase 6A)

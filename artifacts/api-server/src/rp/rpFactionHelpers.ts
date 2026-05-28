@@ -1,6 +1,7 @@
 /**
  * Phase 7B: Faction authority helpers.
  * Phase 7D: Added gang helpers (isGang, isGroveStreet) + gang rank constants.
+ * Phase 8A: Added isMayor() + MAYOR_MIN_RANK.
  *
  * Pure functions over RpCacheEntry — no DB, no sockets.
  * Import these wherever faction membership needs to be checked.
@@ -33,6 +34,11 @@ export const GANG_ACTION_MIN_RANK  = 0;
 /** Minimum faction rank for gang leader abilities. */
 export const GANG_LEADER_MIN_RANK  = 4;
 
+// ── Phase 8A: Government / Mayor rank constants ────────────────────────────────
+
+/** Minimum faction rank to broadcast a city announcement as Mayor. */
+export const MAYOR_MIN_RANK = 4;
+
 // ── Faction membership helpers ─────────────────────────────────────────────────
 
 /**
@@ -63,6 +69,14 @@ export function isGovernment(entry: RpCacheEntry): boolean {
  */
 export function isFactionRankAtLeast(entry: RpCacheEntry, minRank: number): boolean {
   return entry.factionRank >= minRank;
+}
+
+/**
+ * True if the player is a Mayor: government faction member with rank >= MAYOR_MIN_RANK.
+ * Uses isGovernment() so factionType OR factionSlug "government" both qualify.
+ */
+export function isMayor(entry: RpCacheEntry): boolean {
+  return isGovernment(entry) && isFactionRankAtLeast(entry, MAYOR_MIN_RANK);
 }
 
 // ── Phase 7D: Gang membership helpers ─────────────────────────────────────────

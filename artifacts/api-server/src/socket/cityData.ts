@@ -700,3 +700,26 @@ export const GANG_TERRITORIES: Array<{
     controllingFactionSlug: "grove_street",
   },
 ];
+
+// ── Phase 8A: Government Office / City Hall ────────────────────────────────
+//
+// Location: NW inner civic block at [−22, 0, −32].
+// Geometry audit:
+//   x=−22: nearest NS road x=0,   |−22−0|  =22 > ROAD_HALF(10) ✅
+//           nearest NS road x=−45, |−22−(−45)|=23 > ROAD_HALF(10) ✅
+//   z=−32: nearest EW road z=0,   |−32−0|  =32 > ROAD_HALF(10) ✅
+//           nearest EW road z=−45, |−32−(−45)|=13 > ROAD_HALF(10) ✅
+// Nearest parked car: car-3 at [−22, 0.6, −22]; dist=10 m > 8 m ✅
+// Nearest RP marker: Licensing Office [14, 0, −30]; dist ≈ 36 m ✅
+
+/** Government Office (City Hall) entrance — NW inner civic block. Off-road. */
+export const GOVERNMENT_OFFICE_POS: [number, number, number] = [-22, 0, -32];
+
+/** Radius (m) within which a player can interact with the Government Office. */
+export const GOVERNMENT_OFFICE_RADIUS = 8;
+
+/** Maximum characters in a mayor city-announcement message (server-validated). */
+export const MAYOR_ANNOUNCE_MAX_CHARS = 200;
+
+/** Minimum ms between two city announcements from the same mayor (server-validated). */
+export const MAYOR_ANNOUNCE_COOLDOWN_MS = 30_000;

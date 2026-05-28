@@ -15,7 +15,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus, CityAnnouncement } from "../shared/rpTypes";
 import { canDriveVehicleClient, GROVE_TAG_COOLDOWN_MS } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
@@ -113,6 +113,12 @@ export function useRpSocket(socket: Socket | null) {
    * track Grove Street for now).
    */
   const [gangTerritoryStatus, setGangTerritoryStatus] = useState<GangTerritoryStatus | null>(null);
+
+  /**
+   * Phase 8A: Rolling log of city announcements from the Mayor.
+   * Capped at 5 (most recent first). Each entry has msg, fromName, createdAt.
+   */
+  const [cityAnnouncements, setCityAnnouncements] = useState<CityAnnouncement[]>([]);
 
   useEffect(() => {
     if (!socket) return;
@@ -294,6 +300,11 @@ export function useRpSocket(socket: Socket | null) {
       setGangTerritoryStatus(data);
     };
 
+    // Phase 8A: rp:cityAnnounce — Mayor broadcasts a city-wide announcement.
+    const onCityAnnounce = (data: CityAnnouncement) => {
+      setCityAnnouncements((prev) => [data, ...prev].slice(0, 5));
+    };
+
     // Phase 7A: rp:factionChat — a faction member sent a message.
     const onFactionChat = (data: {
       fromId:       string;
@@ -336,6 +347,7 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:gangMissionComplete",  onGangMissionComplete);
     socket.on("rp:gangMissionFailed",    onGangMissionFailed);
     socket.on("rp:gangTerritoryStatus",  onGangTerritoryStatus);
+    socket.on("rp:cityAnnounce",         onCityAnnounce);
 
     return () => {
       socket.off("rp:profile",              onProfile);
@@ -363,6 +375,7 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:gangMissionComplete",  onGangMissionComplete);
       socket.off("rp:gangMissionFailed",    onGangMissionFailed);
       socket.off("rp:gangTerritoryStatus",  onGangTerritoryStatus);
+      socket.off("rp:cityAnnounce",         onCityAnnounce);
     };
   }, [socket]);
 
@@ -647,6 +660,12 @@ export function useRpSocket(socket: Socket | null) {
     ),
     emitGangTerritoryPulse: useCallback(
       (territoryId: string) => { socket?.emit("rp:gangTerritoryPulse", { territoryId }); },
+      [socket],
+    ),
+    // Phase 8A: Mayor city announcements
+    cityAnnouncements,
+    emitCityAnnounce: useCallback(
+      (msg: string) => { socket?.emit("rp:cityAnnounce", { msg }); },
       [socket],
     ),
   };

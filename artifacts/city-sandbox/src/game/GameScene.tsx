@@ -5,8 +5,8 @@ import * as THREE from "three";
 import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus } from "../shared/rpTypes";
-import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement } from "../shared/rpTypes";
+import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS, GOVERNMENT_OFFICE_POS, GOVERNMENT_OFFICE_RADIUS, MAYOR_MIN_RANK } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
 import LicenseTestHUD from "./LicenseTestHUD";
@@ -18,6 +18,7 @@ import FactionChatHUD from "./FactionChatHUD";
 import FactionAdminHUD from "./FactionAdminHUD";
 import GangHUD from "./GangHUD";
 import { GangMissionHUD } from "./GangMissionHUD";
+import CityAnnouncementHUD from "./CityAnnouncementHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -157,6 +158,10 @@ interface GameSceneProps {
   emitGangTerritoryStatus: () => void;
   /** Phase 7H: Emit a territory presence pulse. */
   emitGangTerritoryPulse:  (territoryId: string) => void;
+  /** Phase 8A: City announcement history (from useRpSocket). */
+  cityAnnouncements: CityAnnouncement[];
+  /** Phase 8A: Emit rp:cityAnnounce to broadcast a mayor announcement. */
+  emitCityAnnounce: (msg: string) => void;
 }
 
 export default function GameScene({
@@ -218,6 +223,8 @@ export default function GameScene({
   gangTerritoryStatus,
   emitGangTerritoryStatus,
   emitGangTerritoryPulse,
+  cityAnnouncements,
+  emitCityAnnounce,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -275,6 +282,14 @@ export default function GameScene({
   // can read them without re-registering the listener.
   const isGangMemberRef      = useRef(false);
   const nearGangHangoutRef   = useRef(false);
+  // Phase 8A: City Announcement HUD visibility + Mayor/gov-office proximity refs.
+  const [showCityAnnouncementHUD, setShowCityAnnouncementHUD] = useState(false);
+  const showCityAnnouncementHUDRef = useRef(showCityAnnouncementHUD);
+  showCityAnnouncementHUDRef.current = showCityAnnouncementHUD;
+  const isMayorRef      = useRef(false);
+  const nearGovOfficeRef = useRef(false);
+  // Phase 8A: visible announcement banner (shown for 8 s then auto-cleared).
+  const [visibleAnnouncement, setVisibleAnnouncement] = useState<CityAnnouncement | null>(null);
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -425,6 +440,7 @@ export default function GameScene({
         e.code !== "KeyH" &&
         e.code !== "KeyY" &&
         e.code !== "KeyG" &&
+        e.code !== "KeyE" &&  // Phase 8A: E at Gov Office for Mayor city announcement
         e.code !== "F7"
       ) return;
       // Ignore key-repeat (held key firing continuously).
@@ -443,7 +459,8 @@ export default function GameScene({
         showFinePanelRef.current ||
         showFactionChatRef.current ||
         showFactionAdminRef.current ||
-        showGangHUDRef.current;
+        showGangHUDRef.current ||
+        showCityAnnouncementHUDRef.current;
 
       // Phase 7C: F7 toggles faction admin panel (dev-only).
       // Opens only when no other modal is open; always allowed to close itself.
@@ -470,6 +487,20 @@ export default function GameScene({
           setShowGangHUD(true);
         }
         return;
+      }
+
+      // Phase 8A: E at Government Office — Mayor opens City Announcement panel.
+      // Close is always allowed; open requires Mayor + near gov office + no other modal.
+      if (e.code === "KeyE") {
+        if (showCityAnnouncementHUDRef.current) {
+          setShowCityAnnouncementHUD(false);
+          return;
+        }
+        if (!anyModalOpen && isMayorRef.current && nearGovOfficeRef.current) {
+          setShowCityAnnouncementHUD(true);
+          return;
+        }
+        // fall through — let LocalPlayer handle E for other interactions.
       }
 
       if (anyModalOpen) return;
@@ -586,6 +617,17 @@ export default function GameScene({
     return () => window.removeEventListener("keydown", handler);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Intentionally empty — all state accessed via refs above.
+
+  // Phase 8A: Show the newest announcement in a banner for 8 seconds.
+  // Re-runs each time a new announcement arrives (keyed by createdAt).
+  useEffect(() => {
+    const ann = cityAnnouncements[0];
+    if (!ann) return;
+    setVisibleAnnouncement(ann);
+    const t = setTimeout(() => setVisibleAnnouncement(null), 8_000);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cityAnnouncements[0]?.createdAt]);
 
   // Phase 6A/6B: officer state — computed each render.
   const isOfficerOnDuty =
@@ -714,6 +756,19 @@ export default function GameScene({
   // P2: keep refs in sync so the stable G-key handler can gate HUD open.
   nearGangHangoutRef.current  = nearGangHangout;
   isGangMemberRef.current     = rpProfile?.factionType === "gang";
+
+  // Phase 8A: Government Office proximity + Mayor status refs.
+  const nearGovernmentOffice = (() => {
+    const pos = playerPosRef.current;
+    const [gx, , gz] = GOVERNMENT_OFFICE_POS;
+    const dx = pos.x - gx;
+    const dz = pos.z - gz;
+    return Math.sqrt(dx * dx + dz * dz) <= GOVERNMENT_OFFICE_RADIUS;
+  })();
+  nearGovOfficeRef.current = nearGovernmentOffice;
+  isMayorRef.current =
+    rpProfile?.factionType === "government" &&
+    (rpProfile?.factionRank ?? 0) >= MAYOR_MIN_RANK;
 
   return (
     <div
@@ -923,6 +978,7 @@ export default function GameScene({
         showFactionChat={showFactionChat}
         showFactionAdmin={showFactionAdmin}
         showGangHUD={showGangHUD}
+        nearGovernmentOffice={nearGovernmentOffice}
       />
 
       {/* Phase 7A: Faction chat panel */}
@@ -987,6 +1043,54 @@ export default function GameScene({
         localPos={[playerPosRef.current.x, playerPosRef.current.y, playerPosRef.current.z]}
         factionColor={rpProfile?.factionColor ?? null}
       />
+
+      {/* Phase 8A: City Announcement compose panel (Mayor only, near Gov Office) */}
+      {showCityAnnouncementHUD && (
+        <CityAnnouncementHUD
+          onSend={emitCityAnnounce}
+          onClose={() => setShowCityAnnouncementHUD(false)}
+        />
+      )}
+
+      {/* Phase 8A: City Announcement banner — shown to ALL players for 8 s after broadcast */}
+      {visibleAnnouncement && (
+        <div
+          key={visibleAnnouncement.createdAt}
+          style={{
+            position:             "absolute",
+            top:                  60,
+            left:                 "50%",
+            transform:            "translateX(-50%)",
+            background:           "rgba(4, 10, 28, 0.92)",
+            border:               "1px solid rgba(51, 85, 204, 0.55)",
+            borderRadius:         8,
+            padding:              "10px 18px",
+            maxWidth:             520,
+            width:                "80vw",
+            zIndex:               3500,
+            textAlign:            "center",
+            backdropFilter:       "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+            boxShadow:            "0 4px 20px rgba(0,0,0,0.7), 0 0 20px rgba(51,85,204,0.2)",
+            pointerEvents:        "none",
+          }}
+        >
+          <div
+            style={{
+              fontSize:      10,
+              color:         "#5577ee",
+              letterSpacing: 1,
+              marginBottom:  4,
+              textTransform: "uppercase",
+            }}
+          >
+            🏛️ City Announcement · {visibleAnnouncement.fromName}
+          </div>
+          <div style={{ fontSize: 14, color: "#dde", lineHeight: 1.4 }}>
+            {visibleAnnouncement.msg}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

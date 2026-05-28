@@ -36,6 +36,8 @@ import {
   GROVE_STREET_TURF_CENTER,
   GROVE_STREET_TURF_RADIUS,
   GROVE_TAG_POINTS,
+  GOVERNMENT_OFFICE_POS,
+  GOVERNMENT_OFFICE_RADIUS,
 } from "../shared/rpTypes";
 
 interface RPMarkersProps {
@@ -129,6 +131,9 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
   const gangHangoutRingRef = useRef<THREE.MeshStandardMaterial>(null!);
   const gangHangoutSignRef = useRef<THREE.MeshStandardMaterial>(null!);
   const gangTurfRingRef    = useRef<THREE.MeshStandardMaterial>(null!);
+  // Phase 8A: Government Office (City Hall) ring + sign
+  const govOfficeRingRef   = useRef<THREE.MeshStandardMaterial>(null!);
+  const govOfficeSignRef   = useRef<THREE.MeshStandardMaterial>(null!);
   // Phase 5F: one ring ref per ATM (5 total — matches ATM_LOCATIONS.length).
   const atmRingRefs = [
     useRef<THREE.MeshStandardMaterial>(null!),
@@ -212,6 +217,11 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
     const policeStationPulse = 0.4 + 0.3 * Math.sin(t * 2.0 + 0.7);
     if (policeStationRingRef.current) policeStationRingRef.current.emissiveIntensity = policeStationPulse;
     if (policeStationSignRef.current) policeStationSignRef.current.emissiveIntensity = 0.7 + 0.2 * Math.sin(t * 2.8 + 0.4);
+
+    // Phase 8A: Government Office — restrained civic blue/gold slow pulse
+    const govOfficePulse = 0.4 + 0.2 * Math.sin(t * 1.4 + 0.9);
+    if (govOfficeRingRef.current) govOfficeRingRef.current.emissiveIntensity = govOfficePulse;
+    if (govOfficeSignRef.current) govOfficeSignRef.current.emissiveIntensity = 0.7 + 0.15 * Math.sin(t * 2.0 + 0.3);
 
     // ATM markers — teal/money-green slow pulse
     atmRingRefs.forEach((ref, i) => {
@@ -1571,6 +1581,65 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             </group>
           );
         })}
+
+      {/* ════ Phase 8A: Government Office (City Hall) marker ════════════════════
+          Restrained civic blue/gold — authority without hostility. */}
+      {(() => {
+        const [gx, , gz] = GOVERNMENT_OFFICE_POS;
+        const innerR = GOVERNMENT_OFFICE_RADIUS - 1;
+        const outerR = GOVERNMENT_OFFICE_RADIUS;
+        return (
+          <group position={[gx, 0, gz]}>
+            {/* Ground ring — civic indigo */}
+            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[innerR, outerR, 48]} />
+              <meshStandardMaterial
+                ref={govOfficeRingRef}
+                color="#0a0e2a"
+                emissive="#3355cc"
+                emissiveIntensity={0.4}
+                transparent
+                opacity={0.55}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+
+            {/* Sign post */}
+            <mesh position={[0, 1.8, -0.3]}>
+              <boxGeometry args={[0.12, 3.6, 0.12]} />
+              <meshStandardMaterial color="#1a1a2a" roughness={0.7} metalness={0.6} />
+            </mesh>
+
+            {/* Sign board — civic blue */}
+            <mesh position={[0, 3.3, -0.3]}>
+              <boxGeometry args={[4.2, 0.8, 0.1]} />
+              <meshStandardMaterial
+                ref={govOfficeSignRef}
+                color="#0a0e22"
+                emissive="#2244aa"
+                emissiveIntensity={0.8}
+                roughness={0.3}
+                metalness={0.3}
+              />
+            </mesh>
+
+            {/* Gold accent strip */}
+            <mesh position={[0, 3.6, -0.24]}>
+              <boxGeometry args={[3.8, 0.1, 0.01]} />
+              <meshStandardMaterial color="#ccaa33" emissive="#ddbb44" emissiveIntensity={1.8} />
+            </mesh>
+
+            <pointLight
+              position={[0, 4, 0]}
+              color="#4466dd"
+              intensity={2.0}
+              distance={14}
+              decay={2}
+            />
+          </group>
+        );
+      })()}
 
       {activeTest &&
         LICENSE_TEST_CHECKPOINTS.map(([cx, , cz], i) => {

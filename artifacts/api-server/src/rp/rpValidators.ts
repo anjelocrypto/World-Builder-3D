@@ -40,6 +40,7 @@ import {
   GROVE_STREET_TURF_CENTER,
   GROVE_TAG_POINTS,
   GANG_TERRITORIES,
+  GOVERNMENT_OFFICE_POS,
 } from "../socket/cityData";
 import type { RpCacheEntry, TestState } from "./rpCache";
 
@@ -227,7 +228,12 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     })),
   ];
 
-  for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers, ...deliveryMarkers, ...mechanicMarkers, ...medicOffRoadMarkers, ...policeOffRoadMarkers, ...atmOffRoadMarkers, ...gangOffRoadMarkers]) {
+  // Phase 8A: Government Office must be off-road
+  const govOffRoadMarkers = [
+    { label: "GOVERNMENT_OFFICE_POS", x: GOVERNMENT_OFFICE_POS[0], z: GOVERNMENT_OFFICE_POS[2] },
+  ];
+
+  for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers, ...deliveryMarkers, ...mechanicMarkers, ...medicOffRoadMarkers, ...policeOffRoadMarkers, ...atmOffRoadMarkers, ...gangOffRoadMarkers, ...govOffRoadMarkers]) {
     if (isInCarriageway(m.x, m.z))
       throw new Error(`[rp] marker "${m.label}" is inside road carriageway`);
     if (isInsideObstacle(m.x, m.z, obstacles))
@@ -308,6 +314,8 @@ export function validateRpMarkerVehicleClearance(vehicles: VehiclePos[]): void {
     { label: "GROVE_STREET_HANGOUT",    x: GROVE_STREET_HANGOUT_POS[0], z: GROVE_STREET_HANGOUT_POS[2] },
     // Phase 7G — Tag Turf mission points
     ...GROVE_TAG_POINTS.map(([px, , pz], i) => ({ label: `GROVE_TAG_POINT_${i}`, x: px, z: pz })),
+    // Phase 8A — Government Office
+    { label: "GOVERNMENT_OFFICE_POS", x: GOVERNMENT_OFFICE_POS[0], z: GOVERNMENT_OFFICE_POS[2] },
   ];
   for (const m of markers) {
     if (isNearParkedCar(m.x, m.z, vehicles)) {

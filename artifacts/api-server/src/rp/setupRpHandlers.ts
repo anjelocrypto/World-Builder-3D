@@ -39,6 +39,7 @@ import {
   issueFine,
   respondFine,
 } from "./rpFineService";
+import { handleCityAnnounce } from "./rpGovernmentService";
 import {
   handleFactionChat,
   handleAdminSetFaction,
@@ -512,5 +513,19 @@ export function setupRpHandlers(
   // position. Client never sends coords, progress, counts, or faction.
   socket.on("rp:gangTerritoryPulse", (data: unknown) => {
     handleGangTerritoryPulse(socket, ctx, data);
+  });
+
+  // ── rp:cityAnnounce ───────────────────────────────────────────────────────
+  // Phase 8A: Mayor broadcasts a city-wide announcement to all clients.
+  // Server validates: government faction + rank >= 4, not jailed/cuffed,
+  // message length 1–200, per-mayor 30 s cooldown.
+  // Client never sends faction, rank, name, timestamp, or cooldown state.
+  socket.on("rp:cityAnnounce", (data: unknown) => {
+    try {
+      handleCityAnnounce(socket, ctx, data);
+    } catch (err) {
+      logger.error({ err, socketId: socket.id }, "[rp] handleCityAnnounce threw");
+      socket.emit("rp:toast", { msg: "Server error — announcement failed.", color: "red", duration: 4000 });
+    }
   });
 }
