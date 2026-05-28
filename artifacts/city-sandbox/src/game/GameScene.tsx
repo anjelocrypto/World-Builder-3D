@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus } from "../shared/rpTypes";
 import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
@@ -151,6 +151,12 @@ interface GameSceneProps {
   emitGangMissionStart: () => void;
   /** Phase 7G: Emit rp:gangMissionCheckpoint. */
   emitGangMissionCheckpoint: (idx: number) => void;
+  /** Phase 7H: Current territory status (Grove Street only for now). */
+  gangTerritoryStatus:     GangTerritoryStatus | null;
+  /** Phase 7H: Request territory status from server. */
+  emitGangTerritoryStatus: () => void;
+  /** Phase 7H: Emit a territory presence pulse. */
+  emitGangTerritoryPulse:  (territoryId: string) => void;
 }
 
 export default function GameScene({
@@ -209,6 +215,9 @@ export default function GameScene({
   missionCooldownUntil,
   emitGangMissionStart,
   emitGangMissionCheckpoint,
+  gangTerritoryStatus,
+  emitGangTerritoryStatus,
+  emitGangTerritoryPulse,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -777,6 +786,7 @@ export default function GameScene({
             activeTest={rpProfile?.activeTest ?? null}
             activeJob={rpProfile?.activeJob ?? null}
             activeGangMission={activeGangMission}
+            gangTerritoryStatus={gangTerritoryStatus}
           />
 
           {/* Local player (manages its own mesh + camera) */}
@@ -964,6 +974,9 @@ export default function GameScene({
           activeGangMission={activeGangMission}
           missionCooldownUntil={missionCooldownUntil}
           emitGangMissionStart={emitGangMissionStart}
+          gangTerritoryStatus={gangTerritoryStatus}
+          emitGangTerritoryStatus={emitGangTerritoryStatus}
+          emitGangTerritoryPulse={emitGangTerritoryPulse}
           onClose={() => setShowGangHUD(false)}
         />
       )}

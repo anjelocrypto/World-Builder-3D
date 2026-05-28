@@ -15,7 +15,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus } from "../shared/rpTypes";
 import { canDriveVehicleClient, GROVE_TAG_COOLDOWN_MS } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
@@ -105,6 +105,14 @@ export function useRpSocket(socket: Socket | null) {
    * 0 = no cooldown. Set when rp:gangMissionComplete is received.
    */
   const [missionCooldownUntil, setMissionCooldownUntil] = useState<number>(0);
+
+  /**
+   * Phase 7H: Current territory status snapshot, populated by rp:gangTerritoryStatus.
+   * Null until emitGangTerritoryStatus() is called or server broadcasts after a pulse.
+   * Updated in-place on every rp:gangTerritoryStatus event (last write wins — we only
+   * track Grove Street for now).
+   */
+  const [gangTerritoryStatus, setGangTerritoryStatus] = useState<GangTerritoryStatus | null>(null);
 
   useEffect(() => {
     if (!socket) return;
@@ -281,6 +289,11 @@ export function useRpSocket(socket: Socket | null) {
       setActiveGangMission(null);
     };
 
+    // Phase 7H: rp:gangTerritoryStatus — territory snapshot (any update, any cause).
+    const onGangTerritoryStatus = (data: GangTerritoryStatus) => {
+      setGangTerritoryStatus(data);
+    };
+
     // Phase 7A: rp:factionChat — a faction member sent a message.
     const onFactionChat = (data: {
       fromId:       string;
@@ -322,6 +335,7 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:gangMissionProgress",  onGangMissionProgress);
     socket.on("rp:gangMissionComplete",  onGangMissionComplete);
     socket.on("rp:gangMissionFailed",    onGangMissionFailed);
+    socket.on("rp:gangTerritoryStatus",  onGangTerritoryStatus);
 
     return () => {
       socket.off("rp:profile",              onProfile);
@@ -348,6 +362,7 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:gangMissionProgress",  onGangMissionProgress);
       socket.off("rp:gangMissionComplete",  onGangMissionComplete);
       socket.off("rp:gangMissionFailed",    onGangMissionFailed);
+      socket.off("rp:gangTerritoryStatus",  onGangTerritoryStatus);
     };
   }, [socket]);
 
@@ -622,6 +637,16 @@ export function useRpSocket(socket: Socket | null) {
     ),
     emitGangMissionCheckpoint: useCallback(
       (idx: number) => { socket?.emit("rp:gangMissionCheckpoint", { idx }); },
+      [socket],
+    ),
+    // Phase 7H: Gang Territory Control
+    gangTerritoryStatus,
+    emitGangTerritoryStatus: useCallback(
+      () => { socket?.emit("rp:gangTerritoryStatus"); },
+      [socket],
+    ),
+    emitGangTerritoryPulse: useCallback(
+      (territoryId: string) => { socket?.emit("rp:gangTerritoryPulse", { territoryId }); },
       [socket],
     ),
   };

@@ -6,6 +6,8 @@
  *            cleanupPendingGangRequest, module-level pendingGangRequests Map.
  * Phase 7G: Added Tag Turf repeatable mission — handleGangMissionStart,
  *            handleGangMissionCheckpoint, cleanupGangMission.
+ * Phase 7H: Added Gang Territory Control — territoryStateById (in-memory), handleGangTerritoryStatus,
+ *            handleGangTerritoryPulse, computeTerritoryPresence.
  *
  * Provides:
  *   loadFactionForPlayer(playerId)          — DB lookup, returns faction row or null
@@ -24,6 +26,8 @@
  *   handleGangMissionStart(socket, ctx)     — Grove Street member starts Tag Turf mission
  *   handleGangMissionCheckpoint(socket, ctx, payload) — player hits a tag checkpoint
  *   cleanupGangMission(socketId)            — called on disconnect to remove active mission
+ *   handleGangTerritoryStatus(socket, ctx)  — any player requests current territory snapshot
+ *   handleGangTerritoryPulse(socket, ctx, payload) — gang member pulses presence to build progress
  *
  * Admin gate (rp:adminSetFaction):
  *   - ONLY allowed when NODE_ENV !== "production".
@@ -55,6 +59,7 @@ import {
   GROVE_TAG_RADIUS,
   GROVE_TAG_PAY,
   GROVE_TAG_COOLDOWN_MS,
+  GANG_TERRITORIES,
 } from "../socket/cityData";
 
 // ── Faction DB row (partial, fields we care about) ────────────────────────────
@@ -1607,4 +1612,203 @@ export function cleanupGangMission(socketId: string): void {
   if (activeGangMissions.delete(socketId)) {
     logger.debug({ socketId }, "[rpGang] active mission cleaned up on disconnect");
   }
+}
+
+// ── Phase 7H: Gang Territory Control ─────────────────────────────────────────
+
+/**
+ * In-memory territory state. Keyed by territory id (e.g. "grove_street").
+ * Initialised from GANG_TERRITORIES at module load. Not persisted — resets on
+ * server restart. No SQL migration, per Phase 7H spec.
+ */
+interface TerritoryState {
+  territoryId:            string;
+  name:                   string;
+  controllingFactionSlug: string;
+  contestedByFactionSlug: string | null;
+  /** Defence progress for the controlling faction (0..100). */
+  progress:               number;
+  lastUpdatedAt:          number;  // Unix ms
+}
+
+const territoryStateById = new Map<string, TerritoryState>(
+  GANG_TERRITORIES.map((t) => [
+    t.id,
+    {
+      territoryId:            t.id,
+      name:                   t.name,
+      controllingFactionSlug: t.controllingFactionSlug,
+      contestedByFactionSlug: null,
+      progress:               50,  // starts half-consolidated; builds on pulse
+      lastUpdatedAt:          Date.now(),
+    },
+  ]),
+);
+
+/**
+ * Returns friendly (controlling faction) and rival (other gang) player counts
+ * inside the territory using server-authoritative positions from ctx.players.
+ * No coordinates, no socket IDs are included in the result.
+ */
+function computeTerritoryPresence(
+  territoryId: string,
+  ctx: LicenseContext,
+): { friendlyCount: number; rivalCount: number } {
+  const t     = GANG_TERRITORIES.find((gt) => gt.id === territoryId);
+  const state = territoryStateById.get(territoryId);
+  if (!t || !state) return { friendlyCount: 0, rivalCount: 0 };
+
+  const [cx, , cz] = t.center;
+  const r2          = t.radius * t.radius;
+  let friendlyCount = 0;
+  let rivalCount    = 0;
+
+  for (const [socketId, entry] of ctx.rpCache) {
+    const pos = ctx.players.get(socketId);
+    if (!pos) continue;
+    const dx = pos.x - cx;
+    const dz = pos.z - cz;
+    if (dx * dx + dz * dz > r2) continue;  // outside territory — skip
+    // Anti-cheat: we derive position from ctx.players (server-authoritative),
+    // never from anything the client sent.
+    if (entry.factionSlug === state.controllingFactionSlug) {
+      friendlyCount++;
+    } else if (entry.factionType === "gang") {
+      rivalCount++;
+    }
+  }
+
+  return { friendlyCount, rivalCount };
+}
+
+// ── handleGangTerritoryStatus ─────────────────────────────────────────────────
+
+/**
+ * rp:gangTerritoryStatus — any player can request the current Grove Street
+ * territory snapshot. Emits safe payload to requester only (no coords, no
+ * socket IDs). Phase 7H spec: "any player can request".
+ */
+export function handleGangTerritoryStatus(socket: Socket, ctx: LicenseContext): void {
+  // Only Grove Street territory for now. Loop-ready for future expansion.
+  for (const t of GANG_TERRITORIES) {
+    const state = territoryStateById.get(t.id);
+    if (!state) continue;
+    const { friendlyCount, rivalCount } = computeTerritoryPresence(t.id, ctx);
+    socket.emit("rp:gangTerritoryStatus", {
+      territoryId:            state.territoryId,
+      name:                   state.name,
+      controllingFactionSlug: state.controllingFactionSlug,
+      contestedByFactionSlug: state.contestedByFactionSlug,
+      progress:               state.progress,
+      lastUpdatedAt:          state.lastUpdatedAt,
+      friendlyCount,
+      rivalCount,
+    });
+  }
+}
+
+// ── handleGangTerritoryPulse ──────────────────────────────────────────────────
+
+/**
+ * rp:gangTerritoryPulse — a gang member pulses their presence inside a territory.
+ *
+ * Server validates:
+ *   1. Caller is a gang member, not jailed, not cuffed.
+ *   2. Server-authoritative position is inside the territory radius.
+ *   3. Caller's faction matches the territory's controlling faction (Grove Street
+ *      holds its own turf). Other gangs receive a "no capture rules yet" toast.
+ *
+ * On success: increments progress (capped at 100), broadcasts
+ * rp:gangTerritoryStatus to all faction room members (+ requester).
+ *
+ * Anti-cheat: client NEVER sends coords, progress, counts, or faction. The
+ * server derives every field from rpCache + ctx.players.
+ */
+export function handleGangTerritoryPulse(
+  socket: Socket,
+  ctx: LicenseContext,
+  data: unknown,
+): void {
+  const entry = ctx.rpCache.get(socket.id);
+  if (!entry) return;
+
+  // ── Guard 1: must be a gang member ─────────────────────────────────────────
+  if (!isGang(entry)) {
+    socket.emit("rp:toast", { msg: "You are not in a gang.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 2: not jailed ────────────────────────────────────────────────────
+  if (entry.jailUntil && entry.jailUntil > new Date()) {
+    socket.emit("rp:toast", { msg: "You cannot do that while jailed.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 3: not cuffed ────────────────────────────────────────────────────
+  if (entry.cuffedBy) {
+    socket.emit("rp:toast", { msg: "You cannot do that while cuffed.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Parse territoryId ──────────────────────────────────────────────────────
+  const raw          = data as Record<string, unknown> | null | undefined;
+  const territoryId  = typeof raw?.territoryId === "string" ? raw.territoryId.trim() : "";
+  if (!territoryId) {
+    socket.emit("rp:toast", { msg: "Invalid territory request.", color: "red", duration: 3000 });
+    return;
+  }
+
+  const territory = GANG_TERRITORIES.find((t) => t.id === territoryId);
+  const state     = territoryStateById.get(territoryId);
+  if (!territory || !state) {
+    socket.emit("rp:toast", { msg: "Unknown territory.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 4: server-authoritative position inside territory ────────────────
+  const pos = ctx.players.get(socket.id);
+  if (!pos) return;
+  const [cx, , cz] = territory.center;
+  const dx          = pos.x - cx;
+  const dz          = pos.z - cz;
+  if (dx * dx + dz * dz > territory.radius * territory.radius) {
+    socket.emit("rp:toast", { msg: "You are not inside the territory.", color: "yellow", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 5: faction must be the controlling faction ───────────────────────
+  if (entry.factionSlug !== state.controllingFactionSlug) {
+    socket.emit("rp:toast", { msg: "Your gang has no capture rules yet.", color: "yellow", duration: 4000 });
+    return;
+  }
+
+  // ── Grove Street holds / defends — increment progress ──────────────────────
+  const PULSE_PROGRESS_GAIN = 5;
+  state.progress      = Math.min(100, state.progress + PULSE_PROGRESS_GAIN);
+  state.lastUpdatedAt = Date.now();
+
+  logger.debug(
+    { socketId: socket.id, territoryId, progress: state.progress },
+    "[rpGang] territory pulse — progress updated",
+  );
+
+  // ── Broadcast safe payload to faction room + requester ─────────────────────
+  const { friendlyCount, rivalCount } = computeTerritoryPresence(territoryId, ctx);
+  const payload = {
+    territoryId:            state.territoryId,
+    name:                   state.name,
+    controllingFactionSlug: state.controllingFactionSlug,
+    contestedByFactionSlug: state.contestedByFactionSlug,
+    progress:               state.progress,
+    lastUpdatedAt:          state.lastUpdatedAt,
+    friendlyCount,
+    rivalCount,
+    // Anti-cheat: no coordinates, no socket IDs.
+  };
+
+  // io.to(room) delivers to ALL sockets in the room, including the sender if
+  // they've joined that room. socket.emit is added defensively in case the
+  // socket was not yet in the room at broadcast time.
+  ctx.io.to(`faction:${entry.factionSlug}`).emit("rp:gangTerritoryStatus", payload);
+  socket.emit("rp:gangTerritoryStatus", payload);
 }

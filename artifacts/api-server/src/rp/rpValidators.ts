@@ -39,6 +39,7 @@ import {
   GROVE_STREET_HANGOUT_POS,
   GROVE_STREET_TURF_CENTER,
   GROVE_TAG_POINTS,
+  GANG_TERRITORIES,
 } from "../socket/cityData";
 import type { RpCacheEntry, TestState } from "./rpCache";
 
@@ -210,10 +211,20 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
 
   // Phase 7D: Grove Street gang markers must be off-road
   // Phase 7G: Tag Turf mission points must also be off-road
+  // Phase 7H: territory centres (from GANG_TERRITORIES) must be off-road
   const gangOffRoadMarkers = [
     { label: "GROVE_STREET_HANGOUT_POS", x: GROVE_STREET_HANGOUT_POS[0], z: GROVE_STREET_HANGOUT_POS[2] },
     { label: "GROVE_STREET_TURF_CENTER", x: GROVE_STREET_TURF_CENTER[0],  z: GROVE_STREET_TURF_CENTER[2]  },
     ...GROVE_TAG_POINTS.map(([px, , pz], i) => ({ label: `GROVE_TAG_POINT_${i}`, x: px, z: pz })),
+    // Phase 7H: dynamic loop so any future GANG_TERRITORIES entry is also covered.
+    // GROVE_STREET_TURF_CENTER is already listed explicitly above; duplicates are
+    // harmless (they just log twice) and catching a future mis-placed centre early
+    // is worth the redundancy.
+    ...GANG_TERRITORIES.map((t) => ({
+      label: `GANG_TERRITORY_CENTER_${t.id}`,
+      x:     t.center[0],
+      z:     t.center[2],
+    })),
   ];
 
   for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers, ...deliveryMarkers, ...mechanicMarkers, ...medicOffRoadMarkers, ...policeOffRoadMarkers, ...atmOffRoadMarkers, ...gangOffRoadMarkers]) {

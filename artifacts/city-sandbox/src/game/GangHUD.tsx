@@ -13,7 +13,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission } from "../shared/rpTypes";
+import type { GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus } from "../shared/rpTypes";
 import { GANG_LEADER_MIN_RANK, GROVE_TAG_PAY, GROVE_TAG_COOLDOWN_MS } from "../shared/rpTypes";
 
 // ── Styling constants ─────────────────────────────────────────────────────────
@@ -47,6 +47,10 @@ interface GangHUDProps {
   activeGangMission:       ActiveGangMission | null;
   missionCooldownUntil:    number;   // ms timestamp; 0 = no cooldown
   emitGangMissionStart:    () => void;
+  // Phase 7H: Gang Territory Control
+  gangTerritoryStatus:     GangTerritoryStatus | null;
+  emitGangTerritoryStatus: () => void;
+  emitGangTerritoryPulse:  (territoryId: string) => void;
   onClose:                 () => void;
 }
 
@@ -71,16 +75,20 @@ export default function GangHUD({
   activeGangMission,
   missionCooldownUntil,
   emitGangMissionStart,
+  gangTerritoryStatus,
+  emitGangTerritoryStatus,
+  emitGangTerritoryPulse,
   onClose,
 }: GangHUDProps) {
   const [lastAction, setLastAction] = useState<string>("");
   const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Fetch gang status + roster when first opened.
+  // Fetch gang status + roster + territory status when first opened.
   useEffect(() => {
     emitGangStatus();
     emitGangRoster();
+    emitGangTerritoryStatus();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -362,6 +370,116 @@ export default function GangHUD({
                   </div>
                 );
               })()}
+
+              {/* Phase 7H: Territory Control panel */}
+              {gangTerritoryStatus && (
+                <div
+                  style={{
+                    padding:      "8px 10px",
+                    borderRadius: 6,
+                    border:       "1px solid rgba(76,175,80,0.18)",
+                    background:   "rgba(76,175,80,0.04)",
+                    marginTop:    4,
+                  }}
+                >
+                  <div
+                    style={{
+                      fontSize:      10,
+                      color:         "#556",
+                      letterSpacing: 1,
+                      marginBottom:  6,
+                      display:       "flex",
+                      alignItems:    "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span>TERRITORY</span>
+                    <button
+                      onClick={() => emitGangTerritoryStatus()}
+                      onKeyDown={stopProp}
+                      title="Refresh territory status"
+                      style={{
+                        background: "transparent",
+                        border:     "none",
+                        color:      "#445",
+                        fontSize:   10,
+                        cursor:     "pointer",
+                        padding:    "0 2px",
+                      }}
+                    >
+                      ↻
+                    </button>
+                  </div>
+
+                  {/* Name + controller */}
+                  <div style={{ fontSize: 10, color: "#cdd", marginBottom: 4 }}>
+                    {gangTerritoryStatus.name}
+                    <span style={{ color: "#4a7a4e", marginLeft: 6 }}>
+                      [{gangTerritoryStatus.controllingFactionSlug}]
+                    </span>
+                  </div>
+
+                  {/* Control progress bar */}
+                  <div style={{ marginBottom: 5 }}>
+                    <div
+                      style={{
+                        display:        "flex",
+                        justifyContent: "space-between",
+                        fontSize:       9,
+                        color:          "#4a7a4e",
+                        marginBottom:   3,
+                      }}
+                    >
+                      <span>CONTROL</span>
+                      <span>{gangTerritoryStatus.progress}%</span>
+                    </div>
+                    <div
+                      style={{
+                        height:       5,
+                        borderRadius: 3,
+                        background:   "rgba(255,255,255,0.07)",
+                        overflow:     "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          height:           "100%",
+                          width:            `${gangTerritoryStatus.progress}%`,
+                          background:       GANG_GREEN,
+                          borderRadius:     3,
+                          transition:       "width 0.4s ease",
+                        }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Presence counts */}
+                  <div style={{ display: "flex", gap: 8, fontSize: 9, color: "#4a7a4e" }}>
+                    <span title="Friendly members inside turf">
+                      🟢 {gangTerritoryStatus.friendlyCount} friendly
+                    </span>
+                    <span title="Rival gang members inside turf">
+                      🔴 {gangTerritoryStatus.rivalCount} rival
+                    </span>
+                  </div>
+
+                  {/* Pulse Presence button — only when inside turf */}
+                  {nearTurf && (
+                    <button
+                      onClick={() => emitGangTerritoryPulse(gangTerritoryStatus.territoryId)}
+                      onKeyDown={stopProp}
+                      style={{
+                        ...btnStyle(true),
+                        marginTop: 8,
+                        width:     "100%",
+                      }}
+                      title="Send a presence pulse to hold this territory"
+                    >
+                      📍 Pulse Presence (+{5}% control)
+                    </button>
+                  )}
+                </div>
+              )}
 
               {/* Presence log */}
               {gangPresenceEvents.length > 0 && (

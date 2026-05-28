@@ -429,6 +429,27 @@ export const GANG_ACTION_MIN_RANK = 0;
 /** Phase 7E: Minimum rank to accept/reject gang join requests. */
 export const GANG_LEADER_MIN_RANK = 4;
 
+// ── Phase 7H: Gang Territory Control types ───────────────────────────────────
+
+/**
+ * Safe territory snapshot emitted by the server via rp:gangTerritoryStatus.
+ * No world coordinates, no socket IDs — server-derived counts only.
+ */
+export interface GangTerritoryStatus {
+  territoryId:            string;
+  name:                   string;
+  controllingFactionSlug: string;
+  contestedByFactionSlug: string | null;
+  /** Defence / control progress for the controlling faction (0..100). */
+  progress:               number;
+  /** Unix ms when the state last changed. */
+  lastUpdatedAt:          number;
+  /** Count of controlling-faction players inside the territory right now. */
+  friendlyCount:          number;
+  /** Count of rival gang players inside the territory right now. */
+  rivalCount:             number;
+}
+
 // ── Phase 7G: Tag Turf mission ─────────────────────────────────────────────
 // MUST stay in sync with GROVE_TAG_* in api-server/src/socket/cityData.ts.
 

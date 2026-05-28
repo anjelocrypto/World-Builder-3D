@@ -71,6 +71,9 @@ export default function Game({ username }: GameProps) {
     missionCooldownUntil,
     emitGangMissionStart,
     emitGangMissionCheckpoint,
+    gangTerritoryStatus,
+    emitGangTerritoryStatus,
+    emitGangTerritoryPulse,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -157,6 +160,9 @@ export default function Game({ username }: GameProps) {
       missionCooldownUntil={missionCooldownUntil}
       emitGangMissionStart={emitGangMissionStart}
       emitGangMissionCheckpoint={emitGangMissionCheckpoint}
+      gangTerritoryStatus={gangTerritoryStatus}
+      emitGangTerritoryStatus={emitGangTerritoryStatus}
+      emitGangTerritoryPulse={emitGangTerritoryPulse}
     />
   );
 }

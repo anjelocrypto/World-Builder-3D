@@ -53,6 +53,8 @@ import {
   handleGangRemoveMember,
   handleGangMissionStart,
   handleGangMissionCheckpoint,
+  handleGangTerritoryStatus,
+  handleGangTerritoryPulse,
 } from "./rpFactionService";
 
 export type { LicenseContext };
@@ -495,5 +497,20 @@ export function setupRpHandlers(
     handleGangMissionCheckpoint(socket, ctx, data).catch((err) => {
       logger.error({ err, socketId: socket.id }, "[rp] handleGangMissionCheckpoint threw");
     });
+  });
+
+  // ── rp:gangTerritoryStatus ────────────────────────────────────────────────
+  // Phase 7H: Any player can request the current territory snapshot.
+  // No auth check — returns safe read-only payload (no coords, no socket IDs).
+  socket.on("rp:gangTerritoryStatus", () => {
+    handleGangTerritoryStatus(socket, ctx);
+  });
+
+  // ── rp:gangTerritoryPulse ─────────────────────────────────────────────────
+  // Phase 7H: Gang member pulses presence inside a territory to build progress.
+  // Server validates gang membership, jailed/cuffed state, and authoritative
+  // position. Client never sends coords, progress, counts, or faction.
+  socket.on("rp:gangTerritoryPulse", (data: unknown) => {
+    handleGangTerritoryPulse(socket, ctx, data);
   });
 }

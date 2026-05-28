@@ -671,3 +671,32 @@ export const GROVE_TAG_PAY = 150;
 
 /** Cooldown (ms) before the same player can start another Tag Turf mission. */
 export const GROVE_TAG_COOLDOWN_MS = 120_000;
+
+// ── Phase 7H: Gang Territory Control ─────────────────────────────────────────
+
+/**
+ * Static territory definitions. All runtime state lives in rpFactionService's
+ * territoryStateById Map — nothing here is persisted to the DB.
+ *
+ * id                     Stable slug; used as the rp:gangTerritoryPulse key.
+ * name                   Human-readable display name.
+ * center                 World-space turf centre (same as GROVE_STREET_TURF_CENTER
+ *                        for Grove Street — kept here for forward extensibility).
+ * radius                 Capture radius (m) — must match turf ring on client.
+ * controllingFactionSlug Faction that starts in control and defends this turf.
+ */
+export const GANG_TERRITORIES: Array<{
+  id:                     string;
+  name:                   string;
+  center:                 [number, number, number];
+  radius:                 number;
+  controllingFactionSlug: string;
+}> = [
+  {
+    id:                     "grove_street",
+    name:                   "Grove Street",
+    center:                 GROVE_STREET_TURF_CENTER,
+    radius:                 GROVE_STREET_TURF_RADIUS,
+    controllingFactionSlug: "grove_street",
+  },
+];

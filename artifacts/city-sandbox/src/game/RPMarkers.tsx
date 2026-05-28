@@ -14,7 +14,7 @@
 import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
-import type { ActiveTest, ActiveJob, ActiveGangMission } from "../shared/rpTypes";
+import type { ActiveTest, ActiveJob, ActiveGangMission, GangTerritoryStatus } from "../shared/rpTypes";
 import {
   STATION_MARKER_POS,
   LICENSING_OFFICE_POS,
@@ -45,9 +45,11 @@ interface RPMarkersProps {
   activeJob:  ActiveJob | null;
   /** Phase 7G: Non-null while a Tag Turf gang mission is active. */
   activeGangMission: ActiveGangMission | null;
+  /** Phase 7H: Current territory status — used to tint the turf ring by progress. */
+  gangTerritoryStatus?: GangTerritoryStatus | null;
 }
 
-export default function RPMarkers({ activeTest, activeJob, activeGangMission }: RPMarkersProps) {
+export default function RPMarkers({ activeTest, activeJob, activeGangMission, gangTerritoryStatus }: RPMarkersProps) {
   // Mirror props into refs so useFrame (non-reactive) always reads current value.
   const activeTestRef = useRef<ActiveTest | null>(activeTest);
   activeTestRef.current = activeTest;
@@ -143,6 +145,9 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission }: 
   ];
   const activeGangMissionRef = useRef<ActiveGangMission | null>(activeGangMission);
   activeGangMissionRef.current = activeGangMission;
+  // Phase 7H: territory status ref — used to tint turf ring by progress.
+  const gangTerritoryStatusRef = useRef<GangTerritoryStatus | null | undefined>(gangTerritoryStatus);
+  gangTerritoryStatusRef.current = gangTerritoryStatus;
 
   useFrame(({ clock }) => {
     const t  = clock.getElapsedTime();
@@ -219,8 +224,20 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission }: 
     const gangHangoutPulse = 0.4 + 0.35 * Math.sin(t * 2.4 + 0.2);
     if (gangHangoutRingRef.current) gangHangoutRingRef.current.emissiveIntensity = gangHangoutPulse;
     if (gangHangoutSignRef.current) gangHangoutSignRef.current.emissiveIntensity = 0.7 + 0.25 * Math.sin(t * 3.2 + 0.4);
-    // Turf ring breathes slowly — territorial rather than urgent
-    if (gangTurfRingRef.current) gangTurfRingRef.current.emissiveIntensity = 0.15 + 0.08 * Math.sin(t * 0.9 + 1.0);
+    // Phase 7H: Turf ring tint — progress-driven brightness.
+    // At 100% control: bright steady green pulse. At 0%: dim slow red. In between: blended.
+    if (gangTurfRingRef.current) {
+      const gts      = gangTerritoryStatusRef.current;
+      const progress = gts ? gts.progress / 100 : 0.5;  // default 50% if no data yet
+      // Scale between slow dim (0%) and brighter/faster pulse (100%)
+      const baseIntensity  = 0.08 + 0.22 * progress;
+      const pulseAmplitude = 0.05 + 0.10 * progress;
+      const pulseSpeed     = 0.6 + 0.6 * progress;
+      gangTurfRingRef.current.emissiveIntensity = baseIntensity + pulseAmplitude * Math.sin(t * pulseSpeed + 1.0);
+      // Tint: shift from dim-green at low progress to bright-green at high progress
+      // (emissive color is set in JSX; we only modulate intensity here to avoid
+      // creating new materials — "no heavy new meshes" per spec).
+    }
 
     // Phase 7G: Tag Turf mission checkpoint rings
     const agm = activeGangMissionRef.current;
