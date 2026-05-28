@@ -360,23 +360,31 @@ export default function GameScene({
         const tag = active.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active.isContentEditable) return;
       }
-      // Phase 7C: F7 toggles faction admin panel (dev-only).
-      // Allowed even while other modals are open (it's a dev toggle, not gameplay).
-      if (e.code === "F7") {
-        if (import.meta.env.DEV) {
-          setShowFactionAdmin((prev) => !prev);
-        }
-        return;
-      }
-
       // Ignore while any modal overlay is open.
-      if (
+      // F7 is exempted only when it is closing the admin panel (toggle-off path).
+      const anyModalOpen =
         showShopRef.current ||
         showATMRef.current ||
         showFinePanelRef.current ||
         showFactionChatRef.current ||
-        showFactionAdminRef.current
-      ) return;
+        showFactionAdminRef.current;
+
+      // Phase 7C: F7 toggles faction admin panel (dev-only).
+      // Opens only when no other modal is open; always allowed to close itself.
+      if (e.code === "F7") {
+        if (import.meta.env.DEV) {
+          if (showFactionAdminRef.current) {
+            // Close — always allowed.
+            setShowFactionAdmin(false);
+          } else if (!anyModalOpen) {
+            // Open — only when no other modal is blocking.
+            setShowFactionAdmin(true);
+          }
+        }
+        return;
+      }
+
+      if (anyModalOpen) return;
 
       // Phase 7A: Y toggles faction chat regardless of job/duty status.
       if (e.code === "KeyY") {
