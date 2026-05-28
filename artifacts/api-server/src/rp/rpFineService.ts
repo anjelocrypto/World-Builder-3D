@@ -26,7 +26,7 @@ import { db, rpWallets, rpTransactionLog } from "@workspace/db";
 import { eq }              from "drizzle-orm";
 import { logger }          from "../lib/logger";
 import type { LicenseContext } from "./rpLicenseService";
-import { isPolice } from "./rpFactionHelpers";
+import { isPolice, isFactionRankAtLeast, POLICE_FINE_MIN_RANK } from "./rpFactionHelpers";
 import {
   POLICE_FINE_RADIUS,
   POLICE_MIN_FINE,
@@ -74,6 +74,16 @@ export async function issueFine(
   ) {
     socket.emit("rp:toast", {
       msg:      "You must be on duty as a police officer to issue fines.",
+      color:    "red",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Phase 7B P2: fine requires minimum rank.
+  if (!isFactionRankAtLeast(officerEntry, POLICE_FINE_MIN_RANK)) {
+    socket.emit("rp:toast", {
+      msg:      `Higher police rank required. (min rank ${POLICE_FINE_MIN_RANK})`,
       color:    "red",
       duration: 3000,
     });

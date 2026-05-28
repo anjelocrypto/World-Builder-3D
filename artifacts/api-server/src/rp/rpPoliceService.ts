@@ -23,6 +23,8 @@ import type { LicenseContext }      from "./rpLicenseService";
 import {
   isPolice,
   isFactionRankAtLeast,
+  POLICE_WARRANT_MIN_RANK,
+  POLICE_CUFF_MIN_RANK,
   POLICE_ARREST_MIN_RANK,
 } from "./rpFactionHelpers";
 import {
@@ -104,6 +106,16 @@ export async function handleIssueWarrant(
     socket.emit("rp:toast", {
       msg:      "You must be on duty as a Police Officer to issue warrants.",
       color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Phase 7B P2: warrant requires minimum rank.
+  if (!isFactionRankAtLeast(officerEntry, POLICE_WARRANT_MIN_RANK)) {
+    socket.emit("rp:toast", {
+      msg:      `Higher police rank required. (min rank ${POLICE_WARRANT_MIN_RANK})`,
+      color:    "red",
       duration: 3000,
     });
     return;
@@ -707,6 +719,16 @@ export async function handleCuff(
     socket.emit("rp:toast", {
       msg:      "You must be on duty as a Police Officer to cuff suspects.",
       color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // Phase 7B P2: cuff requires minimum rank.
+  if (!isFactionRankAtLeast(officerEntry, POLICE_CUFF_MIN_RANK)) {
+    socket.emit("rp:toast", {
+      msg:      `Higher police rank required. (min rank ${POLICE_CUFF_MIN_RANK})`,
+      color:    "red",
       duration: 3000,
     });
     return;
