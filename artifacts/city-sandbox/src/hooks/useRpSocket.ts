@@ -136,6 +136,12 @@ export function useRpSocket(socket: Socket | null) {
 
     const onProfile = (data: RpProfile) => {
       setRpProfile({ ...data, ownedVehicles: data.ownedVehicles ?? [] });
+      // Phase 8B: Request city config after the RP join path is ready.
+      // Emitting here (rather than at listener-attach time) guarantees that
+      // setupRpHandlers has already registered rp:getCityConfig on the server
+      // and that the server-side RP cache entry exists, so late-joining
+      // players always receive the current tax rate, not just the default.
+      socket.emit("rp:getCityConfig");
     };
 
     const onProfileUpdate = (data: Partial<RpProfile>) => {
@@ -366,9 +372,6 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:gangTerritoryStatus",  onGangTerritoryStatus);
     socket.on("rp:cityAnnounce",         onCityAnnounce);
     socket.on("rp:cityConfig",           onCityConfig);
-
-    // Request current city config immediately so the HUD has a fresh value.
-    socket.emit("rp:getCityConfig");
 
     return () => {
       socket.off("rp:profile",              onProfile);
