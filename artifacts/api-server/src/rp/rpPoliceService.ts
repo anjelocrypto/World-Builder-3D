@@ -52,7 +52,9 @@ function isOfficerValid(entry: RpCacheEntry): boolean {
   return (
     entry.currentJob === "police_patrol" &&
     entry.onDuty &&
-    entry.jailUntil === null
+    entry.jailUntil === null &&
+    // Phase 6C: a cuffed officer cannot issue warrants, cuff, uncuff, or arrest.
+    entry.cuffedBy === null
   );
 }
 
@@ -710,6 +712,21 @@ export async function handleCuff(
   targetEntry.cuffedBy    = socket.id;
   targetEntry.cuffedUntil = cuffedUntil;
 
+  // P1 fix: release any vehicle the suspect is currently driving.
+  // Without this the vehicles map retains driverId === targetSocketId,
+  // locking that vehicle until arrest or disconnect.
+  ctx.vehicles.forEach((vehicle, vehicleId) => {
+    if (vehicle.driverId === targetSocketId) {
+      const released = { ...vehicle, driverId: null, speed: 0 };
+      ctx.vehicles.set(vehicleId, released);
+      ctx.io.emit("vehicleMoved", released);
+      logger.info(
+        { vehicleId, targetId: targetEntry.playerId },
+        "[rp] vehicle released on cuff",
+      );
+    }
+  });
+
   const cuffedUntilMs = cuffedUntil.getTime();
 
   ctx.io.emit("rp:cuffedUpdate", {
@@ -766,19 +783,37 @@ export async function handleUncuff(
     return;
   }
 
-  if (typeof targetSocketId !== "string" || !targetSocketId) {
+  // P1 fix: reject self-uncuff attempts.
+  if (typeof targetSocketId !== "string" || !targetSocketId || targetSocketId === socket.id) {
     socket.emit("rp:toast", { msg: "Invalid target.", color: "red", duration: 3000 });
     return;
   }
 
+  // P1 fix: require server-authoritative officer position (officer must be in the world).
+  const officerPos = ctx.players.get(socket.id);
+  if (!officerPos) return;
+
   const targetEntry = ctx.rpCache.get(targetSocketId);
-  if (!targetEntry) {
+  // P1 fix: require target position to exist server-side.
+  const targetPos   = ctx.players.get(targetSocketId);
+  if (!targetEntry || !targetPos) {
     socket.emit("rp:toast", { msg: "Target player not found.", color: "red", duration: 3000 });
     return;
   }
 
   if (targetEntry.cuffedBy === null) {
     socket.emit("rp:toast", { msg: "That player is not cuffed.", color: "yellow", duration: 3000 });
+    return;
+  }
+
+  // P1 fix: enforce server-side proximity check — officer must be within cuff radius.
+  const uncuffDist = dist2d(officerPos.x, officerPos.z, targetPos.x, targetPos.z);
+  if (uncuffDist > POLICE_CUFF_RADIUS) {
+    socket.emit("rp:toast", {
+      msg:      `Move within ${POLICE_CUFF_RADIUS} m to uncuff the suspect.`,
+      color:    "yellow",
+      duration: 3000,
+    });
     return;
   }
 

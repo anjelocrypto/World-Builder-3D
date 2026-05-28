@@ -370,6 +370,17 @@ export function setupGameServer(httpServer: HttpServer) {
             // Force out of vehicle.
             data.isInVehicle = false;
             data.vehicleId   = null;
+            // P1 fix: defensively release any stale vehicle driverId so the
+            // vehicles map stays consistent (handleCuff already does this on
+            // cuff application, but this guards against edge cases where the
+            // vehicle state was not yet updated when the cuff landed).
+            vehicles.forEach((v, vid) => {
+              if (v.driverId === socket.id) {
+                const released = { ...v, driverId: null, speed: 0 };
+                vehicles.set(vid, released);
+                io.emit("vehicleMoved", released);
+              }
+            });
           }
         }
       }
