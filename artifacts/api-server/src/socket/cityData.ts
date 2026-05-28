@@ -723,3 +723,17 @@ export const MAYOR_ANNOUNCE_MAX_CHARS = 200;
 
 /** Minimum ms between two city announcements from the same mayor (server-validated). */
 export const MAYOR_ANNOUNCE_COOLDOWN_MS = 30_000;
+
+// ── Phase 8B: City Tax Rate ────────────────────────────────────────────────────
+
+/** Minimum city tax rate (0 = no tax). */
+export const CITY_TAX_MIN = 0;
+
+/** Maximum city tax rate (0.15 = 15%). */
+export const CITY_TAX_MAX = 0.15;
+
+/** Default city tax rate at server startup (5%). */
+export const CITY_TAX_DEFAULT = 0.05;
+
+/** Minimum ms between two tax-rate changes from the same mayor. */
+export const MAYOR_SET_TAX_COOLDOWN_MS = 30_000;

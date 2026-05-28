@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig } from "../shared/rpTypes";
 import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS, GOVERNMENT_OFFICE_POS, GOVERNMENT_OFFICE_RADIUS, MAYOR_MIN_RANK } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
@@ -19,6 +19,7 @@ import FactionAdminHUD from "./FactionAdminHUD";
 import GangHUD from "./GangHUD";
 import { GangMissionHUD } from "./GangMissionHUD";
 import CityAnnouncementHUD from "./CityAnnouncementHUD";
+import CityTaxHUD from "./CityTaxHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -162,6 +163,10 @@ interface GameSceneProps {
   cityAnnouncements: CityAnnouncement[];
   /** Phase 8A: Emit rp:cityAnnounce to broadcast a mayor announcement. */
   emitCityAnnounce: (msg: string) => void;
+  /** Phase 8B: Current city tax config from useRpSocket. */
+  cityConfig: CityConfig;
+  /** Phase 8B: Emit rp:setTaxRate — Mayor sets a new city tax rate. */
+  emitSetTaxRate: (rate: number) => void;
 }
 
 export default function GameScene({
@@ -225,6 +230,8 @@ export default function GameScene({
   emitGangTerritoryPulse,
   cityAnnouncements,
   emitCityAnnounce,
+  cityConfig,
+  emitSetTaxRate,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -290,6 +297,10 @@ export default function GameScene({
   const nearGovOfficeRef = useRef(false);
   // Phase 8A: visible announcement banner (shown for 8 s then auto-cleared).
   const [visibleAnnouncement, setVisibleAnnouncement] = useState<CityAnnouncement | null>(null);
+  // Phase 8B: City Tax HUD visibility (T key at Government Office, Mayor only).
+  const [showCityTaxHUD, setShowCityTaxHUD] = useState(false);
+  const showCityTaxHUDRef = useRef(showCityTaxHUD);
+  showCityTaxHUDRef.current = showCityTaxHUD;
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -441,6 +452,7 @@ export default function GameScene({
         e.code !== "KeyY" &&
         e.code !== "KeyG" &&
         e.code !== "KeyE" &&  // Phase 8A: E at Gov Office for Mayor city announcement
+        e.code !== "KeyT" &&  // Phase 8B: T at Gov Office for Mayor tax rate
         e.code !== "F7"
       ) return;
       // Ignore key-repeat (held key firing continuously).
@@ -460,7 +472,8 @@ export default function GameScene({
         showFactionChatRef.current ||
         showFactionAdminRef.current ||
         showGangHUDRef.current ||
-        showCityAnnouncementHUDRef.current;
+        showCityAnnouncementHUDRef.current ||
+        showCityTaxHUDRef.current;
 
       // Phase 7C: F7 toggles faction admin panel (dev-only).
       // Opens only when no other modal is open; always allowed to close itself.
@@ -501,6 +514,20 @@ export default function GameScene({
           return;
         }
         // fall through — let LocalPlayer handle E for other interactions.
+      }
+
+      // Phase 8B: T at Government Office — Mayor opens City Tax Rate panel.
+      // Close is always allowed; open requires Mayor + near gov office + no other modal.
+      if (e.code === "KeyT") {
+        if (showCityTaxHUDRef.current) {
+          setShowCityTaxHUD(false);
+          return;
+        }
+        if (!anyModalOpen && isMayorRef.current && nearGovOfficeRef.current) {
+          setShowCityTaxHUD(true);
+          return;
+        }
+        return; // T has no fallthrough — not used for other interactions.
       }
 
       if (anyModalOpen) return;
@@ -979,6 +1006,7 @@ export default function GameScene({
         showFactionAdmin={showFactionAdmin}
         showGangHUD={showGangHUD}
         nearGovernmentOffice={nearGovernmentOffice}
+        cityTaxRate={cityConfig.taxRate}
       />
 
       {/* Phase 7A: Faction chat panel */}
@@ -1049,6 +1077,15 @@ export default function GameScene({
         <CityAnnouncementHUD
           onSend={emitCityAnnounce}
           onClose={() => setShowCityAnnouncementHUD(false)}
+        />
+      )}
+
+      {/* Phase 8B: City Tax Rate panel (Mayor only, near Gov Office, T key) */}
+      {showCityTaxHUD && (
+        <CityTaxHUD
+          currentRate={cityConfig.taxRate}
+          onApply={emitSetTaxRate}
+          onClose={() => setShowCityTaxHUD(false)}
         />
       )}
 

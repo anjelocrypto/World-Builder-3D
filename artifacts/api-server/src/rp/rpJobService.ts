@@ -105,6 +105,7 @@ import {
   POLICE_PATROL_ROUTE_COOLDOWN_MS,
 } from "../socket/cityData";
 import { isPolice, isMedic } from "./rpFactionHelpers";
+import { applyCityTax } from "./rpGovernmentService";
 
 // ── Context ────────────────────────────────────────────────────────────────────
 
@@ -642,6 +643,8 @@ async function handleCityWorkerCheckpoint(
 
   // ── Route complete — pay the player ─────────────────────────────────────
   // Fix 1: DB transaction FIRST; mutate state/entry/emit only after commit.
+  const { grossPay: cwGross, taxRate: cwRate, taxAmount: cwTax, netPay: cwNet } =
+    applyCityTax(JOB_CITY_WORKER_PAY);
   let newCash = entry.cash;
   try {
     await db.transaction(async (tx) => {
@@ -652,7 +655,7 @@ async function handleCityWorkerCheckpoint(
         .for("update");
       if (!wallet) throw new Error("no wallet row");
 
-      newCash = wallet.cash + JOB_CITY_WORKER_PAY;
+      newCash = wallet.cash + cwNet;
 
       await tx
         .update(rpWallets)
@@ -662,11 +665,11 @@ async function handleCityWorkerCheckpoint(
       await tx.insert(rpTransactionLog).values({
         playerId:  entry.playerId,
         kind:      "job_pay",
-        cashDelta: JOB_CITY_WORKER_PAY,
+        cashDelta: cwNet,
         bankDelta: 0,
         cashAfter: newCash,
         bankAfter: wallet.bank,
-        note:      "City Worker route complete",
+        note:      `City Worker route complete — gross=${cwGross} tax=${cwTax} net=${cwNet} rate=${cwRate}`,
       });
 
       await tx
@@ -700,12 +703,13 @@ async function handleCityWorkerCheckpoint(
     currentJob: null,
     activeJob:  null,
   });
+  const cwTaxNote = cwTax > 0 ? ` (−$${cwTax} tax)` : "";
   socket.emit("rp:toast", {
-    msg:      `Route complete! +$${JOB_CITY_WORKER_PAY} earned. You can start another route in 60 seconds.`,
+    msg:      `Route complete! +$${cwNet}${cwTaxNote} earned. You can start another route in 60 seconds.`,
     color:    "green",
     duration: 6000,
   });
-  logger.info({ socketId: socket.id, pay: JOB_CITY_WORKER_PAY, newCash }, "[rp] city_worker route complete, paid");
+  logger.info({ socketId: socket.id, grossPay: cwGross, taxAmount: cwTax, netPay: cwNet, newCash }, "[rp] city_worker route complete, paid");
 }
 
 // ── Taxi Driver checkpoint ─────────────────────────────────────────────────────
@@ -790,7 +794,8 @@ async function handleTaxiCheckpoint(
   }
 
   // ── Dropoff reached — pay the driver ──────────────────────────────────────
-  const fare = state.taxiFare;
+  const { grossPay: taxiGross, taxRate: taxiRate, taxAmount: taxiTax, netPay: taxiNet } =
+    applyCityTax(state.taxiFare);
   let newCash = entry.cash;
   try {
     await db.transaction(async (tx) => {
@@ -801,7 +806,7 @@ async function handleTaxiCheckpoint(
         .for("update");
       if (!wallet) throw new Error("no wallet row");
 
-      newCash = wallet.cash + fare;
+      newCash = wallet.cash + taxiNet;
 
       await tx
         .update(rpWallets)
@@ -811,11 +816,11 @@ async function handleTaxiCheckpoint(
       await tx.insert(rpTransactionLog).values({
         playerId:  entry.playerId,
         kind:      "job_pay",
-        cashDelta: fare,
+        cashDelta: taxiNet,
         bankDelta: 0,
         cashAfter: newCash,
         bankAfter: wallet.bank,
-        note:      "Taxi Driver fare",
+        note:      `Taxi Driver fare — gross=${taxiGross} tax=${taxiTax} net=${taxiNet} rate=${taxiRate}`,
       });
 
       await tx
@@ -849,12 +854,13 @@ async function handleTaxiCheckpoint(
     currentJob: null,
     activeJob:  null,
   });
+  const taxiTaxNote = taxiTax > 0 ? ` (−$${taxiTax} tax)` : "";
   socket.emit("rp:toast", {
-    msg:      `Fare complete! +$${fare} earned. You can start another route in 60 seconds.`,
+    msg:      `Fare complete! +$${taxiNet}${taxiTaxNote} earned. You can start another route in 60 seconds.`,
     color:    "green",
     duration: 6000,
   });
-  logger.info({ socketId: socket.id, fare, newCash }, "[rp] taxi_driver fare complete, paid");
+  logger.info({ socketId: socket.id, grossPay: taxiGross, taxAmount: taxiTax, netPay: taxiNet, newCash }, "[rp] taxi_driver fare complete, paid");
 }
 
 // ── Delivery Driver clock-in ───────────────────────────────────────────────────
@@ -1040,7 +1046,8 @@ async function handleDeliveryCheckpoint(
   }
 
   // ── Final stop — pay atomically ───────────────────────────────────────────
-  const pay = state.deliveryPay;
+  const { grossPay: delGross, taxRate: delRate, taxAmount: delTax, netPay: delNet } =
+    applyCityTax(state.deliveryPay!);
   let newCash = entry.cash;
   try {
     await db.transaction(async (tx) => {
@@ -1051,7 +1058,7 @@ async function handleDeliveryCheckpoint(
         .for("update");
       if (!wallet) throw new Error("no wallet row");
 
-      newCash = wallet.cash + pay;
+      newCash = wallet.cash + delNet;
 
       await tx
         .update(rpWallets)
@@ -1061,11 +1068,11 @@ async function handleDeliveryCheckpoint(
       await tx.insert(rpTransactionLog).values({
         playerId:  entry.playerId,
         kind:      "job_pay",
-        cashDelta: pay,
+        cashDelta: delNet,
         bankDelta: 0,
         cashAfter: newCash,
         bankAfter: wallet.bank,
-        note:      `Delivery Driver route complete (${state.deliveryDropoffs?.length ?? 0} stops)`,
+        note:      `Delivery Driver route complete (${state.deliveryDropoffs?.length ?? 0} stops) — gross=${delGross} tax=${delTax} net=${delNet} rate=${delRate}`,
       });
 
       await tx
@@ -1099,12 +1106,13 @@ async function handleDeliveryCheckpoint(
     currentJob: null,
     activeJob:  null,
   });
+  const delTaxNote = delTax > 0 ? ` (−$${delTax} tax)` : "";
   socket.emit("rp:toast", {
-    msg:      `All deliveries complete! +$${pay} earned. You can start another route in 60 seconds.`,
+    msg:      `All deliveries complete! +$${delNet}${delTaxNote} earned. You can start another route in 60 seconds.`,
     color:    "green",
     duration: 6000,
   });
-  logger.info({ socketId: socket.id, pay, newCash }, "[rp] delivery_driver route complete, paid");
+  logger.info({ socketId: socket.id, grossPay: delGross, taxAmount: delTax, netPay: delNet, newCash }, "[rp] delivery_driver route complete, paid");
 }
 
 // ── Mechanic helpers ───────────────────────────────────────────────────────────
@@ -1323,7 +1331,8 @@ async function handleMechanicCheckpoint(
   }
 
   // ── Timer elapsed — pay atomically ───────────────────────────────────────────
-  const pay = state.mechanicPay;
+  const { grossPay: mechGross, taxRate: mechRate, taxAmount: mechTax, netPay: mechNet } =
+    applyCityTax(state.mechanicPay!);
   let newCash = entry.cash;
   try {
     await db.transaction(async (tx) => {
@@ -1334,7 +1343,7 @@ async function handleMechanicCheckpoint(
         .for("update");
       if (!wallet) throw new Error("no wallet row");
 
-      newCash = wallet.cash + pay;
+      newCash = wallet.cash + mechNet;
 
       await tx
         .update(rpWallets)
@@ -1344,11 +1353,11 @@ async function handleMechanicCheckpoint(
       await tx.insert(rpTransactionLog).values({
         playerId:  entry.playerId,
         kind:      "job_pay",
-        cashDelta: pay,
+        cashDelta: mechNet,
         bankDelta: 0,
         cashAfter: newCash,
         bankAfter: wallet.bank,
-        note:      "Mechanic service call complete",
+        note:      `Mechanic service call complete — gross=${mechGross} tax=${mechTax} net=${mechNet} rate=${mechRate}`,
       });
 
       await tx
@@ -1381,12 +1390,13 @@ async function handleMechanicCheckpoint(
     currentJob: null,
     activeJob:  null,
   });
+  const mechTaxNote = mechTax > 0 ? ` (−$${mechTax} tax)` : "";
   socket.emit("rp:toast", {
-    msg:      `Repair complete! +$${pay} earned. Another call in 60 seconds.`,
+    msg:      `Repair complete! +$${mechNet}${mechTaxNote} earned. Another call in 60 seconds.`,
     color:    "green",
     duration: 6000,
   });
-  logger.info({ socketId: socket.id, pay, newCash }, "[rp] mechanic service call complete, paid");
+  logger.info({ socketId: socket.id, grossPay: mechGross, taxAmount: mechTax, netPay: mechNet, newCash }, "[rp] mechanic service call complete, paid");
 }
 
 // ── Medic helpers ──────────────────────────────────────────────────────────────
@@ -1649,7 +1659,8 @@ async function handleMedicCheckpoint(
   const erdz = drivenVehicle.z - erz;
   if (erdx * erdx + erdz * erdz > radiusSq) return; // not at ER yet
 
-  const pay = state.medicPay;
+  const { grossPay: medicGross, taxRate: medicRate, taxAmount: medicTax, netPay: medicNet } =
+    applyCityTax(state.medicPay!);
   let newCash = entry.cash;
   try {
     await db.transaction(async (tx) => {
@@ -1660,7 +1671,7 @@ async function handleMedicCheckpoint(
         .for("update");
       if (!wallet) throw new Error("no wallet row");
 
-      newCash = wallet.cash + pay;
+      newCash = wallet.cash + medicNet;
 
       await tx
         .update(rpWallets)
@@ -1670,11 +1681,11 @@ async function handleMedicCheckpoint(
       await tx.insert(rpTransactionLog).values({
         playerId:  entry.playerId,
         kind:      "job_pay",
-        cashDelta: pay,
+        cashDelta: medicNet,
         bankDelta: 0,
         cashAfter: newCash,
         bankAfter: wallet.bank,
-        note:      "Paramedic run complete (patient delivered to ER)",
+        note:      `Paramedic run complete (patient delivered to ER) — gross=${medicGross} tax=${medicTax} net=${medicNet} rate=${medicRate}`,
       });
 
       await tx
@@ -1706,12 +1717,13 @@ async function handleMedicCheckpoint(
     currentJob: null,
     activeJob:  null,
   });
+  const medicTaxNote = medicTax > 0 ? ` (−$${medicTax} tax)` : "";
   socket.emit("rp:toast", {
-    msg:      `Patient delivered! +$${pay} earned. Next call in 60 seconds.`,
+    msg:      `Patient delivered! +$${medicNet}${medicTaxNote} earned. Next call in 60 seconds.`,
     color:    "green",
     duration: 6000,
   });
-  logger.info({ socketId: socket.id, pay, newCash }, "[rp] medic run complete, paid");
+  logger.info({ socketId: socket.id, grossPay: medicGross, taxAmount: medicTax, netPay: medicNet, newCash }, "[rp] medic run complete, paid");
 }
 
 // ── Police Patrol helpers ──────────────────────────────────────────────────────
@@ -1934,7 +1946,8 @@ async function handlePolicePatrolCheckpoint(
   }
 
   // ── Final patrol point — pay atomically ──────────────────────────────────
-  const pay = state.policePatrolPay;
+  const { grossPay: patrolGross, taxRate: patrolRate, taxAmount: patrolTax, netPay: patrolNet } =
+    applyCityTax(state.policePatrolPay!);
   let newCash = entry.cash;
   try {
     await db.transaction(async (tx) => {
@@ -1945,7 +1958,7 @@ async function handlePolicePatrolCheckpoint(
         .for("update");
       if (!wallet) throw new Error("no wallet row");
 
-      newCash = wallet.cash + pay;
+      newCash = wallet.cash + patrolNet;
 
       await tx
         .update(rpWallets)
@@ -1955,11 +1968,11 @@ async function handlePolicePatrolCheckpoint(
       await tx.insert(rpTransactionLog).values({
         playerId:  entry.playerId,
         kind:      "job_pay",
-        cashDelta: pay,
+        cashDelta: patrolNet,
         bankDelta: 0,
         cashAfter: newCash,
         bankAfter: wallet.bank,
-        note:      "Police Patrol route complete",
+        note:      `Police Patrol route complete — gross=${patrolGross} tax=${patrolTax} net=${patrolNet} rate=${patrolRate}`,
       });
 
       await tx
@@ -1993,10 +2006,11 @@ async function handlePolicePatrolCheckpoint(
     currentJob: null,
     activeJob:  null,
   });
+  const patrolTaxNote = patrolTax > 0 ? ` (−$${patrolTax} tax)` : "";
   socket.emit("rp:toast", {
-    msg:      `Patrol complete! +$${pay} earned. Next patrol in 60 seconds.`,
+    msg:      `Patrol complete! +$${patrolNet}${patrolTaxNote} earned. Next patrol in 60 seconds.`,
     color:    "green",
     duration: 6000,
   });
-  logger.info({ socketId: socket.id, pay, newCash }, "[rp] police_patrol route complete, paid");
+  logger.info({ socketId: socket.id, grossPay: patrolGross, taxAmount: patrolTax, netPay: patrolNet, newCash }, "[rp] police_patrol route complete, paid");
 }

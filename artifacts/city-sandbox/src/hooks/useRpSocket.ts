@@ -15,8 +15,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus, CityAnnouncement } from "../shared/rpTypes";
-import { canDriveVehicleClient, GROVE_TAG_COOLDOWN_MS } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig } from "../shared/rpTypes";
+import { canDriveVehicleClient, GROVE_TAG_COOLDOWN_MS, CITY_TAX_DEFAULT } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
 export function useRpSocket(socket: Socket | null) {
@@ -119,6 +119,17 @@ export function useRpSocket(socket: Socket | null) {
    * Capped at 5 (most recent first). Each entry has msg, fromName, createdAt.
    */
   const [cityAnnouncements, setCityAnnouncements] = useState<CityAnnouncement[]>([]);
+
+  /**
+   * Phase 8B: Current city tax config.
+   * Initialised to CITY_TAX_DEFAULT; updated whenever rp:cityConfig is received.
+   * The server is authoritative — this is only used for display.
+   */
+  const [cityConfig, setCityConfig] = useState<CityConfig>({
+    taxRate:       CITY_TAX_DEFAULT,
+    updatedAt:     0,
+    updatedByName: null,
+  });
 
   useEffect(() => {
     if (!socket) return;
@@ -305,6 +316,12 @@ export function useRpSocket(socket: Socket | null) {
       setCityAnnouncements((prev) => [data, ...prev].slice(0, 5));
     };
 
+    // Phase 8B: rp:cityConfig — server pushes the current tax config on request
+    // or whenever the Mayor changes the rate.
+    const onCityConfig = (data: CityConfig) => {
+      setCityConfig(data);
+    };
+
     // Phase 7A: rp:factionChat — a faction member sent a message.
     const onFactionChat = (data: {
       fromId:       string;
@@ -348,6 +365,10 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:gangMissionFailed",    onGangMissionFailed);
     socket.on("rp:gangTerritoryStatus",  onGangTerritoryStatus);
     socket.on("rp:cityAnnounce",         onCityAnnounce);
+    socket.on("rp:cityConfig",           onCityConfig);
+
+    // Request current city config immediately so the HUD has a fresh value.
+    socket.emit("rp:getCityConfig");
 
     return () => {
       socket.off("rp:profile",              onProfile);
@@ -376,6 +397,7 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:gangMissionFailed",    onGangMissionFailed);
       socket.off("rp:gangTerritoryStatus",  onGangTerritoryStatus);
       socket.off("rp:cityAnnounce",         onCityAnnounce);
+      socket.off("rp:cityConfig",           onCityConfig);
     };
   }, [socket]);
 
@@ -666,6 +688,16 @@ export function useRpSocket(socket: Socket | null) {
     cityAnnouncements,
     emitCityAnnounce: useCallback(
       (msg: string) => { socket?.emit("rp:cityAnnounce", { msg }); },
+      [socket],
+    ),
+    // Phase 8B: City tax config
+    cityConfig,
+    emitGetCityConfig: useCallback(
+      () => { socket?.emit("rp:getCityConfig"); },
+      [socket],
+    ),
+    emitSetTaxRate: useCallback(
+      (rate: number) => { socket?.emit("rp:setTaxRate", { rate }); },
       [socket],
     ),
   };

@@ -458,6 +458,33 @@ export interface CityAnnouncement {
   createdAt: number;
 }
 
+// ── Phase 8B: City Tax Rate constants ─────────────────────────────────────────
+// MUST stay in sync with CITY_TAX_* in api-server/src/socket/cityData.ts.
+
+/** Minimum city tax rate (0 = no tax). */
+export const CITY_TAX_MIN = 0;
+
+/** Maximum city tax rate (0.15 = 15%). */
+export const CITY_TAX_MAX = 0.15;
+
+/** Default city tax rate on server start (5%). */
+export const CITY_TAX_DEFAULT = 0.05;
+
+/**
+ * City config payload broadcast by the server via rp:cityConfig.
+ * Emitted on initial request (rp:getCityConfig) and whenever the Mayor
+ * changes the rate (rp:setTaxRate).
+ * Safe payload: no socketId, no playerId, no faction, no coordinates.
+ */
+export interface CityConfig {
+  /** Current server-authoritative tax rate (e.g. 0.05 for 5%). */
+  taxRate:       number;
+  /** Unix ms when the tax rate was last updated. */
+  updatedAt:     number;
+  /** Display name of the Mayor who last changed the rate; null if never changed. */
+  updatedByName: string | null;
+}
+
 // ── Phase 7H: Gang Territory Control types ───────────────────────────────────
 
 /**

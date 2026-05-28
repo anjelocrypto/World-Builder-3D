@@ -181,6 +181,11 @@ interface HUDProps {
    * of GOVERNMENT_OFFICE_POS. Shows the E — City Announcement prompt to mayors.
    */
   nearGovernmentOffice?: boolean;
+  /**
+   * Phase 8B: current city tax rate (0–0.15). Shown as a subtle badge in the
+   * wallet panel. Omitted until rp:cityConfig is first received.
+   */
+  cityTaxRate?: number;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -710,6 +715,7 @@ export default function HUD({
   showFactionAdmin,
   showGangHUD,
   nearGovernmentOffice,
+  cityTaxRate,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -1995,6 +2001,23 @@ export default function HUD({
               <span style={{ color: "#2a4a2a" }}>Gang</span>
             </div>
           )}
+
+          {/* Phase 8B: City tax rate badge */}
+          {cityTaxRate != null && (
+            <div
+              style={{
+                background:    PANEL_BG,
+                border:        "1px solid rgba(51, 85, 204, 0.28)",
+                borderRadius:  PANEL_RADIUS,
+                padding:       "3px 10px",
+                fontSize:      12,
+                color:         "#6677bb",
+                letterSpacing: 0.5,
+              }}
+            >
+              🏛 Tax {(cityTaxRate * 100).toFixed(1).replace(/\.0$/, "")}%
+            </div>
+          )}
         </div>
       )}
 
@@ -2048,6 +2071,64 @@ export default function HUD({
                 City Announcement
               </span>{" "}
               <span style={{ color: "#9bb", fontSize: 11 }}>· Mayor Broadcast</span>
+            </div>
+          </div>
+        )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Government Office T — Tax Rate (Phase 8B)
+          Stacked above the E prompt; shown to Mayor near City Hall.
+          ============================================================ */}
+      {nearGovernmentOffice &&
+        !inVehicle &&
+        factionType === "government" &&
+        (factionRank ?? 0) >= 4 && (
+          <div
+            style={{
+              position:             "absolute",
+              bottom:               172,
+              left:                 "50%",
+              transform:            "translateX(-50%)",
+              background:           PANEL_BG,
+              border:               "1px solid rgba(200, 170, 68, 0.55)",
+              borderRadius:         PANEL_RADIUS,
+              padding:              "8px 14px 8px 8px",
+              display:              "flex",
+              alignItems:           "center",
+              gap:                  12,
+              boxShadow:            `${PANEL_SHADOW}, 0 0 20px rgba(200,170,68,0.18)`,
+              backdropFilter:       "blur(6px)",
+              WebkitBackdropFilter: "blur(6px)",
+            }}
+          >
+            <div
+              style={{
+                width:          28,
+                height:         28,
+                borderRadius:   6,
+                background:     "rgba(200, 170, 68, 0.12)",
+                border:         "1px solid rgba(200, 170, 68, 0.6)",
+                display:        "flex",
+                alignItems:     "center",
+                justifyContent: "center",
+                fontSize:       13,
+                fontWeight:     "bold",
+                color:          "#ccaa44",
+                boxShadow:      "inset 0 -2px 0 rgba(200,170,68,0.3)",
+              }}
+            >
+              T
+            </div>
+            <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+              💰{" "}
+              <span style={{ color: "#ccaa44", fontWeight: "bold" }}>
+                Set Tax Rate
+              </span>
+              {cityTaxRate != null && (
+                <span style={{ color: "#9bb", fontSize: 11 }}>
+                  {" "}· now {(cityTaxRate * 100).toFixed(1).replace(/\.0$/, "")}%
+                </span>
+              )}
             </div>
           </div>
         )}

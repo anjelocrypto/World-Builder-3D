@@ -39,7 +39,11 @@ import {
   issueFine,
   respondFine,
 } from "./rpFineService";
-import { handleCityAnnounce } from "./rpGovernmentService";
+import {
+  handleCityAnnounce,
+  handleGetCityConfig,
+  handleSetTaxRate,
+} from "./rpGovernmentService";
 import {
   handleFactionChat,
   handleAdminSetFaction,
@@ -526,6 +530,31 @@ export function setupRpHandlers(
     } catch (err) {
       logger.error({ err, socketId: socket.id }, "[rp] handleCityAnnounce threw");
       socket.emit("rp:toast", { msg: "Server error — announcement failed.", color: "red", duration: 4000 });
+    }
+  });
+
+  // ── rp:getCityConfig ──────────────────────────────────────────────────────
+  // Phase 8B: Any connected player may request the current city config.
+  // Read-only; no auth check. Emits rp:cityConfig back to requesting socket.
+  socket.on("rp:getCityConfig", () => {
+    try {
+      handleGetCityConfig(socket);
+    } catch (err) {
+      logger.error({ err, socketId: socket.id }, "[rp] handleGetCityConfig threw");
+    }
+  });
+
+  // ── rp:setTaxRate ─────────────────────────────────────────────────────────
+  // Phase 8B: Mayor sets the city tax rate.
+  // Server validates: government faction + rank >= 4, not jailed/cuffed,
+  // City Hall proximity, rate in [0, 0.15], per-mayor 30 s cooldown.
+  // On success broadcasts rp:cityConfig to all connected clients.
+  socket.on("rp:setTaxRate", (data: unknown) => {
+    try {
+      handleSetTaxRate(socket, ctx, data);
+    } catch (err) {
+      logger.error({ err, socketId: socket.id }, "[rp] handleSetTaxRate threw");
+      socket.emit("rp:toast", { msg: "Server error — tax rate not updated.", color: "red", duration: 4000 });
     }
   });
 }
