@@ -8,8 +8,12 @@
  *   - Requester must be in the government faction (factionType "government"
  *     OR factionSlug "government") with factionRank >= MAYOR_MIN_RANK (4).
  *   - Not jailed.  Not cuffed.
+ *   - Server position must be within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_POS.
+ *     A malicious client can emit rp:cityAnnounce from any location; the server
+ *     enforces the City Hall proximity requirement independently of the client UI.
  *   - Message must be a non-empty string, trimmed, 1–MAYOR_ANNOUNCE_MAX_CHARS chars.
  *   - Per-mayor cooldown: MAYOR_ANNOUNCE_COOLDOWN_MS (30 s), keyed by DB playerId.
+ *     The cooldown is NOT consumed on a proximity / validation failure.
  *
  * Broadcast payload:
  *   rp:cityAnnounce { msg, fromName, createdAt }
@@ -29,6 +33,8 @@ import type { LicenseContext } from "./rpLicenseService";
 import {
   MAYOR_ANNOUNCE_MAX_CHARS,
   MAYOR_ANNOUNCE_COOLDOWN_MS,
+  GOVERNMENT_OFFICE_POS,
+  GOVERNMENT_OFFICE_RADIUS,
 } from "../socket/cityData";
 import { isMayor } from "./rpFactionHelpers";
 import { logger } from "../lib/logger";
@@ -87,6 +93,25 @@ export function handleCityAnnounce(
     return;
   }
 
+  // ── Guard 4: server-side City Hall proximity ──────────────────────────────
+  // A malicious client can emit rp:cityAnnounce from any location.
+  // The server derives position from ctx.players (authoritative join state) —
+  // the client cannot spoof it.
+  const playerState = ctx.players.get(socket.id);
+  if (!playerState) return;
+
+  const [gx, , gz] = GOVERNMENT_OFFICE_POS;
+  const dx4 = playerState.x - gx;
+  const dz4 = playerState.z - gz;
+  if (Math.sqrt(dx4 * dx4 + dz4 * dz4) > GOVERNMENT_OFFICE_RADIUS) {
+    socket.emit("rp:toast", {
+      msg:      "Visit City Hall to broadcast announcements.",
+      color:    "red",
+      duration: 3000,
+    });
+    return;
+  }
+
   // ── Parse + validate message ───────────────────────────────────────────────
   const raw = data as Record<string, unknown> | null | undefined;
   const msg = typeof raw?.msg === "string" ? raw.msg.trim() : "";
@@ -99,7 +124,7 @@ export function handleCityAnnounce(
     return;
   }
 
-  // ── Guard 4: per-mayor cooldown ────────────────────────────────────────────
+  // ── Guard 5: per-mayor cooldown ────────────────────────────────────────────
   const cooldownKey  = entry.playerId;
   const lastAnnounce = announceCooldownMap.get(cooldownKey) ?? 0;
   const nowMs        = Date.now();
