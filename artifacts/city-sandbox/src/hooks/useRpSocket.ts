@@ -15,7 +15,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary } from "../shared/rpTypes";
 import { canDriveVehicleClient } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
@@ -44,6 +44,18 @@ export function useRpSocket(socket: Socket | null) {
    * Transient client state — not persisted across reconnects.
    */
   const [factionMessages, setFactionMessages] = useState<RpFactionMessage[]>([]);
+
+  /**
+   * Phase 7C: List of all seeded factions, populated by rp:factionsListed.
+   * Empty until emitListFactions() is called.
+   */
+  const [factions, setFactions] = useState<FactionSummary[]>([]);
+
+  /**
+   * Phase 7C: Online player faction summaries, populated by rp:onlinePlayersListed.
+   * Empty until emitListOnlinePlayers() is called.
+   */
+  const [onlineFactionPlayers, setOnlineFactionPlayers] = useState<OnlinePlayerFactionSummary[]>([]);
 
   useEffect(() => {
     if (!socket) return;
@@ -145,6 +157,30 @@ export function useRpSocket(socket: Socket | null) {
       setPendingFine(null);
     };
 
+    // Phase 7C: rp:factionsListed — response to rp:listFactions.
+    const onFactionsListed = (data: { factions: FactionSummary[] }) => {
+      setFactions(data.factions ?? []);
+    };
+
+    // Phase 7C: rp:onlinePlayersListed — response to rp:listOnlinePlayers.
+    const onOnlinePlayersListed = (data: { players: OnlinePlayerFactionSummary[] }) => {
+      setOnlineFactionPlayers(data.players ?? []);
+    };
+
+    // Phase 7C: rp:factionAssigned — emitted to the requesting dev socket after
+    // a successful rp:adminSetFaction (assign or clear). Refresh online list.
+    const onFactionAssigned = (_data: {
+      targetId:     string;
+      factionSlug:  string | null;
+      factionName:  string | null;
+      factionType:  string | null;
+      factionColor: string | null;
+      factionRank:  number;
+    }) => {
+      // Re-fetch the online list so the admin panel reflects the change.
+      socket.emit("rp:listOnlinePlayers");
+    };
+
     // Phase 7A: rp:factionChat — a faction member sent a message.
     const onFactionChat = (data: {
       fromId:       string;
@@ -162,30 +198,36 @@ export function useRpSocket(socket: Socket | null) {
       ]);
     };
 
-    socket.on("rp:profile",            onProfile);
-    socket.on("rp:profileUpdate",      onProfileUpdate);
-    socket.on("rp:toast",              onToast);
-    socket.on("rp:licenseTestActive",  onLicenseTestActive);
-    socket.on("rp:wantedUpdate",       onWantedUpdate);
-    socket.on("rp:jailStatus",         onJailStatus);
-    socket.on("rp:cuffedUpdate",       onCuffedUpdate);
-    socket.on("rp:fineIssued",         onFineIssued);
-    socket.on("rp:fineResolved",       onFineResolved);
-    socket.on("rp:fineExpired",        onFineExpired);
-    socket.on("rp:factionChat",        onFactionChat);
+    socket.on("rp:profile",              onProfile);
+    socket.on("rp:profileUpdate",        onProfileUpdate);
+    socket.on("rp:toast",                onToast);
+    socket.on("rp:licenseTestActive",    onLicenseTestActive);
+    socket.on("rp:wantedUpdate",         onWantedUpdate);
+    socket.on("rp:jailStatus",           onJailStatus);
+    socket.on("rp:cuffedUpdate",         onCuffedUpdate);
+    socket.on("rp:fineIssued",           onFineIssued);
+    socket.on("rp:fineResolved",         onFineResolved);
+    socket.on("rp:fineExpired",          onFineExpired);
+    socket.on("rp:factionChat",          onFactionChat);
+    socket.on("rp:factionsListed",       onFactionsListed);
+    socket.on("rp:onlinePlayersListed",  onOnlinePlayersListed);
+    socket.on("rp:factionAssigned",      onFactionAssigned);
 
     return () => {
-      socket.off("rp:profile",            onProfile);
-      socket.off("rp:profileUpdate",      onProfileUpdate);
-      socket.off("rp:toast",              onToast);
-      socket.off("rp:licenseTestActive",  onLicenseTestActive);
-      socket.off("rp:wantedUpdate",       onWantedUpdate);
-      socket.off("rp:jailStatus",         onJailStatus);
-      socket.off("rp:cuffedUpdate",       onCuffedUpdate);
-      socket.off("rp:fineIssued",         onFineIssued);
-      socket.off("rp:fineResolved",       onFineResolved);
-      socket.off("rp:fineExpired",        onFineExpired);
-      socket.off("rp:factionChat",        onFactionChat);
+      socket.off("rp:profile",              onProfile);
+      socket.off("rp:profileUpdate",        onProfileUpdate);
+      socket.off("rp:toast",                onToast);
+      socket.off("rp:licenseTestActive",    onLicenseTestActive);
+      socket.off("rp:wantedUpdate",         onWantedUpdate);
+      socket.off("rp:jailStatus",           onJailStatus);
+      socket.off("rp:cuffedUpdate",         onCuffedUpdate);
+      socket.off("rp:fineIssued",           onFineIssued);
+      socket.off("rp:fineResolved",         onFineResolved);
+      socket.off("rp:fineExpired",          onFineExpired);
+      socket.off("rp:factionChat",          onFactionChat);
+      socket.off("rp:factionsListed",       onFactionsListed);
+      socket.off("rp:onlinePlayersListed",  onOnlinePlayersListed);
+      socket.off("rp:factionAssigned",      onFactionAssigned);
     };
   }, [socket]);
 
@@ -349,6 +391,28 @@ export function useRpSocket(socket: Socket | null) {
     [socket],
   );
 
+  /** Phase 7C: emit rp:listFactions — requests the full faction list from the server. */
+  const emitListFactions = useCallback(() => {
+    socket?.emit("rp:listFactions");
+  }, [socket]);
+
+  /** Phase 7C: emit rp:listOnlinePlayers — requests online player faction summaries. */
+  const emitListOnlinePlayers = useCallback(() => {
+    socket?.emit("rp:listOnlinePlayers");
+  }, [socket]);
+
+  /**
+   * Phase 7C: emit rp:adminSetFaction — DEV-ONLY.
+   * No-op at the call site if the event is not registered on the server
+   * (i.e. in production). The server additionally rejects it even if emitted.
+   */
+  const emitAdminSetFaction = useCallback(
+    (targetId: string, factionSlug: string, rank: number) => {
+      socket?.emit("rp:adminSetFaction", { targetId, factionSlug, rank });
+    },
+    [socket],
+  );
+
   return {
     rpProfile,
     rpToasts,
@@ -359,6 +423,8 @@ export function useRpSocket(socket: Socket | null) {
     cuffedPlayers,
     pendingFine,
     factionMessages,
+    factions,
+    onlineFactionPlayers,
     emitInteract,
     emitLicenseCheckpoint,
     emitBuyVehicle,
@@ -374,5 +440,8 @@ export function useRpSocket(socket: Socket | null) {
     emitIssueFine,
     emitRespondFine,
     emitFactionChat,
+    emitListFactions,
+    emitListOnlinePlayers,
+    emitAdminSetFaction,
   };
 }

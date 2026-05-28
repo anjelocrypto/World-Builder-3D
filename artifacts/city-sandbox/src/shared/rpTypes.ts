@@ -98,6 +98,32 @@ export interface RpToast {
   duration?: number;   // ms; default 3000
 }
 
+// ── Phase 7C: Faction management types ────────────────────────────────────
+
+/**
+ * Phase 7C: One faction row returned by rp:listFactions / rp:factionsListed.
+ * Read-only — no DB UUIDs, just the public slug/name/type/color.
+ */
+export interface FactionSummary {
+  slug:  string;
+  name:  string;
+  type:  string;
+  color: string;
+}
+
+/**
+ * Phase 7C: One online player's faction metadata returned by rp:listOnlinePlayers.
+ * Read-only — no wallet, no location, no DB IDs.
+ */
+export interface OnlinePlayerFactionSummary {
+  socketId:    string;
+  username:    string;
+  factionSlug: string | null;
+  factionName: string | null;
+  factionType: string | null;
+  factionRank: number;
+}
+
 /** Phase 7A: one faction chat message received from server via rp:factionChat. */
 export interface RpFactionMessage {
   /** client-assigned monotonic id for React keying */

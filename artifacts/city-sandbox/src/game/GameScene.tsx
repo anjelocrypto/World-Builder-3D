@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary } from "../shared/rpTypes";
 import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
@@ -15,6 +15,7 @@ import VehicleShopHUD from "./VehicleShopHUD";
 import ATMHUD from "./ATMHUD";
 import { IssueFinePanel, PendingFineOverlay } from "./FineHUD";
 import FactionChatHUD from "./FactionChatHUD";
+import FactionAdminHUD from "./FactionAdminHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -102,6 +103,16 @@ interface GameSceneProps {
   factionMessages: RpFactionMessage[];
   /** Phase 7A: Emit rp:factionChat — sends a message to faction members. */
   emitFactionChat: (msg: string) => void;
+  /** Phase 7C: Full list of seeded factions (for FactionAdminHUD). */
+  factions: FactionSummary[];
+  /** Phase 7C: Online player faction summaries (for FactionAdminHUD). */
+  onlineFactionPlayers: OnlinePlayerFactionSummary[];
+  /** Phase 7C: Emit rp:listFactions. */
+  emitListFactions: () => void;
+  /** Phase 7C: Emit rp:listOnlinePlayers. */
+  emitListOnlinePlayers: () => void;
+  /** Phase 7C: Emit rp:adminSetFaction — DEV-ONLY. */
+  emitAdminSetFaction: (targetId: string, factionSlug: string, rank: number) => void;
 }
 
 export default function GameScene({
@@ -137,6 +148,11 @@ export default function GameScene({
   emitRespondFine,
   factionMessages,
   emitFactionChat,
+  factions,
+  onlineFactionPlayers,
+  emitListFactions,
+  emitListOnlinePlayers,
+  emitAdminSetFaction,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -181,6 +197,10 @@ export default function GameScene({
   const [showFactionChat, setShowFactionChat] = useState(false);
   const showFactionChatRef = useRef(showFactionChat);
   showFactionChatRef.current = showFactionChat;
+  // Phase 7C: faction admin panel visibility (dev-only)
+  const [showFactionAdmin, setShowFactionAdmin] = useState(false);
+  const showFactionAdminRef = useRef(showFactionAdmin);
+  showFactionAdminRef.current = showFactionAdmin;
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -329,7 +349,8 @@ export default function GameScene({
         e.code !== "KeyU" &&
         e.code !== "KeyI" &&
         e.code !== "KeyH" &&
-        e.code !== "KeyY"
+        e.code !== "KeyY" &&
+        e.code !== "F7"
       ) return;
       // Ignore key-repeat (held key firing continuously).
       if (e.repeat) return;
@@ -339,8 +360,23 @@ export default function GameScene({
         const tag = active.tagName;
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active.isContentEditable) return;
       }
+      // Phase 7C: F7 toggles faction admin panel (dev-only).
+      // Allowed even while other modals are open (it's a dev toggle, not gameplay).
+      if (e.code === "F7") {
+        if (import.meta.env.DEV) {
+          setShowFactionAdmin((prev) => !prev);
+        }
+        return;
+      }
+
       // Ignore while any modal overlay is open.
-      if (showShopRef.current || showATMRef.current || showFinePanelRef.current || showFactionChatRef.current) return;
+      if (
+        showShopRef.current ||
+        showATMRef.current ||
+        showFinePanelRef.current ||
+        showFactionChatRef.current ||
+        showFactionAdminRef.current
+      ) return;
 
       // Phase 7A: Y toggles faction chat regardless of job/duty status.
       if (e.code === "KeyY") {
@@ -766,6 +802,7 @@ export default function GameScene({
         factionColor={rpProfile?.factionColor ?? null}
         factionRank={rpProfile?.factionRank ?? undefined}
         showFactionChat={showFactionChat}
+        showFactionAdmin={showFactionAdmin}
       />
 
       {/* Phase 7A: Faction chat panel */}
@@ -776,6 +813,21 @@ export default function GameScene({
           messages={factionMessages}
           onSend={(msg) => emitFactionChat(msg)}
           onClose={() => setShowFactionChat(false)}
+        />
+      )}
+
+      {/* Phase 7C: Faction admin panel — DEV ONLY; FactionAdminHUD returns null in production */}
+      {showFactionAdmin && (
+        <FactionAdminHUD
+          factions={factions}
+          onlinePlayers={onlineFactionPlayers}
+          mySocketId={myId}
+          onRefreshFactions={emitListFactions}
+          onRefreshPlayers={emitListOnlinePlayers}
+          onSetFaction={(targetId, factionSlug, rank) => {
+            emitAdminSetFaction(targetId, factionSlug, rank);
+          }}
+          onClose={() => setShowFactionAdmin(false)}
         />
       )}
     </div>

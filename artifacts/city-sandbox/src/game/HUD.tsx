@@ -166,6 +166,11 @@ interface HUDProps {
   factionRank?:  number;
   /** Phase 7A: true when FactionChatHUD is visible. Shows Y chip. */
   showFactionChat?: boolean;
+  /**
+   * Phase 7C: true when FactionAdminHUD is visible.
+   * DEV-ONLY hint in HUD: F7 Faction Admin (only in import.meta.env.DEV).
+   */
+  showFactionAdmin?: boolean;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -692,6 +697,7 @@ export default function HUD({
   factionColor,
   factionRank,
   showFactionChat,
+  showFactionAdmin,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -1924,6 +1930,36 @@ export default function HUD({
                 Y
               </span>
               <span style={{ color: "#334" }}>Faction Chat</span>
+            </div>
+          )}
+
+          {/* Phase 7C: F7 — Dev Faction Admin hint (dev only, not in production) */}
+          {import.meta.env.DEV && !showFactionAdmin && (
+            <div
+              style={{
+                display:       "flex",
+                alignItems:    "center",
+                gap:           5,
+                fontSize:      10,
+                color:         "#443",
+                letterSpacing: 0.5,
+              }}
+            >
+              <span
+                style={{
+                  background:    "rgba(255,200,0,0.07)",
+                  border:        "1px solid rgba(255,200,0,0.15)",
+                  borderRadius:  4,
+                  padding:       "1px 5px",
+                  fontSize:      9,
+                  color:         "#664",
+                  fontWeight:    "bold",
+                  fontFamily:    "'Courier New', monospace",
+                }}
+              >
+                F7
+              </span>
+              <span style={{ color: "#443" }}>Faction Admin</span>
             </div>
           )}
         </div>

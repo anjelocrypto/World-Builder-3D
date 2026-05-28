@@ -42,6 +42,8 @@ import {
 import {
   handleFactionChat,
   handleAdminSetFaction,
+  handleListFactions,
+  handleListOnlinePlayers,
 } from "./rpFactionService";
 
 export type { LicenseContext };
@@ -354,6 +356,27 @@ export function setupRpHandlers(
       handleFactionChat(socket, ctx, data?.msg);
     },
   );
+
+  // ── rp:listFactions ───────────────────────────────────────────────────────
+  // Phase 7C: read-only. Returns all seeded factions (slug, name, type, color).
+  // Safe for all connected players.
+  socket.on("rp:listFactions", () => {
+    handleListFactions(socket).catch((err) => {
+      logger.error({ err, socketId: socket.id }, "[rp] handleListFactions threw");
+      socket.emit("rp:toast", {
+        msg:      "Server error loading factions.",
+        color:    "red",
+        duration: 3000,
+      });
+    });
+  });
+
+  // ── rp:listOnlinePlayers ──────────────────────────────────────────────────
+  // Phase 7C: read-only. Returns online player faction summary.
+  // Safe metadata only — no DB IDs, no wallet, no location.
+  socket.on("rp:listOnlinePlayers", () => {
+    handleListOnlinePlayers(socket, ctx);
+  });
 
   // ── rp:adminSetFaction ────────────────────────────────────────────────────
   // Phase 7A: DEV-only event to assign a faction to an online player.

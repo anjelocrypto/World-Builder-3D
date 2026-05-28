@@ -48,6 +48,11 @@ export default function Game({ username }: GameProps) {
     emitRespondFine,
     factionMessages,
     emitFactionChat,
+    factions,
+    onlineFactionPlayers,
+    emitListFactions,
+    emitListOnlinePlayers,
+    emitAdminSetFaction,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -111,6 +116,11 @@ export default function Game({ username }: GameProps) {
       emitRespondFine={emitRespondFine}
       factionMessages={factionMessages}
       emitFactionChat={emitFactionChat}
+      factions={factions}
+      onlineFactionPlayers={onlineFactionPlayers}
+      emitListFactions={emitListFactions}
+      emitListOnlinePlayers={emitListOnlinePlayers}
+      emitAdminSetFaction={emitAdminSetFaction}
     />
   );
 }

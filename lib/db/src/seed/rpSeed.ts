@@ -44,6 +44,13 @@ async function main(): Promise<void> {
       type:  "civilian",
       color: "#ffffff",
     },
+    // Phase 7C: starter gang faction.
+    {
+      slug:  "grove_street",
+      name:  "Grove Street Families",
+      type:  "gang",
+      color: "#2e7d32",
+    },
   ]).onConflictDoNothing();
 
   // ── Jobs ────────────────────────────────────────────────────────────────────

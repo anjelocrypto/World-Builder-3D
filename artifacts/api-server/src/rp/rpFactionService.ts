@@ -1,5 +1,6 @@
 /**
  * Phase 7A: Faction Foundation service.
+ * Phase 7C: Added safe read-only list endpoints + rp:factionAssigned emit.
  *
  * Provides:
  *   loadFactionForPlayer(playerId)          — DB lookup, returns faction row or null
@@ -8,19 +9,15 @@
  *   canUseFactionChat(entry)                — cache check, returns true if player has a faction
  *   handleFactionChat(socket, ctx, rawMsg)  — validate + broadcast to faction members
  *   handleAdminSetFaction(socket, ctx, ...) — dev-only faction assignment via socket
- *
- * Faction chat rules:
- *   - Player must have factionId set in rpCache (i.e. loaded from DB on join).
- *   - msg must be a non-empty string, trimmed, max 180 chars.
- *   - Player must not be jailed.
- *   - Broadcast only to sockets whose rpCache entry has the SAME factionId.
- *   - Server supplies fromName, factionSlug, factionName, factionColor, createdAt.
+ *   handleListFactions(socket)              — read-only; returns all seeded factions
+ *   handleListOnlinePlayers(socket, ctx)    — read-only; returns online player faction summary
  *
  * Admin gate (rp:adminSetFaction):
  *   - ONLY allowed when NODE_ENV !== "production".
  *   - In production the handler is not registered at all (see setupRpHandlers.ts).
  *   - Faction assignment in production must be done directly via the DB.
  *   - A proper server-side admin role system will replace this in a future phase.
+ *   - On success emits rp:factionAssigned to the requesting socket.
  */
 
 import type { Socket } from "socket.io";
@@ -277,6 +274,14 @@ export async function handleAdminSetFaction(
       factionRank:  0,
     });
     socket.emit("rp:toast", { msg: "Faction cleared.", color: "green", duration: 3000 });
+    socket.emit("rp:factionAssigned", {
+      targetId:     targetSocketId,
+      factionSlug:  null,
+      factionName:  null,
+      factionType:  null,
+      factionColor: null,
+      factionRank:  0,
+    });
     return;
   }
 
@@ -309,7 +314,7 @@ export async function handleAdminSetFaction(
     factionRank:  rank,              // clamped value
   });
 
-  // Notify the issuer.
+  // Notify the issuer: toast + rp:factionAssigned.
   const targetPlayerState = ctx.players.get(targetSocketId);
   const targetName = targetPlayerState?.username ?? targetSocketId;
   socket.emit("rp:toast", {
@@ -317,4 +322,67 @@ export async function handleAdminSetFaction(
     color:    "green",
     duration: 4000,
   });
+  socket.emit("rp:factionAssigned", {
+    targetId:     targetSocketId,
+    factionSlug:  faction.slug,
+    factionName:  faction.name,
+    factionType:  faction.type,
+    factionColor: faction.color,
+    factionRank:  rank,
+  });
+}
+
+// ── handleListFactions ────────────────────────────────────────────────────────
+
+/**
+ * Phase 7C: Read-only. Returns all seeded factions (slug, name, type, color).
+ * Safe for all connected players — no player IDs or DB UUIDs exposed.
+ */
+export async function handleListFactions(socket: Socket): Promise<void> {
+  const rows = await db
+    .select({
+      slug:  rpFactions.slug,
+      name:  rpFactions.name,
+      type:  rpFactions.type,
+      color: rpFactions.color,
+    })
+    .from(rpFactions)
+    .orderBy(rpFactions.slug);
+
+  socket.emit("rp:factionsListed", { factions: rows });
+}
+
+// ── handleListOnlinePlayers ───────────────────────────────────────────────────
+
+/**
+ * Phase 7C: Read-only. Returns faction summary for every currently online socket.
+ * Exposes: socketId, username, factionSlug, factionName, factionType, factionRank.
+ * No DB IDs, no cash, no location — safe public metadata.
+ */
+export function handleListOnlinePlayers(
+  socket: Socket,
+  ctx:    LicenseContext,
+): void {
+  const players: {
+    socketId:    string;
+    username:    string;
+    factionSlug: string | null;
+    factionName: string | null;
+    factionType: string | null;
+    factionRank: number;
+  }[] = [];
+
+  for (const [socketId, entry] of ctx.rpCache.entries()) {
+    const playerState = ctx.players.get(socketId);
+    players.push({
+      socketId,
+      username:    playerState?.username ?? socketId,
+      factionSlug: entry.factionSlug,
+      factionName: entry.factionName,
+      factionType: entry.factionType,
+      factionRank: entry.factionRank,
+    });
+  }
+
+  socket.emit("rp:onlinePlayersListed", { players });
 }
