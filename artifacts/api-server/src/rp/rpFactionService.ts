@@ -30,7 +30,7 @@
 
 import type { Socket } from "socket.io";
 import { db, rpPlayers, rpFactions } from "@workspace/db";
-import { eq }   from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { logger } from "../lib/logger";
 import type { LicenseContext } from "./rpLicenseService";
 import type { RpCacheEntry }  from "./rpCache";
@@ -965,4 +965,317 @@ export function cleanupPendingGangRequest(socketId: string, ctx: LicenseContext)
   pendingGangRequests.delete(socketId);
   broadcastPendingRequests(ctx, request.factionId);
   logger.debug({ socketId, factionSlug: request.factionSlug }, "[rpGang] pending join request cleaned up on disconnect");
+}
+
+// ── Phase 7F: Gang Roster Management ─────────────────────────────────────────
+
+/** Maps a numeric rank to a human-readable label (matches client GangHUD). */
+function gangRankLabel(rank: number): string {
+  if (rank >= 8) return "OG";
+  if (rank >= 6) return "Shot Caller";
+  if (rank >= 4) return "Lieutenant";
+  if (rank >= 2) return "Soldier";
+  return "Associate";
+}
+
+/** Max rank a leader may assign to a subordinate (leader threshold - 1). */
+const MAX_ASSIGNABLE_RANK = GANG_LEADER_MIN_RANK - 1; // 3
+
+/**
+ * Fetches all members of a faction from DB and annotates each with online status.
+ * Intentionally omits token, cash, bank, position, and socket IDs.
+ */
+async function fetchGangRoster(
+  ctx:       LicenseContext,
+  factionId: string,
+): Promise<Array<{ playerId: string; username: string; factionRank: number; rankLabel: string; isOnline: boolean }>> {
+  const rows = await db
+    .select({ id: rpPlayers.id, username: rpPlayers.username, factionRank: rpPlayers.factionRank })
+    .from(rpPlayers)
+    .where(eq(rpPlayers.factionId, factionId));
+
+  // Build a Set of currently-online playerIds in O(n) from rpCache.
+  const onlineIds = new Set(Array.from(ctx.rpCache.values()).map((e) => e.playerId));
+
+  return rows.map((r) => ({
+    playerId:    r.id,
+    username:    r.username,
+    factionRank: r.factionRank,
+    rankLabel:   gangRankLabel(r.factionRank),
+    isOnline:    onlineIds.has(r.id),
+  }));
+}
+
+/**
+ * Phase 7F: Return the gang roster to the requesting member.
+ *
+ * Client emits: rp:gangRoster (no payload)
+ *
+ * Server validates:
+ *   - Caller is a gang member.
+ *
+ * Safe fields only: playerId (DB UUID), username, factionRank, rankLabel, isOnline.
+ * No token, cash, bank, position, or socket IDs.
+ */
+export async function handleGangRoster(
+  socket: Socket,
+  ctx:    LicenseContext,
+): Promise<void> {
+  const entry = ctx.rpCache.get(socket.id);
+  if (!entry) return;
+
+  if (!isGang(entry) || !entry.factionId) {
+    socket.emit("rp:toast", { msg: "You are not in a gang.", color: "red", duration: 3000 });
+    return;
+  }
+
+  const roster = await fetchGangRoster(ctx, entry.factionId);
+  socket.emit("rp:gangRoster", roster);
+}
+
+/**
+ * Phase 7F: Gang leader promotes or demotes a member.
+ *
+ * Client emits: rp:gangSetRank { targetPlayerId: string, rank: number }
+ *
+ * Server validates:
+ *   - Caller is a gang leader (rank >= GANG_LEADER_MIN_RANK), not jailed/cuffed.
+ *   - Target exists in DB, is in the same faction, has lower rank than the caller.
+ *   - New rank is clamped to [0, MAX_ASSIGNABLE_RANK] (0–3).
+ *   - Caller cannot change their own rank.
+ *
+ * On success: DB write → cache update → rp:profileUpdate to target (if online)
+ *   → rp:gangRoster to caller.
+ *
+ * Security: all checks are server-side; client UI is UX only.
+ */
+export async function handleGangSetRank(
+  socket:     Socket,
+  ctx:        LicenseContext,
+  rawPayload: unknown,
+): Promise<void> {
+  const entry = ctx.rpCache.get(socket.id);
+  if (!entry) return;
+
+  // ── Leader auth ───────────────────────────────────────────────────────────
+  if (!isGang(entry)) {
+    socket.emit("rp:toast", { msg: "You are not in a gang.", color: "red", duration: 3000 });
+    return;
+  }
+  if (!isFactionRankAtLeast(entry, GANG_LEADER_MIN_RANK)) {
+    socket.emit("rp:toast", { msg: "Only gang leaders can manage ranks.", color: "red", duration: 3000 });
+    return;
+  }
+  if (entry.jailUntil !== null && entry.jailUntil.getTime() > Date.now()) {
+    socket.emit("rp:toast", { msg: "You cannot manage ranks while in jail.", color: "red", duration: 3000 });
+    return;
+  }
+  if (entry.cuffedBy !== null) {
+    socket.emit("rp:toast", { msg: "You cannot manage ranks while restrained.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Parse payload ─────────────────────────────────────────────────────────
+  const payload        = rawPayload as Record<string, unknown> | null | undefined;
+  const targetPlayerId = typeof payload?.targetPlayerId === "string" ? payload.targetPlayerId.trim() : "";
+  const rankRaw        = typeof payload?.rank === "number" ? payload.rank : -1;
+
+  if (!targetPlayerId) {
+    socket.emit("rp:toast", { msg: "Invalid payload.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // Clamp + validate rank
+  const newRank = Math.max(0, Math.min(MAX_ASSIGNABLE_RANK, Math.floor(rankRaw)));
+  if (rankRaw < 0 || rankRaw > MAX_ASSIGNABLE_RANK || !Number.isFinite(rankRaw)) {
+    socket.emit("rp:toast", { msg: `Rank must be 0–${MAX_ASSIGNABLE_RANK}.`, color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Cannot manage self ────────────────────────────────────────────────────
+  if (targetPlayerId === entry.playerId) {
+    socket.emit("rp:toast", { msg: "You cannot change your own rank.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── DB lookup: confirm target exists and is in same faction ───────────────
+  const [targetRow] = await db
+    .select({ id: rpPlayers.id, username: rpPlayers.username, factionId: rpPlayers.factionId, factionRank: rpPlayers.factionRank })
+    .from(rpPlayers)
+    .where(eq(rpPlayers.id, targetPlayerId));
+
+  if (!targetRow) {
+    socket.emit("rp:toast", { msg: "Player not found.", color: "red", duration: 3000 });
+    return;
+  }
+  if (targetRow.factionId !== entry.factionId) {
+    socket.emit("rp:toast", { msg: "That player is not in your faction.", color: "red", duration: 3000 });
+    return;
+  }
+  // ── Cannot manage equal or higher rank ────────────────────────────────────
+  if (targetRow.factionRank >= entry.factionRank) {
+    socket.emit("rp:toast", { msg: "You cannot manage members of equal or higher rank.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── DB write — safe WHERE includes factionId to guard against race ────────
+  await db
+    .update(rpPlayers)
+    .set({ factionRank: newRank })
+    .where(and(
+      eq(rpPlayers.id, targetPlayerId),
+      eq(rpPlayers.factionId, entry.factionId!),
+    ));
+
+  // ── Cache + live notification if target is online ─────────────────────────
+  for (const [sid, cacheEntry] of ctx.rpCache.entries()) {
+    if (cacheEntry.playerId === targetPlayerId) {
+      cacheEntry.factionRank = newRank;
+      ctx.io.to(sid).emit("rp:profileUpdate", {
+        factionId:    cacheEntry.factionId,
+        factionSlug:  cacheEntry.factionSlug,
+        factionName:  cacheEntry.factionName,
+        factionType:  cacheEntry.factionType,
+        factionColor: cacheEntry.factionColor,
+        factionRank:  newRank,
+      });
+      break;
+    }
+  }
+
+  const direction = newRank > targetRow.factionRank ? "promoted" : "demoted";
+  socket.emit("rp:toast", {
+    msg:      `${targetRow.username} ${direction} to ${gangRankLabel(newRank)} (rank ${newRank}).`,
+    color:    "green",
+    duration: 4000,
+  });
+  logger.debug({ leader: socket.id, target: targetPlayerId, newRank }, "[rpGang] rank updated");
+
+  // ── Push refreshed roster to the leader ───────────────────────────────────
+  const roster = await fetchGangRoster(ctx, entry.factionId!);
+  socket.emit("rp:gangRoster", roster);
+}
+
+/**
+ * Phase 7F: Gang leader removes a member from the faction.
+ *
+ * Client emits: rp:gangRemoveMember { targetPlayerId: string }
+ *
+ * Server validates:
+ *   - Caller is a gang leader (rank >= GANG_LEADER_MIN_RANK), not jailed/cuffed.
+ *   - Target exists in DB, is in the same faction, has lower rank than the caller.
+ *   - Cannot remove self.
+ *
+ * On success: DB clear → cache wipe (if online) → rp:profileUpdate to target
+ *   → rp:gangRoster to caller.
+ *
+ * DB write uses AND (id, faction_id) so a race where the target already left
+ * never accidentally clears a different faction assignment.
+ */
+export async function handleGangRemoveMember(
+  socket:     Socket,
+  ctx:        LicenseContext,
+  rawPayload: unknown,
+): Promise<void> {
+  const entry = ctx.rpCache.get(socket.id);
+  if (!entry) return;
+
+  // ── Leader auth ───────────────────────────────────────────────────────────
+  if (!isGang(entry)) {
+    socket.emit("rp:toast", { msg: "You are not in a gang.", color: "red", duration: 3000 });
+    return;
+  }
+  if (!isFactionRankAtLeast(entry, GANG_LEADER_MIN_RANK)) {
+    socket.emit("rp:toast", { msg: "Only gang leaders can remove members.", color: "red", duration: 3000 });
+    return;
+  }
+  if (entry.jailUntil !== null && entry.jailUntil.getTime() > Date.now()) {
+    socket.emit("rp:toast", { msg: "You cannot manage members while in jail.", color: "red", duration: 3000 });
+    return;
+  }
+  if (entry.cuffedBy !== null) {
+    socket.emit("rp:toast", { msg: "You cannot manage members while restrained.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Parse payload ─────────────────────────────────────────────────────────
+  const payload        = rawPayload as Record<string, unknown> | null | undefined;
+  const targetPlayerId = typeof payload?.targetPlayerId === "string" ? payload.targetPlayerId.trim() : "";
+
+  if (!targetPlayerId) {
+    socket.emit("rp:toast", { msg: "Invalid payload.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Cannot remove self ────────────────────────────────────────────────────
+  if (targetPlayerId === entry.playerId) {
+    socket.emit("rp:toast", { msg: "You cannot remove yourself from the gang.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── DB lookup: confirm target exists and is in same faction ───────────────
+  const [targetRow] = await db
+    .select({ id: rpPlayers.id, username: rpPlayers.username, factionId: rpPlayers.factionId, factionRank: rpPlayers.factionRank })
+    .from(rpPlayers)
+    .where(eq(rpPlayers.id, targetPlayerId));
+
+  if (!targetRow) {
+    socket.emit("rp:toast", { msg: "Player not found.", color: "red", duration: 3000 });
+    return;
+  }
+  if (targetRow.factionId !== entry.factionId) {
+    socket.emit("rp:toast", { msg: "That player is not in your faction.", color: "red", duration: 3000 });
+    return;
+  }
+  // ── Cannot remove equal or higher rank ────────────────────────────────────
+  if (targetRow.factionRank >= entry.factionRank) {
+    socket.emit("rp:toast", { msg: "You cannot remove members of equal or higher rank.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── DB-first: clear faction with AND guard so a race never over-clears ────
+  await db
+    .update(rpPlayers)
+    .set({ factionId: null, factionRank: 0 })
+    .where(and(
+      eq(rpPlayers.id, targetPlayerId),
+      eq(rpPlayers.factionId, entry.factionId!),
+    ));
+
+  // ── Cache wipe + live notification if target is online ────────────────────
+  for (const [sid, cacheEntry] of ctx.rpCache.entries()) {
+    if (cacheEntry.playerId === targetPlayerId) {
+      cacheEntry.factionId    = null;
+      cacheEntry.factionSlug  = null;
+      cacheEntry.factionName  = null;
+      cacheEntry.factionType  = null;
+      cacheEntry.factionColor = null;
+      cacheEntry.factionRank  = 0;
+      ctx.io.to(sid).emit("rp:profileUpdate", {
+        factionId:    null,
+        factionSlug:  null,
+        factionName:  null,
+        factionType:  null,
+        factionColor: null,
+        factionRank:  0,
+      });
+      ctx.io.to(sid).emit("rp:toast", {
+        msg:      "You have been removed from the gang.",
+        color:    "yellow",
+        duration: 5000,
+      });
+      break;
+    }
+  }
+
+  socket.emit("rp:toast", {
+    msg:      `${targetRow.username} has been removed from the gang.`,
+    color:    "yellow",
+    duration: 4000,
+  });
+  logger.debug({ leader: socket.id, target: targetPlayerId }, "[rpGang] member removed");
+
+  // ── Push refreshed roster to the leader ───────────────────────────────────
+  const roster = await fetchGangRoster(ctx, entry.factionId!);
+  socket.emit("rp:gangRoster", roster);
 }

@@ -1,16 +1,19 @@
 /**
  * Phase 7D: GangHUD — Grove Street Families gang panel.
  * Phase 7E: Added join request button for non-members + leader request queue.
+ * Phase 7F: Added faction roster with leader promote/demote/remove controls.
  *
  * - Opened with G key when the player is a gang member OR near GROVE_STREET_HANGOUT_POS.
  * - Gang members see their faction info, rank, and a "Claim Presence" action.
  * - Leaders additionally see pending join requests with Accept/Reject buttons.
+ * - Leaders additionally see roster management (promote / demote / remove).
+ * - Non-members with roster access see it read-only.
  * - Non-gang players near the hangout see a "Request to Join" button.
  * - ESC / G closes the panel.
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent } from "../shared/rpTypes";
+import type { GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember } from "../shared/rpTypes";
 import { GANG_LEADER_MIN_RANK } from "../shared/rpTypes";
 
 // ── Styling constants ─────────────────────────────────────────────────────────
@@ -28,6 +31,8 @@ interface GangHUDProps {
   gangJoinRequests:        GangJoinRequest[];
   gangJoinResult:          GangJoinResult | null;
   gangJoinRequestSent:     GangJoinRequestSent | null;
+  gangRoster:              GangRosterMember[];
+  myPlayerId:              string;
   nearHangout:             boolean;
   nearTurf:                boolean;
   emitGangStatus:          () => void;
@@ -35,6 +40,9 @@ interface GangHUDProps {
   emitGangJoinRequest:     (factionSlug: string) => void;
   emitGangJoinResponse:    (targetSocketId: string, accept: boolean) => void;
   dismissGangJoinResult:   () => void;
+  emitGangRoster:          () => void;
+  emitGangSetRank:         (targetPlayerId: string, rank: number) => void;
+  emitGangRemoveMember:    (targetPlayerId: string) => void;
   onClose:                 () => void;
 }
 
@@ -44,6 +52,8 @@ export default function GangHUD({
   gangJoinRequests,
   gangJoinResult,
   gangJoinRequestSent,
+  gangRoster,
+  myPlayerId,
   nearHangout,
   nearTurf,
   emitGangStatus,
@@ -51,14 +61,19 @@ export default function GangHUD({
   emitGangJoinRequest,
   emitGangJoinResponse,
   dismissGangJoinResult,
+  emitGangRoster,
+  emitGangSetRank,
+  emitGangRemoveMember,
   onClose,
 }: GangHUDProps) {
   const [lastAction, setLastAction] = useState<string>("");
+  const [confirmRemoveId, setConfirmRemoveId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  // Fetch gang status when first opened.
+  // Fetch gang status + roster when first opened.
   useEffect(() => {
     emitGangStatus();
+    emitGangRoster();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -445,6 +460,209 @@ export default function GangHUD({
                         </div>
                       </div>
                     ))}
+                  </div>
+                </div>
+              )}
+
+              {/* ── Roster ────────────────────────────────────────────────── */}
+              {gangRoster.length > 0 && (
+                <div>
+                  <div
+                    style={{
+                      fontSize:      10,
+                      color:         "#556",
+                      letterSpacing: 1,
+                      marginBottom:  4,
+                      display:       "flex",
+                      alignItems:    "center",
+                      justifyContent: "space-between",
+                    }}
+                  >
+                    <span>ROSTER ({gangRoster.length})</span>
+                    <button
+                      onClick={() => emitGangRoster()}
+                      onKeyDown={stopProp}
+                      style={{
+                        background: "transparent",
+                        border:     "none",
+                        color:      "#445",
+                        fontSize:   10,
+                        cursor:     "pointer",
+                        padding:    "0 2px",
+                      }}
+                      title="Refresh roster"
+                    >
+                      ↻
+                    </button>
+                  </div>
+                  <div
+                    style={{
+                      display:       "flex",
+                      flexDirection: "column",
+                      gap:           3,
+                      maxHeight:     160,
+                      overflowY:     "auto",
+                    }}
+                  >
+                    {gangRoster
+                      .slice()
+                      .sort((a, b) => b.factionRank - a.factionRank)
+                      .map((member) => {
+                        const isSelf      = member.playerId === myPlayerId;
+                        const canManage   = isLeader && !isSelf && member.factionRank < (gangStatus?.factionRank ?? 0);
+                        const isConfirm   = confirmRemoveId === member.playerId;
+                        return (
+                          <div
+                            key={member.playerId}
+                            style={{
+                              display:        "flex",
+                              alignItems:     "center",
+                              justifyContent: "space-between",
+                              padding:        "4px 8px",
+                              borderRadius:   5,
+                              border:         `1px solid ${isSelf ? "rgba(76,175,80,0.25)" : "rgba(76,175,80,0.10)"}`,
+                              background:     isSelf ? "rgba(76,175,80,0.07)" : "rgba(255,255,255,0.02)",
+                              gap:            5,
+                            }}
+                          >
+                            {/* Name + rank */}
+                            <div style={{ minWidth: 0, flex: 1 }}>
+                              <div
+                                style={{
+                                  fontSize:      10,
+                                  color:         member.isOnline ? "#cdd" : "#556",
+                                  overflow:      "hidden",
+                                  textOverflow:  "ellipsis",
+                                  whiteSpace:    "nowrap",
+                                  display:       "flex",
+                                  alignItems:    "center",
+                                  gap:           4,
+                                }}
+                              >
+                                <span
+                                  title={member.isOnline ? "Online" : "Offline"}
+                                  style={{
+                                    width:        6,
+                                    height:       6,
+                                    borderRadius: "50%",
+                                    background:   member.isOnline ? GANG_GREEN : "#334",
+                                    flexShrink:   0,
+                                  }}
+                                />
+                                {member.username}{isSelf ? " (you)" : ""}
+                              </div>
+                              <div style={{ fontSize: 9, color: "#4a7a4e" }}>
+                                {member.rankLabel} · rank {member.factionRank}
+                              </div>
+                            </div>
+
+                            {/* Leader controls */}
+                            {canManage && (
+                              isConfirm ? (
+                                <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+                                  <button
+                                    onClick={() => {
+                                      emitGangRemoveMember(member.playerId);
+                                      setConfirmRemoveId(null);
+                                    }}
+                                    onKeyDown={stopProp}
+                                    style={{
+                                      padding:      "2px 7px",
+                                      borderRadius: 4,
+                                      border:       "1px solid rgba(255,82,82,0.5)",
+                                      background:   "rgba(255,82,82,0.12)",
+                                      color:        "#ef5350",
+                                      fontFamily:   "'Courier New', monospace",
+                                      fontSize:     9,
+                                      cursor:       "pointer",
+                                      fontWeight:   "bold",
+                                    }}
+                                  >
+                                    Confirm
+                                  </button>
+                                  <button
+                                    onClick={() => setConfirmRemoveId(null)}
+                                    onKeyDown={stopProp}
+                                    style={{
+                                      padding:      "2px 6px",
+                                      borderRadius: 4,
+                                      border:       "1px solid rgba(255,255,255,0.10)",
+                                      background:   "rgba(255,255,255,0.04)",
+                                      color:        "#556",
+                                      fontFamily:   "'Courier New', monospace",
+                                      fontSize:     9,
+                                      cursor:       "pointer",
+                                    }}
+                                  >
+                                    Cancel
+                                  </button>
+                                </div>
+                              ) : (
+                                <div style={{ display: "flex", gap: 3, flexShrink: 0 }}>
+                                  {/* Promote */}
+                                  {member.factionRank < (GANG_LEADER_MIN_RANK - 1) && (
+                                    <button
+                                      onClick={() => emitGangSetRank(member.playerId, member.factionRank + 1)}
+                                      onKeyDown={stopProp}
+                                      title="Promote"
+                                      style={{
+                                        padding:      "2px 6px",
+                                        borderRadius: 4,
+                                        border:       `1px solid ${GANG_GREEN}66`,
+                                        background:   `${GANG_GREEN}11`,
+                                        color:        GANG_GREEN,
+                                        fontFamily:   "'Courier New', monospace",
+                                        fontSize:     10,
+                                        cursor:       "pointer",
+                                      }}
+                                    >
+                                      ▲
+                                    </button>
+                                  )}
+                                  {/* Demote */}
+                                  {member.factionRank > 0 && (
+                                    <button
+                                      onClick={() => emitGangSetRank(member.playerId, member.factionRank - 1)}
+                                      onKeyDown={stopProp}
+                                      title="Demote"
+                                      style={{
+                                        padding:      "2px 6px",
+                                        borderRadius: 4,
+                                        border:       "1px solid rgba(255,183,77,0.4)",
+                                        background:   "rgba(255,183,77,0.07)",
+                                        color:        "#ffb74d",
+                                        fontFamily:   "'Courier New', monospace",
+                                        fontSize:     10,
+                                        cursor:       "pointer",
+                                      }}
+                                    >
+                                      ▼
+                                    </button>
+                                  )}
+                                  {/* Remove */}
+                                  <button
+                                    onClick={() => setConfirmRemoveId(member.playerId)}
+                                    onKeyDown={stopProp}
+                                    title="Remove from gang"
+                                    style={{
+                                      padding:      "2px 6px",
+                                      borderRadius: 4,
+                                      border:       "1px solid rgba(255,82,82,0.3)",
+                                      background:   "rgba(255,82,82,0.06)",
+                                      color:        "#ef5350",
+                                      fontFamily:   "'Courier New', monospace",
+                                      fontSize:     10,
+                                      cursor:       "pointer",
+                                    }}
+                                  >
+                                    ✕
+                                  </button>
+                                </div>
+                              )
+                            )}
+                          </div>
+                        );
+                      })}
                   </div>
                 </div>
               )}

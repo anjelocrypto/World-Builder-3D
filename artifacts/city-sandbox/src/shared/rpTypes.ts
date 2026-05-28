@@ -208,6 +208,21 @@ export interface GangJoinRequestSent {
   factionName: string;
 }
 
+// ── Phase 7F: Gang Roster types ───────────────────────────────────────────────
+
+/**
+ * A single row in the gang roster returned by rp:gangRoster.
+ * Safe fields only — no token, cash, bank, position, or socket IDs.
+ * playerId is the DB UUID; needed for rp:gangSetRank / rp:gangRemoveMember.
+ */
+export interface GangRosterMember {
+  playerId:    string;
+  username:    string;
+  factionRank: number;
+  rankLabel:   string;
+  isOnline:    boolean;
+}
+
 // ── World coordinate constants ─────────────────────────────────────────────
 // All positions are [x, y, z] in world-space. rotY convention: 0 = front
 // toward −Z (matches vehicleObb + LocalPlayer updateVehicle forward axis).

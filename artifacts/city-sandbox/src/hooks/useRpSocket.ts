@@ -15,7 +15,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember } from "../shared/rpTypes";
 import { canDriveVehicleClient } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
@@ -87,6 +87,12 @@ export function useRpSocket(socket: Socket | null) {
    * Cleared when gangJoinResult arrives.
    */
   const [gangJoinRequestSent, setGangJoinRequestSent] = useState<GangJoinRequestSent | null>(null);
+
+  /**
+   * Phase 7F: Faction roster as returned by rp:gangRoster.
+   * Refreshed on open and after any rank/remove action.
+   */
+  const [gangRoster, setGangRoster] = useState<GangRosterMember[]>([]);
 
   useEffect(() => {
     if (!socket) return;
@@ -241,6 +247,11 @@ export function useRpSocket(socket: Socket | null) {
       setGangJoinRequestSent(data ?? null);
     };
 
+    // Phase 7F: rp:gangRoster — full faction roster (safe fields only).
+    const onGangRoster = (data: GangRosterMember[]) => {
+      setGangRoster(Array.isArray(data) ? data : []);
+    };
+
     // Phase 7A: rp:factionChat — a faction member sent a message.
     const onFactionChat = (data: {
       fromId:       string;
@@ -277,6 +288,7 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:gangJoinRequests",     onGangJoinRequests);
     socket.on("rp:gangJoinResult",       onGangJoinResult);
     socket.on("rp:gangJoinRequestSent",  onGangJoinRequestSent);
+    socket.on("rp:gangRoster",           onGangRoster);
 
     return () => {
       socket.off("rp:profile",              onProfile);
@@ -298,6 +310,7 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:gangJoinRequests",     onGangJoinRequests);
       socket.off("rp:gangJoinResult",       onGangJoinResult);
       socket.off("rp:gangJoinRequestSent",  onGangJoinRequestSent);
+      socket.off("rp:gangRoster",           onGangRoster);
     };
   }, [socket]);
 
@@ -549,5 +562,19 @@ export function useRpSocket(socket: Socket | null) {
       [socket],
     ),
     dismissGangJoinResult: useCallback(() => { setGangJoinResult(null); }, []),
+    // Phase 7F: roster
+    gangRoster,
+    emitGangRoster: useCallback(
+      () => { socket?.emit("rp:gangRoster"); },
+      [socket],
+    ),
+    emitGangSetRank: useCallback(
+      (targetPlayerId: string, rank: number) => { socket?.emit("rp:gangSetRank", { targetPlayerId, rank }); },
+      [socket],
+    ),
+    emitGangRemoveMember: useCallback(
+      (targetPlayerId: string) => { socket?.emit("rp:gangRemoveMember", { targetPlayerId }); },
+      [socket],
+    ),
   };
 }

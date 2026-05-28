@@ -48,6 +48,9 @@ import {
   handleGangAction,
   handleGangJoinRequest,
   handleGangJoinResponse,
+  handleGangRoster,
+  handleGangSetRank,
+  handleGangRemoveMember,
 } from "./rpFactionService";
 
 export type { LicenseContext };
@@ -441,6 +444,36 @@ export function setupRpHandlers(
     handleGangJoinResponse(socket, ctx, data).catch((err) => {
       logger.error({ err, socketId: socket.id }, "[rp] handleGangJoinResponse threw");
       socket.emit("rp:toast", { msg: "Server error — join response failed.", color: "red", duration: 4000 });
+    });
+  });
+
+  // ── rp:gangRoster ────────────────────────────────────────────────────────
+  // Phase 7F: Any gang member may request the faction roster.
+  // Returns safe fields only; no token, cash, position, or socket IDs.
+  socket.on("rp:gangRoster", () => {
+    handleGangRoster(socket, ctx).catch((err) => {
+      logger.error({ err, socketId: socket.id }, "[rp] handleGangRoster threw");
+      socket.emit("rp:toast", { msg: "Server error — roster fetch failed.", color: "red", duration: 4000 });
+    });
+  });
+
+  // ── rp:gangSetRank ───────────────────────────────────────────────────────
+  // Phase 7F: Gang leader promotes or demotes a member (rank 0–3).
+  // Full auth: leader rank, not jailed/cuffed, target in same faction, rank < caller.
+  socket.on("rp:gangSetRank", (data: unknown) => {
+    handleGangSetRank(socket, ctx, data).catch((err) => {
+      logger.error({ err, socketId: socket.id }, "[rp] handleGangSetRank threw");
+      socket.emit("rp:toast", { msg: "Server error — rank update failed.", color: "red", duration: 4000 });
+    });
+  });
+
+  // ── rp:gangRemoveMember ──────────────────────────────────────────────────
+  // Phase 7F: Gang leader removes a member from the faction.
+  // Full auth: leader rank, not jailed/cuffed, target in same faction, rank < caller.
+  socket.on("rp:gangRemoveMember", (data: unknown) => {
+    handleGangRemoveMember(socket, ctx, data).catch((err) => {
+      logger.error({ err, socketId: socket.id }, "[rp] handleGangRemoveMember threw");
+      socket.emit("rp:toast", { msg: "Server error — member removal failed.", color: "red", duration: 4000 });
     });
   });
 }

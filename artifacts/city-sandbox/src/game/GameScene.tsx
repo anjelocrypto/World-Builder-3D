@@ -134,6 +134,14 @@ interface GameSceneProps {
   emitGangJoinResponse: (targetSocketId: string, accept: boolean) => void;
   /** Phase 7E: Clear the gangJoinResult toast. */
   dismissGangJoinResult: () => void;
+  /** Phase 7F: Current faction roster (safe fields only). */
+  gangRoster: import("../shared/rpTypes").GangRosterMember[];
+  /** Phase 7F: Request updated roster from server. */
+  emitGangRoster: () => void;
+  /** Phase 7F: Promote or demote a member by DB playerId. */
+  emitGangSetRank: (targetPlayerId: string, rank: number) => void;
+  /** Phase 7F: Remove a member from the faction by DB playerId. */
+  emitGangRemoveMember: (targetPlayerId: string) => void;
 }
 
 export default function GameScene({
@@ -184,6 +192,10 @@ export default function GameScene({
   emitGangJoinRequest,
   emitGangJoinResponse,
   dismissGangJoinResult,
+  gangRoster,
+  emitGangRoster,
+  emitGangSetRank,
+  emitGangRemoveMember,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -921,6 +933,8 @@ export default function GameScene({
           gangJoinRequests={gangJoinRequests}
           gangJoinResult={gangJoinResult}
           gangJoinRequestSent={gangJoinRequestSent}
+          gangRoster={gangRoster}
+          myPlayerId={rpProfile?.playerId ?? ""}
           nearHangout={nearGangHangout}
           nearTurf={nearGangTurf}
           emitGangStatus={emitGangStatus}
@@ -928,6 +942,9 @@ export default function GameScene({
           emitGangJoinRequest={emitGangJoinRequest}
           emitGangJoinResponse={emitGangJoinResponse}
           dismissGangJoinResult={dismissGangJoinResult}
+          emitGangRoster={emitGangRoster}
+          emitGangSetRank={emitGangSetRank}
+          emitGangRemoveMember={emitGangRemoveMember}
           onClose={() => setShowGangHUD(false)}
         />
       )}
