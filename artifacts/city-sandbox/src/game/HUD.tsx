@@ -117,6 +117,21 @@ interface HUDProps {
    * Shows K — Arrest prompt only when non-null.
    */
   nearArrestTarget?: { id: string; name: string; dist: number; stars: number } | null;
+  /**
+   * Phase 6C: nearest WANTED (not yet cuffed) player within POLICE_CUFF_RADIUS.
+   * Shows U — Cuff prompt only when non-null.
+   */
+  nearCuffTarget?: { id: string; name: string; dist: number; stars: number } | null;
+  /**
+   * Phase 6C: nearest cuffed player (cuffed by this officer) within POLICE_CUFF_RADIUS.
+   * Shows I — Uncuff prompt only when non-null.
+   */
+  nearUncuffTarget?: { id: string; name: string; dist: number } | null;
+  /**
+   * Phase 6C: Unix ms when this player's cuff expires (from rpProfile.cuffedUntil).
+   * Non-null triggers the RESTRAINED overlay.
+   */
+  cuffedUntil?: number | null;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -197,6 +212,55 @@ function JailOverlay({
       )}
       <div style={{ fontSize: 11, color: "#555", marginTop: 8 }}>
         Serve your sentence and be released automatically
+      </div>
+    </div>
+  );
+}
+
+// ── Phase 6C: RestrainedOverlay ──────────────────────────────────────────────
+
+/**
+ * Semi-transparent overlay shown while the player is cuffed.
+ * Displays a countdown until the cuff auto-expires.
+ */
+function RestrainedOverlay({ cuffedUntil }: { cuffedUntil: number }) {
+  const [remaining, setRemaining] = useState(() => Math.max(0, cuffedUntil - Date.now()));
+
+  useEffect(() => {
+    const id = setInterval(() => {
+      setRemaining(Math.max(0, cuffedUntil - Date.now()));
+    }, 500);
+    return () => clearInterval(id);
+  }, [cuffedUntil]);
+
+  const secs = Math.ceil(remaining / 1000);
+
+  return (
+    <div
+      style={{
+        position:       "fixed",
+        inset:          0,
+        background:     "rgba(80, 0, 0, 0.38)",
+        zIndex:         2400,
+        display:        "flex",
+        flexDirection:  "column",
+        alignItems:     "center",
+        justifyContent: "center",
+        gap:            10,
+        pointerEvents:  "none",
+        fontFamily:     "monospace",
+        userSelect:     "none",
+      }}
+    >
+      <div style={{ fontSize: 36 }}>🔒</div>
+      <div style={{ fontSize: 22, fontWeight: 800, color: "#ff6666", letterSpacing: 3 }}>
+        RESTRAINED
+      </div>
+      <div style={{ fontSize: 30, fontWeight: 700, color: "#fff", letterSpacing: 4 }}>
+        {secs}s
+      </div>
+      <div style={{ fontSize: 11, color: "#aaa", marginTop: 4 }}>
+        You have been handcuffed by an officer
       </div>
     </div>
   );
@@ -556,6 +620,9 @@ export default function HUD({
   isOfficerOnDuty,
   nearPoliceTarget,
   nearArrestTarget,
+  nearCuffTarget,
+  nearUncuffTarget,
+  cuffedUntil,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -1598,6 +1665,14 @@ export default function HUD({
       )}
 
       {/* ============================================================
+          SEMI-SCREEN — Restrained overlay (Phase 6C)
+          Shown while this player is cuffed (z-index 2400, below jail).
+          ============================================================ */}
+      {cuffedUntil != null && (
+        <RestrainedOverlay cuffedUntil={cuffedUntil} />
+      )}
+
+      {/* ============================================================
           BOTTOM-CENTER — Officer: Issue Warrant prompt (Phase 6B)
           J key — shown when officer is on duty + any player nearby
           ============================================================ */}
@@ -1701,6 +1776,116 @@ export default function HUD({
               · {nearArrestTarget.name}
               {" "}{"⭐".repeat(nearArrestTarget.stars)}
               {" "}({Math.round(nearArrestTarget.dist)}m)
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Officer: Cuff prompt (Phase 6C)
+          U key — shown when officer on duty + wanted player in cuff range
+          (not yet cuffed by anyone)
+          ============================================================ */}
+      {isOfficerOnDuty && nearCuffTarget && !inVehicle && (
+        <div
+          style={{
+            position:             "absolute",
+            bottom:               240,
+            left:                 "50%",
+            transform:            "translateX(-50%)",
+            background:           PANEL_BG,
+            border:               "1px solid rgba(255, 140, 0, 0.65)",
+            borderRadius:         PANEL_RADIUS,
+            padding:              "8px 14px 8px 8px",
+            display:              "flex",
+            alignItems:           "center",
+            gap:                  12,
+            boxShadow:            `${PANEL_SHADOW}, 0 0 18px rgba(255,140,0,0.2)`,
+            backdropFilter:       "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width:          28,
+              height:         28,
+              borderRadius:   6,
+              background:     "rgba(255, 140, 0, 0.15)",
+              border:         "1px solid rgba(255, 140, 0, 0.7)",
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              fontSize:       13,
+              fontWeight:     "bold",
+              color:          "#ff8c00",
+              boxShadow:      "inset 0 -2px 0 rgba(255,140,0,0.35)",
+            }}
+          >
+            U
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            🔒{" "}
+            <span style={{ color: "#ff8c00", fontWeight: "bold" }}>
+              Cuff
+            </span>{" "}
+            <span style={{ color: "#9bb", fontSize: 11 }}>
+              · {nearCuffTarget.name}
+              {" "}{"⭐".repeat(nearCuffTarget.stars)}
+              {" "}({Math.round(nearCuffTarget.dist)}m)
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Officer: Uncuff prompt (Phase 6C)
+          I key — shown when a player cuffed BY THIS officer is nearby
+          ============================================================ */}
+      {isOfficerOnDuty && nearUncuffTarget && !inVehicle && (
+        <div
+          style={{
+            position:             "absolute",
+            bottom:               280,
+            left:                 "50%",
+            transform:            "translateX(-50%)",
+            background:           PANEL_BG,
+            border:               "1px solid rgba(100, 200, 120, 0.65)",
+            borderRadius:         PANEL_RADIUS,
+            padding:              "8px 14px 8px 8px",
+            display:              "flex",
+            alignItems:           "center",
+            gap:                  12,
+            boxShadow:            `${PANEL_SHADOW}, 0 0 18px rgba(100,200,120,0.2)`,
+            backdropFilter:       "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width:          28,
+              height:         28,
+              borderRadius:   6,
+              background:     "rgba(100, 200, 120, 0.15)",
+              border:         "1px solid rgba(100, 200, 120, 0.7)",
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              fontSize:       13,
+              fontWeight:     "bold",
+              color:          "#64c878",
+              boxShadow:      "inset 0 -2px 0 rgba(100,200,120,0.35)",
+            }}
+          >
+            I
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            🔓{" "}
+            <span style={{ color: "#64c878", fontWeight: "bold" }}>
+              Uncuff
+            </span>{" "}
+            <span style={{ color: "#9bb", fontSize: 11 }}>
+              · {nearUncuffTarget.name}
+              {" "}({Math.round(nearUncuffTarget.dist)}m)
             </span>
           </div>
         </div>

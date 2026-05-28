@@ -43,6 +43,13 @@ export interface RpCacheEntry {
   wantedStars:    number;
   /** Phase 6A: reason for current jail sentence (null when not jailed). */
   jailReason:     string | null;
+  /**
+   * Phase 6C: socket.id of the officer who cuffed this player, or null.
+   * In-memory only — cleared on disconnect, arrest, release, or timeout.
+   */
+  cuffedBy:       string | null;
+  /** Phase 6C: when the cuff auto-expires. null when not cuffed. */
+  cuffedUntil:    Date | null;
   /** Phase 3: vehicles owned by this player. Populated after DB load on join. */
   ownedVehicles:  OwnedVehicleSummary[];
 }
@@ -155,6 +162,9 @@ export function buildProfile(
     currentJob:    entry.currentJob,
     onDuty:        entry.onDuty,
     wantedStars:   entry.wantedStars,
+    // Phase 6C: cuff state (in-memory only — no DB field).
+    cuffedBy:      entry.cuffedBy,
+    cuffedUntil:   entry.cuffedUntil ? entry.cuffedUntil.getTime() : null,
     activeTest:    testState
       ? {
           vehicleId:   testState.vehicleId,

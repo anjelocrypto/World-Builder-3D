@@ -29,6 +29,8 @@ import {
   POLICE_MAX_SENTENCE_SECS,
   POLICE_JAIL_CELL,
   POLICE_RELEASE_POS,
+  POLICE_CUFF_RADIUS,
+  POLICE_CUFF_TIMEOUT_SECS,
 } from "../socket/cityData";
 
 // ── Guards ────────────────────────────────────────────────────────────────────
@@ -287,15 +289,21 @@ export async function handleArrest(
     return;
   }
 
-  // ── Proximity check ──────────────────────────────────────────────────────
-  const distance = dist2d(officerPos.x, officerPos.z, targetPos.x, targetPos.z);
-  if (distance > POLICE_ARREST_RADIUS) {
-    socket.emit("rp:toast", {
-      msg:      `Too far away. Move within ${POLICE_ARREST_RADIUS} m of the suspect.`,
-      color:    "yellow",
-      duration: 3000,
-    });
-    return;
+  // ── Proximity / cuff check ──────────────────────────────────────────────
+  // Arrest is allowed if:
+  //   a) Target is cuffed by THIS officer (escort distance — skip range check), OR
+  //   b) Officer is within POLICE_ARREST_RADIUS of the suspect (classic field arrest).
+  const isCuffedByMe = targetEntry.cuffedBy === socket.id;
+  if (!isCuffedByMe) {
+    const distance = dist2d(officerPos.x, officerPos.z, targetPos.x, targetPos.z);
+    if (distance > POLICE_ARREST_RADIUS) {
+      socket.emit("rp:toast", {
+        msg:      `Too far away. Cuff the suspect first [U], then arrest [K].`,
+        color:    "yellow",
+        duration: 3500,
+      });
+      return;
+    }
   }
 
   // ── DB transaction (atomic warrant claim) ───────────────────────────────
@@ -450,9 +458,13 @@ export async function handleArrest(
   targetEntry.wantedStars = 0;
   targetEntry.jailUntil   = jailUntil;
   targetEntry.jailReason  = reason;
+  // Phase 6C: clear any active cuff — suspect is now jailed.
+  targetEntry.cuffedBy    = null;
+  targetEntry.cuffedUntil = null;
 
-  // ── Broadcast warrant cleared to all clients ─────────────────────────────
-  ctx.io.emit("rp:wantedUpdate", { playerId: targetSocketId, wantedStars: 0 });
+  // ── Broadcast warrant + cuff cleared to all clients ─────────────────────
+  ctx.io.emit("rp:wantedUpdate",  { playerId: targetSocketId, wantedStars: 0 });
+  ctx.io.emit("rp:cuffedUpdate",  { targetId: targetSocketId, cuffedBy: null, cuffedUntil: null });
 
   // ── Server-authoritative teleport to jail cell ────────────────────────────
   // Update the players Map so the confinement logic sees the correct position
@@ -564,6 +576,9 @@ export async function releaseFromJail(
     entry.jailUntil   = null;
     entry.jailReason  = null;
     entry.wantedStars = 0;
+    // Phase 6C: clear any residual cuff state on release.
+    entry.cuffedBy    = null;
+    entry.cuffedUntil = null;
 
     // ── Server-authoritative teleport to release position ─────────────────
     // Move the player out of the jail zone in the authoritative Map so the
@@ -615,4 +630,184 @@ export async function releaseFromJail(
     // the guard cannot get permanently stuck.
     jailReleaseInProgress.delete(socketId);
   }
+}
+
+// ── handleCuff ────────────────────────────────────────────────────────────────
+
+/**
+ * Phase 6C: Cuff a nearby wanted player.
+ *
+ * Validation order:
+ *  1. Officer is on duty as police_patrol and not jailed.
+ *  2. targetSocketId resolves to an active, non-jailed player.
+ *  3. Target has wantedStars > 0.
+ *  4. Target is not already cuffed.
+ *  5. Officer is within POLICE_CUFF_RADIUS of target.
+ *  6. Set in-memory cuff state on target cache entry.
+ *  7. Emit rp:profileUpdate to target; broadcast rp:cuffedUpdate to all.
+ */
+export async function handleCuff(
+  socket:         Socket,
+  ctx:            LicenseContext,
+  targetSocketId: unknown,
+): Promise<void> {
+  const officerEntry = ctx.rpCache.get(socket.id);
+  const officerPos   = ctx.players.get(socket.id);
+  if (!officerEntry || !officerPos) return;
+
+  if (!isOfficerValid(officerEntry)) {
+    socket.emit("rp:toast", {
+      msg:      "You must be on duty as a Police Officer to cuff suspects.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  if (typeof targetSocketId !== "string" || !targetSocketId || targetSocketId === socket.id) {
+    socket.emit("rp:toast", { msg: "Invalid target.", color: "red", duration: 3000 });
+    return;
+  }
+
+  const targetEntry = ctx.rpCache.get(targetSocketId);
+  const targetPos   = ctx.players.get(targetSocketId);
+  if (!targetEntry || !targetPos) {
+    socket.emit("rp:toast", { msg: "Target player not found.", color: "red", duration: 3000 });
+    return;
+  }
+
+  if (targetEntry.jailUntil !== null) {
+    socket.emit("rp:toast", { msg: "That player is already in jail.", color: "yellow", duration: 3000 });
+    return;
+  }
+
+  if (targetEntry.wantedStars <= 0) {
+    socket.emit("rp:toast", { msg: "That player has no active warrants.", color: "yellow", duration: 3000 });
+    return;
+  }
+
+  if (targetEntry.cuffedBy !== null) {
+    socket.emit("rp:toast", {
+      msg:      "That suspect is already cuffed by another officer.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  const distance = dist2d(officerPos.x, officerPos.z, targetPos.x, targetPos.z);
+  if (distance > POLICE_CUFF_RADIUS) {
+    socket.emit("rp:toast", {
+      msg:      `Move within ${POLICE_CUFF_RADIUS} m to cuff the suspect.`,
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // ── Apply cuff state ─────────────────────────────────────────────────────
+  const cuffedUntil = new Date(Date.now() + POLICE_CUFF_TIMEOUT_SECS * 1000);
+  targetEntry.cuffedBy    = socket.id;
+  targetEntry.cuffedUntil = cuffedUntil;
+
+  const cuffedUntilMs = cuffedUntil.getTime();
+
+  ctx.io.emit("rp:cuffedUpdate", {
+    targetId:    targetSocketId,
+    cuffedBy:    socket.id,
+    cuffedUntil: cuffedUntilMs,
+  });
+
+  const targetSocket = ctx.io.sockets.sockets.get(targetSocketId);
+  targetSocket?.emit("rp:profileUpdate", { cuffedBy: socket.id, cuffedUntil: cuffedUntilMs });
+  targetSocket?.emit("rp:toast", {
+    msg:      "🔒 You have been cuffed! Wait for officer action.",
+    color:    "red",
+    duration: 6000,
+  });
+
+  socket.emit("rp:toast", {
+    msg:      "Suspect cuffed. You can now escort and arrest them [K].",
+    color:    "green",
+    duration: 4000,
+  });
+
+  logger.info(
+    { officerId: officerEntry.playerId, targetId: targetEntry.playerId },
+    "[rp] suspect cuffed",
+  );
+}
+
+// ── handleUncuff ──────────────────────────────────────────────────────────────
+
+/**
+ * Phase 6C: Release (uncuff) a cuffed player.
+ *
+ * Validation order:
+ *  1. Officer is on duty as police_patrol.
+ *  2. targetSocketId resolves to a cuffed player.
+ *  3. The caller is the cuffing officer, or any officer on duty (e.g. backup).
+ *  4. Clear in-memory cuff state; broadcast rp:cuffedUpdate to all.
+ */
+export async function handleUncuff(
+  socket:         Socket,
+  ctx:            LicenseContext,
+  targetSocketId: unknown,
+): Promise<void> {
+  const officerEntry = ctx.rpCache.get(socket.id);
+  if (!officerEntry) return;
+
+  if (!isOfficerValid(officerEntry)) {
+    socket.emit("rp:toast", {
+      msg:      "You must be on duty as a Police Officer to uncuff suspects.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  if (typeof targetSocketId !== "string" || !targetSocketId) {
+    socket.emit("rp:toast", { msg: "Invalid target.", color: "red", duration: 3000 });
+    return;
+  }
+
+  const targetEntry = ctx.rpCache.get(targetSocketId);
+  if (!targetEntry) {
+    socket.emit("rp:toast", { msg: "Target player not found.", color: "red", duration: 3000 });
+    return;
+  }
+
+  if (targetEntry.cuffedBy === null) {
+    socket.emit("rp:toast", { msg: "That player is not cuffed.", color: "yellow", duration: 3000 });
+    return;
+  }
+
+  // ── Clear cuff state ─────────────────────────────────────────────────────
+  targetEntry.cuffedBy    = null;
+  targetEntry.cuffedUntil = null;
+
+  ctx.io.emit("rp:cuffedUpdate", {
+    targetId:    targetSocketId,
+    cuffedBy:    null,
+    cuffedUntil: null,
+  });
+
+  const targetSocket = ctx.io.sockets.sockets.get(targetSocketId);
+  targetSocket?.emit("rp:profileUpdate", { cuffedBy: null, cuffedUntil: null });
+  targetSocket?.emit("rp:toast", {
+    msg:      "🔓 You have been uncuffed.",
+    color:    "green",
+    duration: 4000,
+  });
+
+  socket.emit("rp:toast", {
+    msg:      "Suspect uncuffed.",
+    color:    "green",
+    duration: 2500,
+  });
+
+  logger.info(
+    { officerId: officerEntry.playerId, targetId: targetEntry.playerId },
+    "[rp] suspect uncuffed",
+  );
 }

@@ -24,6 +24,14 @@ export function useRpSocket(socket: Socket | null) {
   const [rpToasts, setRpToasts] = useState<RpToast[]>([]);
   /** Map of socketId → wantedStars for all players on the server. */
   const [wantedByPlayerId, setWantedByPlayerId] = useState<Record<string, number>>({});
+  /**
+   * Phase 6C: Map of socketId → cuff state for all players.
+   * Populated by rp:cuffedUpdate broadcasts from the server.
+   * Used to render cuff indicators on remote players and to gate I-key uncuff.
+   */
+  const [cuffedPlayers, setCuffedPlayers] = useState<
+    Record<string, { cuffedBy: string; cuffedUntil: number | null }>
+  >({});
 
   useEffect(() => {
     if (!socket) return;
@@ -78,12 +86,33 @@ export function useRpSocket(socket: Socket | null) {
       });
     };
 
+    // Phase 6C: rp:cuffedUpdate — server broadcasts cuff state for a player.
+    // cuffedBy: null means the player was uncuffed (remove from map).
+    const onCuffedUpdate = (data: {
+      targetId:   string;
+      cuffedBy:   string | null;
+      cuffedUntil: number | null;
+    }) => {
+      setCuffedPlayers((prev) => {
+        if (!data.cuffedBy) {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
+          const { [data.targetId]: _removed, ...rest } = prev;
+          return rest;
+        }
+        return {
+          ...prev,
+          [data.targetId]: { cuffedBy: data.cuffedBy, cuffedUntil: data.cuffedUntil },
+        };
+      });
+    };
+
     socket.on("rp:profile",            onProfile);
     socket.on("rp:profileUpdate",      onProfileUpdate);
     socket.on("rp:toast",              onToast);
     socket.on("rp:licenseTestActive",  onLicenseTestActive);
     socket.on("rp:wantedUpdate",       onWantedUpdate);
     socket.on("rp:jailStatus",         onJailStatus);
+    socket.on("rp:cuffedUpdate",       onCuffedUpdate);
 
     return () => {
       socket.off("rp:profile",            onProfile);
@@ -92,6 +121,7 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:licenseTestActive",  onLicenseTestActive);
       socket.off("rp:wantedUpdate",       onWantedUpdate);
       socket.off("rp:jailStatus",         onJailStatus);
+      socket.off("rp:cuffedUpdate",       onCuffedUpdate);
     };
   }, [socket]);
 
@@ -215,6 +245,22 @@ export function useRpSocket(socket: Socket | null) {
     [socket],
   );
 
+  /** Phase 6C: emit rp:cuff — officer cuffs a nearby wanted player. */
+  const emitCuff = useCallback(
+    (targetId: string) => {
+      socket?.emit("rp:cuff", { targetId });
+    },
+    [socket],
+  );
+
+  /** Phase 6C: emit rp:uncuff — officer releases a cuffed player. */
+  const emitUncuff = useCallback(
+    (targetId: string) => {
+      socket?.emit("rp:uncuff", { targetId });
+    },
+    [socket],
+  );
+
   return {
     rpProfile,
     rpToasts,
@@ -222,6 +268,7 @@ export function useRpSocket(socket: Socket | null) {
     pushToast,
     canDriveVehicle,
     wantedByPlayerId,
+    cuffedPlayers,
     emitInteract,
     emitLicenseCheckpoint,
     emitBuyVehicle,
@@ -232,5 +279,7 @@ export function useRpSocket(socket: Socket | null) {
     emitBankWithdraw,
     emitIssueWarrant,
     emitArrest,
+    emitCuff,
+    emitUncuff,
   };
 }

@@ -6,7 +6,7 @@ import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
 import type { RpProfile, RpToast } from "../shared/rpTypes";
-import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS } from "../shared/rpTypes";
+import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
 import LicenseTestHUD from "./LicenseTestHUD";
@@ -81,6 +81,15 @@ interface GameSceneProps {
   emitArrest: (targetId: string) => void;
   /** Phase 6B: map of socketId → wantedStars for all players. */
   wantedByPlayerId: Record<string, number>;
+  /**
+   * Phase 6C: map of socketId → { cuffedBy, cuffedUntil } for all cuffed players.
+   * Used to render cuff indicators and gate I-key uncuff.
+   */
+  cuffedPlayers: Record<string, { cuffedBy: string; cuffedUntil: number | null }>;
+  /** Phase 6C: Emit rp:cuff — officer cuffs a nearby wanted player. */
+  emitCuff: (targetId: string) => void;
+  /** Phase 6C: Emit rp:uncuff — officer releases a cuffed player. */
+  emitUncuff: (targetId: string) => void;
 }
 
 export default function GameScene({
@@ -108,6 +117,9 @@ export default function GameScene({
   emitIssueWarrant,
   emitArrest,
   wantedByPlayerId,
+  cuffedPlayers,
+  emitCuff,
+  emitUncuff,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -253,8 +265,10 @@ export default function GameScene({
     ? Object.values(gameState.vehicles).find(v => v.driverId === myId)?.id
     : undefined;
 
-  // Phase 6A/6B: stable refs so the J/K keydown handler always reads current
+  // Phase 6A/6B/6C: stable refs so the J/K/U/I keydown handler always reads current
   // values without needing to be re-registered every render.
+  const myIdRef = useRef(myId);
+  myIdRef.current = myId;
   const remotePlayersRef = useRef(remotePlayers);
   remotePlayersRef.current = remotePlayers;
   const rpProfileRef = useRef(rpProfile);
@@ -266,6 +280,13 @@ export default function GameScene({
   // Phase 6B: needed to gate K-key on actual wanted stars.
   const wantedByPlayerIdRef = useRef(wantedByPlayerId);
   wantedByPlayerIdRef.current = wantedByPlayerId;
+  // Phase 6C: stable refs for U/I cuff keys.
+  const cuffedPlayersRef = useRef(cuffedPlayers);
+  cuffedPlayersRef.current = cuffedPlayers;
+  const emitCuffRef = useRef(emitCuff);
+  emitCuffRef.current = emitCuff;
+  const emitUncuffRef = useRef(emitUncuff);
+  emitUncuffRef.current = emitUncuff;
 
   // Phase 6A/6B: J/K police action keys.
   // J = Issue 1★ warrant against the nearest player within POLICE_WARRANT_RADIUS.
@@ -273,7 +294,7 @@ export default function GameScene({
   // Safety guards: ignore repeated events, ignore while typing, ignore while modal is open.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.code !== "KeyJ" && e.code !== "KeyK") return;
+      if (e.code !== "KeyJ" && e.code !== "KeyK" && e.code !== "KeyU" && e.code !== "KeyI") return;
       // Ignore key-repeat (held key firing continuously).
       if (e.repeat) return;
       // Ignore while the user is typing in an input/textarea/contenteditable.
@@ -324,6 +345,48 @@ export default function GameScene({
           }
         }
         if (nearestId) emitArrestRef.current(nearestId);
+        return;
+      }
+
+      if (e.code === "KeyU") {
+        // U = Cuff nearest wanted (not already cuffed) player in cuff radius.
+        let nearestId: string | null = null;
+        let nearestDist = Infinity;
+        const wanted  = wantedByPlayerIdRef.current;
+        const cuffed  = cuffedPlayersRef.current;
+        for (const p of players) {
+          if ((wanted[p.id] ?? 0) <= 0) continue;  // must be wanted
+          if (cuffed[p.id])             continue;  // already cuffed
+          const dx = p.x - pos.x;
+          const dz = p.z - pos.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist <= POLICE_CUFF_RADIUS && dist < nearestDist) {
+            nearestDist = dist;
+            nearestId   = p.id;
+          }
+        }
+        if (nearestId) emitCuffRef.current(nearestId);
+        return;
+      }
+
+      if (e.code === "KeyI") {
+        // I = Uncuff nearest player cuffed BY THIS officer (socket.id match).
+        let nearestId: string | null = null;
+        let nearestDist = Infinity;
+        const cuffed    = cuffedPlayersRef.current;
+        const localId   = myIdRef.current;
+        for (const p of players) {
+          const cuffState = cuffed[p.id];
+          if (!cuffState || cuffState.cuffedBy !== localId) continue;
+          const dx = p.x - pos.x;
+          const dz = p.z - pos.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist <= POLICE_CUFF_RADIUS && dist < nearestDist) {
+            nearestDist = dist;
+            nearestId   = p.id;
+          }
+        }
+        if (nearestId) emitUncuffRef.current(nearestId);
       }
     };
 
@@ -370,6 +433,41 @@ export default function GameScene({
     return best;
   })();
 
+  // Phase 6C: Nearest WANTED (not yet cuffed) player within cuff radius.
+  const nearCuffTarget: { id: string; name: string; dist: number; stars: number } | null = (() => {
+    if (!isOfficerOnDuty || uiState.inVehicle) return null;
+    let best: { id: string; name: string; dist: number; stars: number } | null = null;
+    for (const p of remotePlayers) {
+      const stars = wantedByPlayerId[p.id] ?? 0;
+      if (stars <= 0) continue;
+      if (cuffedPlayers[p.id]) continue;  // already cuffed by someone
+      const dx = p.x - playerPosRef.current.x;
+      const dz = p.z - playerPosRef.current.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist <= POLICE_CUFF_RADIUS && (!best || dist < best.dist)) {
+        best = { id: p.id, name: (p as { username?: string }).username ?? p.id, dist, stars };
+      }
+    }
+    return best;
+  })();
+
+  // Phase 6C: Nearest player cuffed BY THIS officer within cuff radius.
+  const nearUncuffTarget: { id: string; name: string; dist: number } | null = (() => {
+    if (!isOfficerOnDuty || uiState.inVehicle) return null;
+    let best: { id: string; name: string; dist: number } | null = null;
+    for (const p of remotePlayers) {
+      const cuffState = cuffedPlayers[p.id];
+      if (!cuffState || cuffState.cuffedBy !== myId) continue;
+      const dx = p.x - playerPosRef.current.x;
+      const dz = p.z - playerPosRef.current.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist <= POLICE_CUFF_RADIUS && (!best || dist < best.dist)) {
+        best = { id: p.id, name: (p as { username?: string }).username ?? p.id, dist };
+      }
+    }
+    return best;
+  })();
+
   return (
     <div
       ref={wrapperRef}
@@ -411,7 +509,7 @@ export default function GameScene({
 
           {/* Remote players */}
           {remotePlayers.map((p) => (
-            <RemotePlayer key={p.id} state={p} />
+            <RemotePlayer key={p.id} state={p} isCuffed={!!cuffedPlayers[p.id]} />
           ))}
 
           {/* Remote vehicles (not driven by local player) */}
@@ -540,6 +638,9 @@ export default function GameScene({
         isOfficerOnDuty={isOfficerOnDuty}
         nearPoliceTarget={nearPoliceTarget}
         nearArrestTarget={nearArrestTarget}
+        nearCuffTarget={nearCuffTarget}
+        nearUncuffTarget={nearUncuffTarget}
+        cuffedUntil={rpProfile?.cuffedUntil}
       />
     </div>
   );

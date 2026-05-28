@@ -30,6 +30,7 @@ export default function Game({ username }: GameProps) {
     pushToast,
     canDriveVehicle,
     wantedByPlayerId,
+    cuffedPlayers,
     emitInteract,
     emitLicenseCheckpoint,
     emitBuyVehicle,
@@ -40,6 +41,8 @@ export default function Game({ username }: GameProps) {
     emitBankWithdraw,
     emitIssueWarrant,
     emitArrest,
+    emitCuff,
+    emitUncuff,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -95,6 +98,9 @@ export default function Game({ username }: GameProps) {
       emitIssueWarrant={emitIssueWarrant}
       emitArrest={emitArrest}
       wantedByPlayerId={wantedByPlayerId}
+      cuffedPlayers={cuffedPlayers}
+      emitCuff={emitCuff}
+      emitUncuff={emitUncuff}
     />
   );
 }

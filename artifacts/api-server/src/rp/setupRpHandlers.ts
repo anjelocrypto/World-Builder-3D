@@ -32,6 +32,8 @@ import {
 import {
   handleIssueWarrant,
   handleArrest,
+  handleCuff,
+  handleUncuff,
 } from "./rpPoliceService";
 
 export type { LicenseContext };
@@ -258,6 +260,41 @@ export function setupRpHandlers(
         logger.error({ err, socketId: socket.id }, "[rp] handleArrest threw");
         socket.emit("rp:toast", {
           msg:      "Server error — arrest failed. Try again.",
+          color:    "red",
+          duration: 4000,
+        });
+      });
+    },
+  );
+
+  // ── rp:cuff ───────────────────────────────────────────────────────────────
+  // Phase 6C: officer emits { targetId } to cuff a nearby wanted player.
+  // Server validates officer duty state, target wanted status, proximity, and
+  // sets in-memory cuff state.
+  socket.on(
+    "rp:cuff",
+    (data: { targetId?: unknown } | null | undefined) => {
+      handleCuff(socket, ctx, data?.targetId).catch((err) => {
+        logger.error({ err, socketId: socket.id }, "[rp] handleCuff threw");
+        socket.emit("rp:toast", {
+          msg:      "Server error — cuff failed. Try again.",
+          color:    "red",
+          duration: 4000,
+        });
+      });
+    },
+  );
+
+  // ── rp:uncuff ─────────────────────────────────────────────────────────────
+  // Phase 6C: officer emits { targetId } to release a cuffed player.
+  // Server validates that the officer is the one who cuffed the target.
+  socket.on(
+    "rp:uncuff",
+    (data: { targetId?: unknown } | null | undefined) => {
+      handleUncuff(socket, ctx, data?.targetId).catch((err) => {
+        logger.error({ err, socketId: socket.id }, "[rp] handleUncuff threw");
+        socket.emit("rp:toast", {
+          msg:      "Server error — uncuff failed. Try again.",
           color:    "red",
           duration: 4000,
         });

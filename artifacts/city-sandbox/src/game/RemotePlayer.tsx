@@ -8,6 +8,8 @@ import CharacterAvatar, {
 
 interface RemotePlayerProps {
   state: PlayerState;
+  /** Phase 6C: true while this remote player is cuffed. Shows a red ring indicator. */
+  isCuffed?: boolean;
 }
 
 // Remote player root sits at FEET level (state.y is the player body
@@ -16,7 +18,7 @@ interface RemotePlayerProps {
 // the player height (0.6) when placing it in world space.
 const HALF_HEIGHT = 0.6;
 
-export default function RemotePlayer({ state }: RemotePlayerProps) {
+export default function RemotePlayer({ state, isCuffed = false }: RemotePlayerProps) {
   const groupRef = useRef<THREE.Group>(null!);
   const targetPos = useRef(
     new THREE.Vector3(state.x, state.y - HALF_HEIGHT, state.z),
@@ -82,6 +84,13 @@ export default function RemotePlayer({ state }: RemotePlayerProps) {
         username={state.username}
         isLocal={false}
       />
+      {/* Phase 6C: cuff indicator — small red torus ring above the player's head */}
+      {isCuffed && (
+        <mesh position={[0, 2.4, 0]}>
+          <torusGeometry args={[0.28, 0.045, 8, 24]} />
+          <meshStandardMaterial color="#ff2222" emissive="#ff0000" emissiveIntensity={1.2} />
+        </mesh>
+      )}
     </group>
   );
 }

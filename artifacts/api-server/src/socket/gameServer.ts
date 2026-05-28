@@ -331,6 +331,49 @@ export function setupGameServer(httpServer: HttpServer) {
         }
       }
 
+      // ── Phase 6C: Cuff confinement ─────────────────────────────────────────
+      // Cuffed players are clamped within 2.5m of their arresting officer and
+      // cannot enter vehicles. Three exit paths: timeout, officer disconnect,
+      // or explicit uncuff/arrest.
+      const cuffEntry = rpCache.get(socket.id);
+      if (cuffEntry?.cuffedBy) {
+        const nowMs = Date.now();
+
+        // 1. Timeout auto-expire.
+        if (cuffEntry.cuffedUntil && nowMs >= cuffEntry.cuffedUntil.getTime()) {
+          cuffEntry.cuffedBy    = null;
+          cuffEntry.cuffedUntil = null;
+          io.emit("rp:cuffedUpdate", { targetId: socket.id, cuffedBy: null, cuffedUntil: null });
+          socket.emit("rp:profileUpdate", { cuffedBy: null, cuffedUntil: null });
+          socket.emit("rp:toast", { msg: "🔓 Cuff expired.", color: "green", duration: 4000 });
+        } else {
+          // 2. Officer still online? If not, auto-uncuff.
+          const officerPos = players.get(cuffEntry.cuffedBy);
+          if (!officerPos) {
+            cuffEntry.cuffedBy    = null;
+            cuffEntry.cuffedUntil = null;
+            io.emit("rp:cuffedUpdate", { targetId: socket.id, cuffedBy: null, cuffedUntil: null });
+            socket.emit("rp:profileUpdate", { cuffedBy: null, cuffedUntil: null });
+            socket.emit("rp:toast", { msg: "🔓 Officer disconnected — you are free.", color: "green", duration: 4000 });
+          } else {
+            // 3. Clamp within 2.5m of officer.
+            const nx = data.x ?? player.x;
+            const nz = data.z ?? player.z;
+            const cx = nx - officerPos.x;
+            const cz = nz - officerPos.z;
+            const cd = Math.sqrt(cx * cx + cz * cz);
+            if (cd > 2.5) {
+              const s = 2.5 / cd;
+              data.x = officerPos.x + cx * s;
+              data.z = officerPos.z + cz * s;
+            }
+            // Force out of vehicle.
+            data.isInVehicle = false;
+            data.vehicleId   = null;
+          }
+        }
+      }
+
       const updated: PlayerState = { ...player, ...data, id: socket.id };
       players.set(socket.id, updated);
       socket.broadcast.emit("playerMoved", updated);
@@ -344,6 +387,11 @@ export function setupGameServer(httpServer: HttpServer) {
       // Phase 6A: jailed players cannot drive.
       const vehicleEntry = rpCache.get(socket.id);
       if (vehicleEntry?.jailUntil !== null && vehicleEntry?.jailUntil !== undefined) {
+        return;
+      }
+
+      // Phase 6C: cuffed players cannot drive.
+      if (vehicleEntry?.cuffedBy) {
         return;
       }
 
@@ -436,6 +484,21 @@ export function setupGameServer(httpServer: HttpServer) {
 
       // Phase 6A: clear any in-flight jail release guard.
       jailReleaseInProgress.delete(socket.id);
+
+      // Phase 6C: release any suspects cuffed by this officer.
+      rpCache.forEach((entry, suspectSocketId) => {
+        if (entry.cuffedBy === socket.id) {
+          entry.cuffedBy    = null;
+          entry.cuffedUntil = null;
+          io.emit("rp:cuffedUpdate", { targetId: suspectSocketId, cuffedBy: null, cuffedUntil: null });
+          io.to(suspectSocketId).emit("rp:profileUpdate", { cuffedBy: null, cuffedUntil: null });
+          io.to(suspectSocketId).emit("rp:toast", {
+            msg:      "🔓 Officer disconnected — you are free.",
+            color:    "green",
+            duration: 4000,
+          });
+        }
+      });
 
       // Clear RP cache (after test cleanup).
       rpCache.delete(socket.id);

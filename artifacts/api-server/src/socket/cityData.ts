@@ -568,3 +568,9 @@ export const POLICE_MAX_FINE = 5_000;
 
 /** Maximum sentence an officer may issue (server-validated). */
 export const POLICE_MAX_SENTENCE_SECS = 900;
+
+/** Phase 6C: Radius (m) within which an officer may cuff / uncuff a suspect. */
+export const POLICE_CUFF_RADIUS = 4;
+
+/** Phase 6C: Seconds before an unresolved cuff auto-expires (in-memory only). */
+export const POLICE_CUFF_TIMEOUT_SECS = 120;

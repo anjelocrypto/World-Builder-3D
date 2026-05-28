@@ -70,6 +70,13 @@ export interface RpProfile {
   currentJob:    string | null;
   onDuty:        boolean;
   wantedStars:   number;
+  /**
+   * Phase 6C: socket.id of the officer who cuffed this player, or null.
+   * In-memory on server; cleared on disconnect, arrest, release, or timeout.
+   */
+  cuffedBy:      string | null;
+  /** Phase 6C: Unix ms when the cuff auto-expires; null when not cuffed. */
+  cuffedUntil:   number | null;
   /** Non-null only while a driver-license test is in progress. */
   activeTest:    ActiveTest | null;
   /** Phase 3: vehicles owned by this player. Empty until server sends them. */
@@ -252,6 +259,9 @@ export const POLICE_WARRANT_RADIUS = 14;
 
 /** Radius (m) for arrest — how close the officer must be to the suspect. */
 export const POLICE_ARREST_RADIUS = 4;
+
+/** Phase 6C: Radius (m) within which an officer can cuff a suspect. */
+export const POLICE_CUFF_RADIUS = 4;
 
 // ── Phase 5F: Bank / ATM constants ────────────────────────────────────────
 // These MUST stay in sync with ATM_* in api-server/src/socket/cityData.ts.

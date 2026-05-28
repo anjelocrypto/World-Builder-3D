@@ -85,6 +85,9 @@ export async function upsertPlayer(
     lastPaycheckAt: player.lastPaycheckAt ? player.lastPaycheckAt.getTime() : null,
     // Phase 6A: loaded above from rp_warrants WHERE cleared_at IS NULL.
     wantedStars,
+    // Phase 6C: cuff state is in-memory only — always starts null on join.
+    cuffedBy:       null,
+    cuffedUntil:    null,
     // Phase 3: loaded separately via loadAndSpawnOwnedVehicles after join.
     ownedVehicles:  [],
   };
