@@ -53,6 +53,10 @@ export default function Game({ username }: GameProps) {
     emitListFactions,
     emitListOnlinePlayers,
     emitAdminSetFaction,
+    gangStatus,
+    gangPresenceEvents,
+    emitGangStatus,
+    emitGangAction,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -121,6 +125,10 @@ export default function Game({ username }: GameProps) {
       emitListFactions={emitListFactions}
       emitListOnlinePlayers={emitListOnlinePlayers}
       emitAdminSetFaction={emitAdminSetFaction}
+      gangStatus={gangStatus}
+      gangPresenceEvents={gangPresenceEvents}
+      emitGangStatus={emitGangStatus}
+      emitGangAction={emitGangAction}
     />
   );
 }

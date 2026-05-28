@@ -138,6 +138,43 @@ export interface RpFactionMessage {
   createdAt:    number;
 }
 
+// ── Phase 7D: Gang types ──────────────────────────────────────────────────
+
+/**
+ * Phase 7D: Server emits this via rp:gangStatus in response to rp:gangStatus request.
+ * Non-gang players receive isMember=false (all other fields are null/0).
+ */
+export interface GangStatus {
+  isMember:      boolean;
+  isGroveStreet: boolean;
+  factionSlug:   string | null;
+  factionName:   string | null;
+  factionColor:  string | null;
+  factionRank:   number;
+  /** Turf geometry as reported by server (allows future server-driven turf changes). */
+  hangoutPos:    [number, number, number];
+  hangoutRadius: number;
+  turfCenter:    [number, number, number];
+  turfRadius:    number;
+}
+
+/**
+ * Phase 7D: Broadcast by server to faction members when a member claims presence
+ * in the turf zone via rp:gangAction { action: "claim_presence" }.
+ * Server validates position before broadcasting.
+ */
+export interface GangPresenceEvent {
+  socketId:    string;
+  username:    string;
+  factionSlug: string;
+  rank:        number;
+  /** Server-authoritative position (x, z). */
+  x:           number;
+  z:           number;
+  /** Server Unix ms timestamp. */
+  ts:          number;
+}
+
 // ── World coordinate constants ─────────────────────────────────────────────
 // All positions are [x, y, z] in world-space. rotY convention: 0 = front
 // toward −Z (matches vehicleObb + LocalPlayer updateVehicle forward axis).
@@ -323,6 +360,21 @@ export const POLICE_FINE_RADIUS = 8;
 
 /** Phase 6E: Minimum fine amount. */
 export const POLICE_MIN_FINE = 10;
+
+// ── Phase 7D: Gang / turf constants (client-side) ────────────────────────────
+// MUST stay in sync with GROVE_STREET_* in api-server/src/socket/cityData.ts.
+
+/** World centre of the Grove Street gang hangout. */
+export const GROVE_STREET_HANGOUT_POS: [number, number, number] = [95, 0, 65];
+
+/** Interaction radius (m) — G opens gang HUD when player is this close. */
+export const GROVE_STREET_HANGOUT_RADIUS = 8;
+
+/** World centre of the turf territory ring. */
+export const GROVE_STREET_TURF_CENTER: [number, number, number] = [95, 0, 65];
+
+/** Visual radius (m) of the turf territory ring. */
+export const GROVE_STREET_TURF_RADIUS = 30;
 
 /** Phase 6E: Pending fine state received from server via rp:fineIssued. */
 export interface RpPendingFine {

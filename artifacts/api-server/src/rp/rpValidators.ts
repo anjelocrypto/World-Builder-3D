@@ -36,6 +36,8 @@ import {
   POLICE_JAIL_CELL,
   POLICE_RELEASE_POS,
   POLICE_BOOKING_DESK_POS,
+  GROVE_STREET_HANGOUT_POS,
+  GROVE_STREET_TURF_CENTER,
 } from "../socket/cityData";
 import type { RpCacheEntry, TestState } from "./rpCache";
 
@@ -205,7 +207,13 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
     ...POLICE_PATROL_POINTS.map(([cx, , cz], i) => ({ label: `POLICE_PATROL_POINT_${i}`, x: cx, z: cz })),
   ];
 
-  for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers, ...deliveryMarkers, ...mechanicMarkers, ...medicOffRoadMarkers, ...policeOffRoadMarkers, ...atmOffRoadMarkers]) {
+  // Phase 7D: Grove Street gang markers must be off-road
+  const gangOffRoadMarkers = [
+    { label: "GROVE_STREET_HANGOUT_POS", x: GROVE_STREET_HANGOUT_POS[0], z: GROVE_STREET_HANGOUT_POS[2] },
+    { label: "GROVE_STREET_TURF_CENTER", x: GROVE_STREET_TURF_CENTER[0],  z: GROVE_STREET_TURF_CENTER[2]  },
+  ];
+
+  for (const m of [...OFF_ROAD, ...cityWorkerMarkers, ...taxiMarkers, ...deliveryMarkers, ...mechanicMarkers, ...medicOffRoadMarkers, ...policeOffRoadMarkers, ...atmOffRoadMarkers, ...gangOffRoadMarkers]) {
     if (isInCarriageway(m.x, m.z))
       throw new Error(`[rp] marker "${m.label}" is inside road carriageway`);
     if (isInsideObstacle(m.x, m.z, obstacles))
@@ -282,6 +290,8 @@ export function validateRpMarkerVehicleClearance(vehicles: VehiclePos[]): void {
     { label: "POLICE_RELEASE_POS",      x: POLICE_RELEASE_POS[0],      z: POLICE_RELEASE_POS[2] },
     // Phase 6D — booking desk
     { label: "POLICE_BOOKING_DESK",     x: POLICE_BOOKING_DESK_POS[0], z: POLICE_BOOKING_DESK_POS[2] },
+    // Phase 7D — Grove Street gang hangout (turf center is same position, no duplicate needed)
+    { label: "GROVE_STREET_HANGOUT",    x: GROVE_STREET_HANGOUT_POS[0], z: GROVE_STREET_HANGOUT_POS[2] },
   ];
   for (const m of markers) {
     if (isNearParkedCar(m.x, m.z, vehicles)) {

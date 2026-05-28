@@ -32,6 +32,9 @@ import {
   POLICE_JAIL_CELL,
   POLICE_RELEASE_POS,
   POLICE_BOOKING_DESK_POS,
+  GROVE_STREET_HANGOUT_POS,
+  GROVE_STREET_TURF_CENTER,
+  GROVE_STREET_TURF_RADIUS,
 } from "../shared/rpTypes";
 
 interface RPMarkersProps {
@@ -117,6 +120,10 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
   const bookingDeskSignRef = useRef<THREE.MeshStandardMaterial>(null!);
   const jailCellRingRef    = useRef<THREE.MeshStandardMaterial>(null!);
   const releaseExitRingRef = useRef<THREE.MeshStandardMaterial>(null!);
+  // Phase 7D: Grove Street gang hangout + turf ring
+  const gangHangoutRingRef = useRef<THREE.MeshStandardMaterial>(null!);
+  const gangHangoutSignRef = useRef<THREE.MeshStandardMaterial>(null!);
+  const gangTurfRingRef    = useRef<THREE.MeshStandardMaterial>(null!);
   // Phase 5F: one ring ref per ATM (5 total — matches ATM_LOCATIONS.length).
   const atmRingRefs = [
     useRef<THREE.MeshStandardMaterial>(null!),
@@ -196,6 +203,13 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
         ref.current.emissiveIntensity = 0.4 + 0.25 * Math.sin(t * 1.7 + i * 0.8);
       }
     });
+
+    // Phase 7D: Grove Street hangout + turf ring — green gang pulse
+    const gangHangoutPulse = 0.4 + 0.35 * Math.sin(t * 2.4 + 0.2);
+    if (gangHangoutRingRef.current) gangHangoutRingRef.current.emissiveIntensity = gangHangoutPulse;
+    if (gangHangoutSignRef.current) gangHangoutSignRef.current.emissiveIntensity = 0.7 + 0.25 * Math.sin(t * 3.2 + 0.4);
+    // Turf ring breathes slowly — territorial rather than urgent
+    if (gangTurfRingRef.current) gangTurfRingRef.current.emissiveIntensity = 0.15 + 0.08 * Math.sin(t * 0.9 + 1.0);
 
     // Phase 6D: Booking Desk — amber/brown pulse
     const bookingDeskPulse = 0.4 + 0.3 * Math.sin(t * 2.1 + 0.9);
@@ -1372,6 +1386,82 @@ export default function RPMarkers({ activeTest, activeJob }: RPMarkersProps) {
           Passed rings are dimmed. The next target pulses brightly.
           Future rings are at medium intensity. Point lights omitted for passed
           checkpoints to avoid wasting the light budget after they're cleared. */}
+      {/* ════ Phase 7D: Grove Street hangout marker ════════════════════════════
+          Always-visible sign + ring at GROVE_STREET_HANGOUT_POS.
+          Green color scheme matching the grove_street faction color #2e7d32. */}
+      {(() => {
+        const [gx, , gz] = GROVE_STREET_HANGOUT_POS;
+        return (
+          <group position={[gx, 0, gz]}>
+            {/* Ground ring — 5–6 m radius, gang green */}
+            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <ringGeometry args={[5, 6, 48]} />
+              <meshStandardMaterial
+                ref={gangHangoutRingRef}
+                color="#0a2010"
+                emissive="#2e7d32"
+                emissiveIntensity={0.4}
+                transparent
+                opacity={0.55}
+                side={THREE.DoubleSide}
+                depthWrite={false}
+              />
+            </mesh>
+
+            {/* Sign post */}
+            <mesh position={[0, 1.8, -0.3]}>
+              <boxGeometry args={[0.12, 3.6, 0.12]} />
+              <meshStandardMaterial color="#1a2a1a" roughness={0.7} metalness={0.4} />
+            </mesh>
+
+            {/* Sign board */}
+            <mesh position={[0, 3.3, -0.3]}>
+              <boxGeometry args={[4.8, 0.8, 0.1]} />
+              <meshStandardMaterial
+                ref={gangHangoutSignRef}
+                color="#0a1a0a"
+                emissive="#2e7d32"
+                emissiveIntensity={0.7}
+                roughness={0.3}
+                metalness={0.2}
+              />
+            </mesh>
+
+            {/* Sign text strip */}
+            <mesh position={[0, 3.6, -0.24]}>
+              <boxGeometry args={[4.4, 0.1, 0.01]} />
+              <meshStandardMaterial color="#ffffff" emissive="#81c784" emissiveIntensity={2} />
+            </mesh>
+
+            <pointLight position={[0, 4, 0]} color="#2e7d32" intensity={2.5} distance={14} decay={2} />
+          </group>
+        );
+      })()}
+
+      {/* ════ Phase 7D: Grove Street turf territory ring ════════════════════════
+          Large slow-breathing ring indicating the turf boundary.
+          Always visible — visual only in Phase 7D (no persistent capture yet). */}
+      {(() => {
+        const [tx, , tz] = GROVE_STREET_TURF_CENTER;
+        const outerR = GROVE_STREET_TURF_RADIUS;
+        const innerR = outerR - 1.5;
+        return (
+          <mesh position={[tx, 0.02, tz]} rotation={[-Math.PI / 2, 0, 0]}>
+            <ringGeometry args={[innerR, outerR, 72]} />
+            <meshStandardMaterial
+              ref={gangTurfRingRef}
+              color="#0a1a0a"
+              emissive="#1b5e20"
+              emissiveIntensity={0.15}
+              transparent
+              opacity={0.35}
+              side={THREE.DoubleSide}
+              depthWrite={false}
+            />
+          </mesh>
+        );
+      })()}
+
       {activeTest &&
         LICENSE_TEST_CHECKPOINTS.map(([cx, , cz], i) => {
           const isPassed = i < activeTest.nextCp;

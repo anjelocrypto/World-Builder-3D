@@ -1,6 +1,7 @@
 /**
  * Phase 7A: Faction Foundation service.
  * Phase 7C: Added safe read-only list endpoints + rp:factionAssigned emit.
+ * Phase 7D: Added handleGangStatus (read-only) + handleGangAction (claim_presence).
  *
  * Provides:
  *   loadFactionForPlayer(playerId)          — DB lookup, returns faction row or null
@@ -11,6 +12,8 @@
  *   handleAdminSetFaction(socket, ctx, ...) — dev-only faction assignment via socket
  *   handleListFactions(socket)              — read-only; returns all seeded factions
  *   handleListOnlinePlayers(socket, ctx)    — read-only; returns online player faction summary
+ *   handleGangStatus(socket, ctx)           — read-only; returns caller's gang status
+ *   handleGangAction(socket, ctx, payload)  — validates membership + rank, broadcasts gang event
  *
  * Admin gate (rp:adminSetFaction):
  *   - ONLY allowed when NODE_ENV !== "production".
@@ -26,6 +29,18 @@ import { eq }   from "drizzle-orm";
 import { logger } from "../lib/logger";
 import type { LicenseContext } from "./rpLicenseService";
 import type { RpCacheEntry }  from "./rpCache";
+import {
+  isGang,
+  isGroveStreet,
+  isFactionRankAtLeast,
+  GANG_ACTION_MIN_RANK,
+} from "./rpFactionHelpers";
+import {
+  GROVE_STREET_HANGOUT_POS,
+  GROVE_STREET_HANGOUT_RADIUS,
+  GROVE_STREET_TURF_CENTER,
+  GROVE_STREET_TURF_RADIUS,
+} from "../socket/cityData";
 
 // ── Faction DB row (partial, fields we care about) ────────────────────────────
 
@@ -385,4 +400,137 @@ export function handleListOnlinePlayers(
   }
 
   socket.emit("rp:onlinePlayersListed", { players });
+}
+
+// ── handleGangStatus ──────────────────────────────────────────────────────────
+
+/**
+ * Phase 7D: Read-only. Returns the caller's gang status.
+ * Emits rp:gangStatus with faction/rank metadata plus the turf geometry so the
+ * client HUD can render the hangout and turf ring without hard-coding coordinates.
+ *
+ * Non-gang players receive a gangStatus with isMember=false.
+ * Security: pure read — no state mutations, no broadcasts.
+ */
+export function handleGangStatus(
+  socket: Socket,
+  ctx:    LicenseContext,
+): void {
+  const entry = ctx.rpCache.get(socket.id);
+  if (!entry) return;
+
+  const isMember    = isGang(entry);
+  const isGroveStreetMember = isGroveStreet(entry);
+
+  socket.emit("rp:gangStatus", {
+    isMember,
+    isGroveStreet: isGroveStreetMember,
+    factionSlug:   entry.factionSlug,
+    factionName:   entry.factionName,
+    factionColor:  entry.factionColor,
+    factionRank:   entry.factionRank,
+    // Turf geometry for the HUD — allows future server-driven turf changes.
+    hangoutPos:    GROVE_STREET_HANGOUT_POS,
+    hangoutRadius: GROVE_STREET_HANGOUT_RADIUS,
+    turfCenter:    GROVE_STREET_TURF_CENTER,
+    turfRadius:    GROVE_STREET_TURF_RADIUS,
+  });
+}
+
+// ── handleGangAction ──────────────────────────────────────────────────────────
+
+/**
+ * Phase 7D: Validates a gang action and broadcasts the outcome to faction members.
+ *
+ * Supported actions:
+ *   claim_presence — player asserts their presence in the turf.
+ *     - Requires: gang member, rank >= GANG_ACTION_MIN_RANK, player within turf radius.
+ *     - Broadcasts: rp:gangPresence { socketId, username, factionSlug, rank, pos, ts }
+ *       to every online socket in the same faction.
+ *
+ * Server validates position using the authoritative player position from ctx.players.
+ * The client-supplied position is NEVER trusted.
+ *
+ * Security: no persistent state mutations in Phase 7D (turf capture is a later phase).
+ */
+export function handleGangAction(
+  socket:  Socket,
+  ctx:     LicenseContext,
+  rawPayload: unknown,
+): void {
+  const entry = ctx.rpCache.get(socket.id);
+  if (!entry) return;
+
+  // ── Validate gang membership ──────────────────────────────────────────────
+  if (!isGang(entry)) {
+    socket.emit("rp:toast", {
+      msg:      "You are not a member of a gang.",
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // ── Validate rank ─────────────────────────────────────────────────────────
+  if (!isFactionRankAtLeast(entry, GANG_ACTION_MIN_RANK)) {
+    socket.emit("rp:toast", {
+      msg:      "Your rank is too low for gang actions.",
+      color:    "red",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // ── Parse action ──────────────────────────────────────────────────────────
+  const payload = rawPayload as Record<string, unknown> | null | undefined;
+  const action  = typeof payload?.action === "string" ? payload.action : "";
+
+  if (action === "claim_presence") {
+    // ── Validate turf proximity (server-authoritative position) ───────────
+    const playerState = ctx.players.get(socket.id);
+    if (!playerState) return;
+
+    const dx   = playerState.x - GROVE_STREET_TURF_CENTER[0];
+    const dz   = playerState.z - GROVE_STREET_TURF_CENTER[2];
+    const dist = Math.sqrt(dx * dx + dz * dz);
+
+    if (dist > GROVE_STREET_TURF_RADIUS) {
+      socket.emit("rp:toast", {
+        msg:      "You are not in the turf zone.",
+        color:    "yellow",
+        duration: 3000,
+      });
+      return;
+    }
+
+    const presencePayload = {
+      socketId:    socket.id,
+      username:    playerState.username ?? socket.id,
+      factionSlug: entry.factionSlug!,
+      rank:        entry.factionRank,
+      x:           playerState.x,
+      z:           playerState.z,
+      ts:          Date.now(),
+    };
+
+    // Broadcast to every online socket in the same faction.
+    let sent = 0;
+    for (const [socketId, cacheEntry] of ctx.rpCache.entries()) {
+      if (cacheEntry.factionId === entry.factionId) {
+        ctx.io.to(socketId).emit("rp:gangPresence", presencePayload);
+        sent++;
+      }
+    }
+
+    logger.debug(
+      { socketId: socket.id, factionSlug: entry.factionSlug, dist, recipients: sent },
+      "[rpGang] claim_presence broadcast",
+    );
+    return;
+  }
+
+  // Unknown action — ignore silently (no toast, avoids spamming the log for
+  // future-proofed clients sending new action types the server hasn't
+  // implemented yet).
+  logger.debug({ socketId: socket.id, action }, "[rpGang] unknown gang action ignored");
 }

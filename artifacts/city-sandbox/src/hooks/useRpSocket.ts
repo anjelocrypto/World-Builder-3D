@@ -15,7 +15,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent } from "../shared/rpTypes";
 import { canDriveVehicleClient } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
@@ -56,6 +56,19 @@ export function useRpSocket(socket: Socket | null) {
    * Empty until emitListOnlinePlayers() is called.
    */
   const [onlineFactionPlayers, setOnlineFactionPlayers] = useState<OnlinePlayerFactionSummary[]>([]);
+
+  /**
+   * Phase 7D: Gang status for the local player, populated by rp:gangStatus.
+   * Null until emitGangStatus() is called (or server auto-sends after join).
+   */
+  const [gangStatus, setGangStatus] = useState<GangStatus | null>(null);
+
+  /**
+   * Phase 7D: Rolling log of gang presence events received via rp:gangPresence.
+   * Server broadcasts these only to faction members after a validate claim_presence action.
+   * Kept to last 20 entries.
+   */
+  const [gangPresenceEvents, setGangPresenceEvents] = useState<GangPresenceEvent[]>([]);
 
   useEffect(() => {
     if (!socket) return;
@@ -181,6 +194,17 @@ export function useRpSocket(socket: Socket | null) {
       socket.emit("rp:listOnlinePlayers");
     };
 
+    // Phase 7D: rp:gangStatus — server response to rp:gangStatus request.
+    const onGangStatus = (data: GangStatus) => {
+      setGangStatus(data);
+    };
+
+    // Phase 7D: rp:gangPresence — a faction member claimed presence in the turf.
+    // Server validates position before broadcasting; we just store it.
+    const onGangPresence = (data: GangPresenceEvent) => {
+      setGangPresenceEvents((prev) => [...prev.slice(-19), data]);
+    };
+
     // Phase 7A: rp:factionChat — a faction member sent a message.
     const onFactionChat = (data: {
       fromId:       string;
@@ -212,6 +236,8 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:factionsListed",       onFactionsListed);
     socket.on("rp:onlinePlayersListed",  onOnlinePlayersListed);
     socket.on("rp:factionAssigned",      onFactionAssigned);
+    socket.on("rp:gangStatus",           onGangStatus);
+    socket.on("rp:gangPresence",         onGangPresence);
 
     return () => {
       socket.off("rp:profile",              onProfile);
@@ -228,6 +254,8 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:factionsListed",       onFactionsListed);
       socket.off("rp:onlinePlayersListed",  onOnlinePlayersListed);
       socket.off("rp:factionAssigned",      onFactionAssigned);
+      socket.off("rp:gangStatus",           onGangStatus);
+      socket.off("rp:gangPresence",         onGangPresence);
     };
   }, [socket]);
 
@@ -413,6 +441,25 @@ export function useRpSocket(socket: Socket | null) {
     [socket],
   );
 
+  /**
+   * Phase 7D: emit rp:gangStatus — request the caller's gang status from the server.
+   * Server responds with rp:gangStatus (which sets gangStatus state).
+   */
+  const emitGangStatus = useCallback(() => {
+    socket?.emit("rp:gangStatus");
+  }, [socket]);
+
+  /**
+   * Phase 7D: emit rp:gangAction — send a gang action to the server for validation.
+   * Server validates position and rank before broadcasting.
+   */
+  const emitGangAction = useCallback(
+    (action: string) => {
+      socket?.emit("rp:gangAction", { action });
+    },
+    [socket],
+  );
+
   return {
     rpProfile,
     rpToasts,
@@ -443,5 +490,9 @@ export function useRpSocket(socket: Socket | null) {
     emitListFactions,
     emitListOnlinePlayers,
     emitAdminSetFaction,
+    gangStatus,
+    gangPresenceEvents,
+    emitGangStatus,
+    emitGangAction,
   };
 }

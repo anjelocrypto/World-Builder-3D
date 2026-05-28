@@ -44,6 +44,8 @@ import {
   handleAdminSetFaction,
   handleListFactions,
   handleListOnlinePlayers,
+  handleGangStatus,
+  handleGangAction,
 } from "./rpFactionService";
 
 export type { LicenseContext };
@@ -377,6 +379,24 @@ export function setupRpHandlers(
   socket.on("rp:listOnlinePlayers", () => {
     handleListOnlinePlayers(socket, ctx);
   });
+
+  // ── rp:gangStatus ─────────────────────────────────────────────────────────
+  // Phase 7D: read-only. Returns the caller's gang membership, rank, and turf
+  // geometry. Non-gang players receive isMember=false.
+  socket.on("rp:gangStatus", () => {
+    handleGangStatus(socket, ctx);
+  });
+
+  // ── rp:gangAction ─────────────────────────────────────────────────────────
+  // Phase 7D: validates a gang action on the server and broadcasts the outcome
+  // to all online faction members. Server validates proximity using authoritative
+  // player position — client position is never trusted.
+  socket.on(
+    "rp:gangAction",
+    (data: { action?: unknown } | null | undefined) => {
+      handleGangAction(socket, ctx, data);
+    },
+  );
 
   // ── rp:adminSetFaction ────────────────────────────────────────────────────
   // Phase 7A: DEV-only event to assign a faction to an online player.

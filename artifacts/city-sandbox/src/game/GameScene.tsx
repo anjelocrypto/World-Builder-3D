@@ -5,8 +5,8 @@ import * as THREE from "three";
 import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary } from "../shared/rpTypes";
-import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent } from "../shared/rpTypes";
+import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
 import LicenseTestHUD from "./LicenseTestHUD";
@@ -16,6 +16,7 @@ import ATMHUD from "./ATMHUD";
 import { IssueFinePanel, PendingFineOverlay } from "./FineHUD";
 import FactionChatHUD from "./FactionChatHUD";
 import FactionAdminHUD from "./FactionAdminHUD";
+import GangHUD from "./GangHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -113,6 +114,14 @@ interface GameSceneProps {
   emitListOnlinePlayers: () => void;
   /** Phase 7C: Emit rp:adminSetFaction — DEV-ONLY. */
   emitAdminSetFaction: (targetId: string, factionSlug: string, rank: number) => void;
+  /** Phase 7D: Gang status for the local player. */
+  gangStatus: GangStatus | null;
+  /** Phase 7D: Rolling log of presence events from gang members. */
+  gangPresenceEvents: GangPresenceEvent[];
+  /** Phase 7D: Request gang status from server. */
+  emitGangStatus: () => void;
+  /** Phase 7D: Emit a gang action (e.g. "claim_presence") for server validation. */
+  emitGangAction: (action: string) => void;
 }
 
 export default function GameScene({
@@ -153,6 +162,10 @@ export default function GameScene({
   emitListFactions,
   emitListOnlinePlayers,
   emitAdminSetFaction,
+  gangStatus,
+  gangPresenceEvents,
+  emitGangStatus,
+  emitGangAction,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -201,6 +214,10 @@ export default function GameScene({
   const [showFactionAdmin, setShowFactionAdmin] = useState(false);
   const showFactionAdminRef = useRef(showFactionAdmin);
   showFactionAdminRef.current = showFactionAdmin;
+  // Phase 7D: gang HUD visibility
+  const [showGangHUD, setShowGangHUD] = useState(false);
+  const showGangHUDRef = useRef(showGangHUD);
+  showGangHUDRef.current = showGangHUD;
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -350,6 +367,7 @@ export default function GameScene({
         e.code !== "KeyI" &&
         e.code !== "KeyH" &&
         e.code !== "KeyY" &&
+        e.code !== "KeyG" &&
         e.code !== "F7"
       ) return;
       // Ignore key-repeat (held key firing continuously).
@@ -367,7 +385,8 @@ export default function GameScene({
         showATMRef.current ||
         showFinePanelRef.current ||
         showFactionChatRef.current ||
-        showFactionAdminRef.current;
+        showFactionAdminRef.current ||
+        showGangHUDRef.current;
 
       // Phase 7C: F7 toggles faction admin panel (dev-only).
       // Opens only when no other modal is open; always allowed to close itself.
@@ -380,6 +399,18 @@ export default function GameScene({
             // Open — only when no other modal is blocking.
             setShowFactionAdmin(true);
           }
+        }
+        return;
+      }
+
+      // Phase 7D: G toggles gang HUD.
+      // Close is always allowed. Open is allowed from anywhere (no faction requirement
+      // client-side — non-members see the locked view).
+      if (e.code === "KeyG") {
+        if (showGangHUDRef.current) {
+          setShowGangHUD(false);  // close — always allowed
+        } else if (!anyModalOpen) {
+          setShowGangHUD(true);   // open — only when no other modal blocking
         }
         return;
       }
@@ -608,6 +639,22 @@ export default function GameScene({
     return best;
   })();
 
+  // Phase 7D: proximity checks for gang hangout and turf ring.
+  const nearGangHangout = (() => {
+    const pos = playerPosRef.current;
+    const [hx, , hz] = GROVE_STREET_HANGOUT_POS;
+    const dx = pos.x - hx;
+    const dz = pos.z - hz;
+    return Math.sqrt(dx * dx + dz * dz) <= GROVE_STREET_HANGOUT_RADIUS;
+  })();
+  const nearGangTurf = (() => {
+    const pos = playerPosRef.current;
+    const [tx, , tz] = GROVE_STREET_TURF_CENTER;
+    const dx = pos.x - tx;
+    const dz = pos.z - tz;
+    return Math.sqrt(dx * dx + dz * dz) <= GROVE_STREET_TURF_RADIUS;
+  })();
+
   return (
     <div
       ref={wrapperRef}
@@ -811,6 +858,7 @@ export default function GameScene({
         factionRank={rpProfile?.factionRank ?? undefined}
         showFactionChat={showFactionChat}
         showFactionAdmin={showFactionAdmin}
+        showGangHUD={showGangHUD}
       />
 
       {/* Phase 7A: Faction chat panel */}
@@ -836,6 +884,19 @@ export default function GameScene({
             emitAdminSetFaction(targetId, factionSlug, rank);
           }}
           onClose={() => setShowFactionAdmin(false)}
+        />
+      )}
+
+      {/* Phase 7D: Gang HUD — visible to all players; non-members see locked view */}
+      {showGangHUD && (
+        <GangHUD
+          gangStatus={gangStatus}
+          gangPresenceEvents={gangPresenceEvents}
+          nearHangout={nearGangHangout}
+          nearTurf={nearGangTurf}
+          emitGangStatus={emitGangStatus}
+          emitGangAction={emitGangAction}
+          onClose={() => setShowGangHUD(false)}
         />
       )}
     </div>

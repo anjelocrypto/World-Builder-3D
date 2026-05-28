@@ -171,6 +171,11 @@ interface HUDProps {
    * DEV-ONLY hint in HUD: F7 Faction Admin (only in import.meta.env.DEV).
    */
   showFactionAdmin?: boolean;
+  /**
+   * Phase 7D: true when GangHUD is visible.
+   * Hides the G key hint chip when the panel is open.
+   */
+  showGangHUD?: boolean;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -698,6 +703,7 @@ export default function HUD({
   factionRank,
   showFactionChat,
   showFactionAdmin,
+  showGangHUD,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -1960,6 +1966,27 @@ export default function HUD({
                 F7
               </span>
               <span style={{ color: "#443" }}>Faction Admin</span>
+            </div>
+          )}
+
+          {/* Phase 7D: G — Gang HUD hint */}
+          {!showGangHUD && (
+            <div style={{ display: "flex", gap: 6, alignItems: "center", marginTop: 2 }}>
+              <span
+                style={{
+                  background:  "rgba(46,125,50,0.15)",
+                  border:      "1px solid rgba(46,125,50,0.35)",
+                  borderRadius: 4,
+                  padding:     "1px 6px",
+                  fontSize:    10,
+                  color:       "#4caf50",
+                  fontFamily:  "'Courier New', monospace",
+                  fontWeight:  "bold",
+                }}
+              >
+                G
+              </span>
+              <span style={{ color: "#2a4a2a" }}>Gang</span>
             </div>
           )}
         </div>

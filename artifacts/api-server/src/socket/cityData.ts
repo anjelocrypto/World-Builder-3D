@@ -600,3 +600,32 @@ export const POLICE_MIN_FINE = 10;
 
 /** Phase 6E: Milliseconds before an unresolved pending fine auto-expires. */
 export const POLICE_FINE_EXPIRE_MS = 60_000;
+
+// ── Phase 7D: Grove Street gang turf ──────────────────────────────────────────
+//
+// Location: east outer district at [95, 0, 65].
+// Geometry audit:
+//   x=95: nearest NS road is x=45, |95−45|=50 > ROAD_HALF(10) ✅
+//         also |95−0|=95 > 10 ✅, |95−(−45)|=140 > 10 ✅
+//   z=65: nearest EW road is z=45, |65−45|=20 > ROAD_HALF(10) ✅
+//         also |65−0|=65 > 10 ✅
+// Nearest named RP marker: DEALERSHIP_POS [68, 0, −72] → dist ≈ 143 m ✅
+// Nearest parked car: city cars at (55,8) → dist ≈ 58 m; none within 30 m ✅
+
+/** World centre of the Grove Street gang hangout / sign marker. */
+export const GROVE_STREET_HANGOUT_POS: [number, number, number] = [95, 0, 65];
+
+/**
+ * Interaction radius (m) — players within this radius of the hangout can open
+ * the gang HUD panel with G.
+ */
+export const GROVE_STREET_HANGOUT_RADIUS = 8;
+
+/** World centre of the Grove Street turf territory ring (visual only for Phase 7D). */
+export const GROVE_STREET_TURF_CENTER: [number, number, number] = [95, 0, 65];
+
+/**
+ * Radius (m) of the turf territory ring displayed on the ground.
+ * Only visual in Phase 7D — persistent capture is a later phase.
+ */
+export const GROVE_STREET_TURF_RADIUS = 30;
