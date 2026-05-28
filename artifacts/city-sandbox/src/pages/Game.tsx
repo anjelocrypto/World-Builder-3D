@@ -57,6 +57,12 @@ export default function Game({ username }: GameProps) {
     gangPresenceEvents,
     emitGangStatus,
     emitGangAction,
+    gangJoinRequests,
+    gangJoinResult,
+    gangJoinRequestSent,
+    emitGangJoinRequest,
+    emitGangJoinResponse,
+    dismissGangJoinResult,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -129,6 +135,12 @@ export default function Game({ username }: GameProps) {
       gangPresenceEvents={gangPresenceEvents}
       emitGangStatus={emitGangStatus}
       emitGangAction={emitGangAction}
+      gangJoinRequests={gangJoinRequests}
+      gangJoinResult={gangJoinResult}
+      gangJoinRequestSent={gangJoinRequestSent}
+      emitGangJoinRequest={emitGangJoinRequest}
+      emitGangJoinResponse={emitGangJoinResponse}
+      dismissGangJoinResult={dismissGangJoinResult}
     />
   );
 }

@@ -2,6 +2,8 @@
  * Phase 7A: Faction Foundation service.
  * Phase 7C: Added safe read-only list endpoints + rp:factionAssigned emit.
  * Phase 7D: Added handleGangStatus (read-only) + handleGangAction (claim_presence).
+ * Phase 7E: Added gang recruitment — handleGangJoinRequest, handleGangJoinResponse,
+ *            cleanupPendingGangRequest, module-level pendingGangRequests Map.
  *
  * Provides:
  *   loadFactionForPlayer(playerId)          — DB lookup, returns faction row or null
@@ -14,6 +16,9 @@
  *   handleListOnlinePlayers(socket, ctx)    — read-only; returns online player faction summary
  *   handleGangStatus(socket, ctx)           — read-only; returns caller's gang status
  *   handleGangAction(socket, ctx, payload)  — validates membership + rank, broadcasts gang event
+ *   handleGangJoinRequest(socket, ctx, p)   — non-member requests to join a gang faction
+ *   handleGangJoinResponse(socket, ctx, p)  — leader accepts or rejects a pending request
+ *   cleanupPendingGangRequest(socketId)     — called on disconnect to remove stale requests
  *
  * Admin gate (rp:adminSetFaction):
  *   - ONLY allowed when NODE_ENV !== "production".
@@ -34,6 +39,7 @@ import {
   isGroveStreet,
   isFactionRankAtLeast,
   GANG_ACTION_MIN_RANK,
+  GANG_LEADER_MIN_RANK,
 } from "./rpFactionHelpers";
 import {
   GROVE_STREET_HANGOUT_POS,
@@ -574,4 +580,302 @@ export function handleGangAction(
   // future-proofed clients sending new action types the server hasn't
   // implemented yet).
   logger.debug({ socketId: socket.id, action }, "[rpGang] unknown gang action ignored");
+}
+
+// ── Phase 7E: Gang Recruitment ────────────────────────────────────────────────
+
+/**
+ * In-memory store of pending gang join requests.
+ * Key: socketId of the requesting player.
+ * Value: request metadata.
+ *
+ * Intentionally not persisted — requests survive only for the server session.
+ * Accepted memberships ARE persisted via the existing DB faction write.
+ */
+interface PendingGangRequest {
+  socketId:    string;
+  username:    string;
+  factionSlug: string;
+  factionId:   string;
+  ts:          number;
+}
+const pendingGangRequests = new Map<string, PendingGangRequest>();
+
+/**
+ * Broadcasts the current pending requests for a faction to all its online leaders.
+ * Called after any mutation (add / remove) to keep leader HUDs in sync.
+ */
+function broadcastPendingRequests(ctx: LicenseContext, factionId: string): void {
+  const requests = Array.from(pendingGangRequests.values())
+    .filter((r) => r.factionId === factionId)
+    .map((r) => ({
+      fromId:      r.socketId,
+      fromName:    r.username,
+      factionSlug: r.factionSlug,
+      ts:          r.ts,
+    }));
+
+  for (const [socketId, cacheEntry] of ctx.rpCache.entries()) {
+    if (
+      cacheEntry.factionId === factionId &&
+      isFactionRankAtLeast(cacheEntry, GANG_LEADER_MIN_RANK)
+    ) {
+      ctx.io.to(socketId).emit("rp:gangJoinRequests", requests);
+    }
+  }
+}
+
+/**
+ * Phase 7E: A non-gang player near the Grove Street hangout requests to join.
+ *
+ * Client emits: rp:gangJoinRequest { factionSlug: "grove_street" }
+ *
+ * Server validates:
+ *   - Not jailed / not cuffed.
+ *   - Not already in a gang.
+ *   - factionSlug is a known gang faction (DB lookup).
+ *   - No duplicate pending request from this socket (one at a time).
+ *
+ * On success:
+ *   - Stores request in pendingGangRequests.
+ *   - Emits rp:gangJoinRequests (full list) to all online leaders of that faction.
+ *   - Toasts the requester.
+ *
+ * Security: server validates everything; client position is never trusted.
+ * No persistent state change until a leader accepts.
+ */
+export async function handleGangJoinRequest(
+  socket:     Socket,
+  ctx:        LicenseContext,
+  rawPayload: unknown,
+): Promise<void> {
+  const entry = ctx.rpCache.get(socket.id);
+  if (!entry) return;
+
+  // ── Reject if jailed ──────────────────────────────────────────────────────
+  if (entry.jailUntil !== null && entry.jailUntil.getTime() > Date.now()) {
+    socket.emit("rp:toast", { msg: "You cannot send a join request while in jail.", color: "red", duration: 3000 });
+    return;
+  }
+  // ── Reject if cuffed ──────────────────────────────────────────────────────
+  if (entry.cuffedBy !== null) {
+    socket.emit("rp:toast", { msg: "You cannot send a join request while restrained.", color: "red", duration: 3000 });
+    return;
+  }
+  // ── Reject if already in a gang ───────────────────────────────────────────
+  if (isGang(entry)) {
+    socket.emit("rp:toast", { msg: "You are already in a gang.", color: "yellow", duration: 3000 });
+    return;
+  }
+  // ── Reject duplicate pending request ──────────────────────────────────────
+  if (pendingGangRequests.has(socket.id)) {
+    socket.emit("rp:toast", { msg: "You already have a pending join request.", color: "yellow", duration: 3000 });
+    return;
+  }
+
+  // ── Parse + validate faction slug ─────────────────────────────────────────
+  const payload     = rawPayload as Record<string, unknown> | null | undefined;
+  const factionSlug = typeof payload?.factionSlug === "string" ? payload.factionSlug.trim() : "";
+  if (!factionSlug) {
+    socket.emit("rp:toast", { msg: "Invalid join request.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // DB lookup — confirm it's a real gang faction.
+  const [factionRow] = await db
+    .select()
+    .from(rpFactions)
+    .where(eq(rpFactions.slug, factionSlug));
+
+  if (!factionRow) {
+    socket.emit("rp:toast", { msg: "Unknown faction.", color: "red", duration: 3000 });
+    return;
+  }
+  if (factionRow.type !== "gang") {
+    socket.emit("rp:toast", { msg: "That faction does not accept open applications.", color: "yellow", duration: 3000 });
+    return;
+  }
+
+  // ── Store request ─────────────────────────────────────────────────────────
+  const playerState = ctx.players.get(socket.id);
+  const username    = playerState?.username ?? socket.id;
+  pendingGangRequests.set(socket.id, {
+    socketId:    socket.id,
+    username,
+    factionSlug: factionRow.slug,
+    factionId:   factionRow.id,
+    ts:          Date.now(),
+  });
+
+  logger.debug({ socketId: socket.id, factionSlug }, "[rpGang] join request received");
+
+  // ── Notify requester ──────────────────────────────────────────────────────
+  socket.emit("rp:toast", {
+    msg:      `Join request sent to ${factionRow.name}. A leader will review it.`,
+    color:    "green",
+    duration: 5000,
+  });
+  socket.emit("rp:gangJoinRequestSent", { factionSlug: factionRow.slug, factionName: factionRow.name });
+
+  // ── Notify leaders ────────────────────────────────────────────────────────
+  broadcastPendingRequests(ctx, factionRow.id);
+}
+
+/**
+ * Phase 7E: A gang leader accepts or rejects a pending join request.
+ *
+ * Client emits: rp:gangJoinResponse { targetSocketId: string, accept: boolean }
+ *
+ * Server validates:
+ *   - Caller is a gang member with rank >= GANG_LEADER_MIN_RANK.
+ *   - targetSocketId has a pending request for the SAME faction.
+ *   - Target player is still online.
+ *
+ * On accept:
+ *   - Calls setPlayerFaction (DB write) for rank 0.
+ *   - Updates rpCache for the target.
+ *   - Emits rp:profileUpdate to target and rp:gangJoinResult to target.
+ *   - Broadcasts updated pending list to leaders.
+ *
+ * On reject:
+ *   - Removes request from pending store.
+ *   - Emits rp:gangJoinResult (accepted: false) to target.
+ *   - Broadcasts updated pending list to leaders.
+ *
+ * Security: server validates membership + rank; client authority is never trusted.
+ */
+export async function handleGangJoinResponse(
+  socket:     Socket,
+  ctx:        LicenseContext,
+  rawPayload: unknown,
+): Promise<void> {
+  const entry = ctx.rpCache.get(socket.id);
+  if (!entry) return;
+
+  // ── Caller must be a gang leader ──────────────────────────────────────────
+  if (!isGang(entry)) {
+    socket.emit("rp:toast", { msg: "You are not in a gang.", color: "red", duration: 3000 });
+    return;
+  }
+  if (!isFactionRankAtLeast(entry, GANG_LEADER_MIN_RANK)) {
+    socket.emit("rp:toast", { msg: "Only gang leaders can respond to join requests.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Parse payload ─────────────────────────────────────────────────────────
+  const payload        = rawPayload as Record<string, unknown> | null | undefined;
+  const targetSocketId = typeof payload?.targetSocketId === "string" ? payload.targetSocketId : "";
+  const accept         = payload?.accept === true;
+
+  if (!targetSocketId) {
+    socket.emit("rp:toast", { msg: "Invalid response payload.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Validate pending request ──────────────────────────────────────────────
+  const request = pendingGangRequests.get(targetSocketId);
+  if (!request) {
+    socket.emit("rp:toast", { msg: "No pending request from that player.", color: "yellow", duration: 3000 });
+    return;
+  }
+  if (request.factionId !== entry.factionId) {
+    socket.emit("rp:toast", { msg: "That request is not for your faction.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Remove from pending store ─────────────────────────────────────────────
+  pendingGangRequests.delete(targetSocketId);
+
+  // ── Reject path ───────────────────────────────────────────────────────────
+  if (!accept) {
+    ctx.io.to(targetSocketId).emit("rp:gangJoinResult", {
+      accepted:    false,
+      factionSlug: request.factionSlug,
+    });
+    ctx.io.to(targetSocketId).emit("rp:toast", {
+      msg:      `Your request to join ${request.factionSlug} was declined.`,
+      color:    "yellow",
+      duration: 5000,
+    });
+    socket.emit("rp:toast", { msg: `Declined ${request.username}'s request.`, color: "yellow", duration: 3000 });
+    broadcastPendingRequests(ctx, entry.factionId!);
+    logger.debug({ leader: socket.id, target: targetSocketId }, "[rpGang] join request rejected");
+    return;
+  }
+
+  // ── Accept path: validate target is still online ──────────────────────────
+  const targetEntry = ctx.rpCache.get(targetSocketId);
+  if (!targetEntry) {
+    socket.emit("rp:toast", { msg: "Player disconnected before you could accept.", color: "yellow", duration: 4000 });
+    broadcastPendingRequests(ctx, entry.factionId!);
+    return;
+  }
+  if (isGang(targetEntry)) {
+    socket.emit("rp:toast", { msg: "That player is already in a gang.", color: "yellow", duration: 3000 });
+    broadcastPendingRequests(ctx, entry.factionId!);
+    return;
+  }
+
+  // ── DB write: assign faction at rank 0 ───────────────────────────────────
+  let faction: FactionRow;
+  try {
+    faction = await setPlayerFaction(targetEntry.playerId, request.factionSlug, 0);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    socket.emit("rp:toast", { msg, color: "red", duration: 4000 });
+    broadcastPendingRequests(ctx, entry.factionId!);
+    return;
+  }
+
+  // ── Update in-memory cache for target ────────────────────────────────────
+  targetEntry.factionId    = faction.id;
+  targetEntry.factionSlug  = faction.slug;
+  targetEntry.factionName  = faction.name;
+  targetEntry.factionType  = faction.type;
+  targetEntry.factionColor = faction.color;
+  targetEntry.factionRank  = 0;
+
+  // ── Notify target ─────────────────────────────────────────────────────────
+  ctx.io.to(targetSocketId).emit("rp:profileUpdate", {
+    factionId:    faction.id,
+    factionSlug:  faction.slug,
+    factionName:  faction.name,
+    factionType:  faction.type,
+    factionColor: faction.color,
+    factionRank:  0,
+  });
+  ctx.io.to(targetSocketId).emit("rp:gangJoinResult", {
+    accepted:     true,
+    factionSlug:  faction.slug,
+    factionName:  faction.name,
+    factionColor: faction.color,
+  });
+  ctx.io.to(targetSocketId).emit("rp:toast", {
+    msg:      `Welcome to ${faction.name}! You are now an Associate.`,
+    color:    "green",
+    duration: 6000,
+  });
+
+  // ── Notify leader ─────────────────────────────────────────────────────────
+  socket.emit("rp:toast", {
+    msg:      `${request.username} has been welcomed into ${faction.name}.`,
+    color:    "green",
+    duration: 4000,
+  });
+
+  broadcastPendingRequests(ctx, faction.id);
+  logger.debug({ leader: socket.id, target: targetSocketId, faction: faction.slug }, "[rpGang] join request accepted");
+}
+
+/**
+ * Phase 7E: Remove a pending gang join request when the requester disconnects.
+ * Called from gameServer.ts disconnect handler (centralised teardown).
+ * Also updates online leaders so their pending list stays accurate.
+ */
+export function cleanupPendingGangRequest(socketId: string, ctx: LicenseContext): void {
+  const request = pendingGangRequests.get(socketId);
+  if (!request) return;
+  pendingGangRequests.delete(socketId);
+  broadcastPendingRequests(ctx, request.factionId);
+  logger.debug({ socketId, factionSlug: request.factionSlug }, "[rpGang] pending join request cleaned up on disconnect");
 }

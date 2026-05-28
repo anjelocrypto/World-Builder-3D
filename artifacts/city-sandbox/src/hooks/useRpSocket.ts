@@ -15,7 +15,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent } from "../shared/rpTypes";
 import { canDriveVehicleClient } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
@@ -69,6 +69,24 @@ export function useRpSocket(socket: Socket | null) {
    * Kept to last 10 entries (per spec).
    */
   const [gangPresenceEvents, setGangPresenceEvents] = useState<GangPresenceEvent[]>([]);
+
+  /**
+   * Phase 7E: Pending gang join requests received by this leader.
+   * Updated by rp:gangJoinRequests (server pushes full list on any change).
+   */
+  const [gangJoinRequests, setGangJoinRequests] = useState<GangJoinRequest[]>([]);
+
+  /**
+   * Phase 7E: Result of this player's own join request. Set by rp:gangJoinResult.
+   * Null when no request is in flight or after dismissal.
+   */
+  const [gangJoinResult, setGangJoinResult] = useState<GangJoinResult | null>(null);
+
+  /**
+   * Phase 7E: Confirmation that a join request was successfully sent.
+   * Cleared when gangJoinResult arrives.
+   */
+  const [gangJoinRequestSent, setGangJoinRequestSent] = useState<GangJoinRequestSent | null>(null);
 
   useEffect(() => {
     if (!socket) return;
@@ -206,6 +224,22 @@ export function useRpSocket(socket: Socket | null) {
       setGangPresenceEvents((prev) => [...prev.slice(-9), data]);
     };
 
+    // Phase 7E: rp:gangJoinRequests — server pushes full pending list to leaders.
+    const onGangJoinRequests = (data: GangJoinRequest[]) => {
+      setGangJoinRequests(data);
+    };
+
+    // Phase 7E: rp:gangJoinResult — outcome of this player's own join request.
+    const onGangJoinResult = (data: GangJoinResult) => {
+      setGangJoinResult(data);
+      setGangJoinRequestSent(null);
+    };
+
+    // Phase 7E: rp:gangJoinRequestSent — confirmation the server queued the request.
+    const onGangJoinRequestSent = (data: GangJoinRequestSent) => {
+      setGangJoinRequestSent(data);
+    };
+
     // Phase 7A: rp:factionChat — a faction member sent a message.
     const onFactionChat = (data: {
       fromId:       string;
@@ -239,6 +273,9 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:factionAssigned",      onFactionAssigned);
     socket.on("rp:gangStatus",           onGangStatus);
     socket.on("rp:gangPresence",         onGangPresence);
+    socket.on("rp:gangJoinRequests",     onGangJoinRequests);
+    socket.on("rp:gangJoinResult",       onGangJoinResult);
+    socket.on("rp:gangJoinRequestSent",  onGangJoinRequestSent);
 
     return () => {
       socket.off("rp:profile",              onProfile);
@@ -257,6 +294,9 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:factionAssigned",      onFactionAssigned);
       socket.off("rp:gangStatus",           onGangStatus);
       socket.off("rp:gangPresence",         onGangPresence);
+      socket.off("rp:gangJoinRequests",     onGangJoinRequests);
+      socket.off("rp:gangJoinResult",       onGangJoinResult);
+      socket.off("rp:gangJoinRequestSent",  onGangJoinRequestSent);
     };
   }, [socket]);
 
@@ -495,5 +535,18 @@ export function useRpSocket(socket: Socket | null) {
     gangPresenceEvents,
     emitGangStatus,
     emitGangAction,
+    // Phase 7E: recruitment
+    gangJoinRequests,
+    gangJoinResult,
+    gangJoinRequestSent,
+    emitGangJoinRequest: useCallback(
+      (factionSlug: string) => { socket?.emit("rp:gangJoinRequest", { factionSlug }); },
+      [socket],
+    ),
+    emitGangJoinResponse: useCallback(
+      (targetSocketId: string, accept: boolean) => { socket?.emit("rp:gangJoinResponse", { targetSocketId, accept }); },
+      [socket],
+    ),
+    dismissGangJoinResult: useCallback(() => { setGangJoinResult(null); }, []),
   };
 }

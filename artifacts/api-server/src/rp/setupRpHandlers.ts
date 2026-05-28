@@ -46,6 +46,8 @@ import {
   handleListOnlinePlayers,
   handleGangStatus,
   handleGangAction,
+  handleGangJoinRequest,
+  handleGangJoinResponse,
 } from "./rpFactionService";
 
 export type { LicenseContext };
@@ -421,4 +423,24 @@ export function setupRpHandlers(
       },
     );
   }
+
+  // ── rp:gangJoinRequest ────────────────────────────────────────────────────
+  // Phase 7E: Non-gang player requests to join a gang faction.
+  // Server validates jailed/cuffed/already-gang/duplicate before storing.
+  socket.on("rp:gangJoinRequest", (data: unknown) => {
+    handleGangJoinRequest(socket, ctx, data).catch((err) => {
+      logger.error({ err, socketId: socket.id }, "[rp] handleGangJoinRequest threw");
+      socket.emit("rp:toast", { msg: "Server error — join request failed.", color: "red", duration: 4000 });
+    });
+  });
+
+  // ── rp:gangJoinResponse ───────────────────────────────────────────────────
+  // Phase 7E: Gang leader accepts or rejects a pending join request.
+  // Server validates leader rank + matching factionId before acting.
+  socket.on("rp:gangJoinResponse", (data: unknown) => {
+    handleGangJoinResponse(socket, ctx, data).catch((err) => {
+      logger.error({ err, socketId: socket.id }, "[rp] handleGangJoinResponse threw");
+      socket.emit("rp:toast", { msg: "Server error — join response failed.", color: "red", duration: 4000 });
+    });
+  });
 }

@@ -1,17 +1,17 @@
 /**
  * Phase 7D: GangHUD — Grove Street Families gang panel.
+ * Phase 7E: Added join request button for non-members + leader request queue.
  *
- * - Opened with G key when the player is near GROVE_STREET_HANGOUT_POS.
+ * - Opened with G key when the player is a gang member OR near GROVE_STREET_HANGOUT_POS.
  * - Gang members see their faction info, rank, and a "Claim Presence" action.
- * - Non-gang players see a locked/non-member notice.
+ * - Leaders additionally see pending join requests with Accept/Reject buttons.
+ * - Non-gang players near the hangout see a "Request to Join" button.
  * - ESC / G closes the panel.
- * - All inputs stopPropagation on keydown to avoid WASD movement while panel open.
- * - The claim_presence action fires emitGangAction("claim_presence"); server
- *   validates proximity and rank before broadcasting rp:gangPresence.
  */
 
 import { useEffect, useRef, useState } from "react";
-import type { GangStatus, GangPresenceEvent } from "../shared/rpTypes";
+import type { GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent } from "../shared/rpTypes";
+import { GANG_LEADER_MIN_RANK } from "../shared/rpTypes";
 
 // ── Styling constants ─────────────────────────────────────────────────────────
 const PANEL_BG       = "rgba(6, 18, 8, 0.97)";
@@ -23,22 +23,34 @@ const GANG_GREEN_DIM = "#2e7d32";
 const GANG_LIGHT     = "#81c784";
 
 interface GangHUDProps {
-  gangStatus:         GangStatus | null;
-  gangPresenceEvents: GangPresenceEvent[];
-  nearHangout:        boolean;
-  nearTurf:           boolean;
-  emitGangStatus:     () => void;
-  emitGangAction:     (action: string) => void;
-  onClose:            () => void;
+  gangStatus:              GangStatus | null;
+  gangPresenceEvents:      GangPresenceEvent[];
+  gangJoinRequests:        GangJoinRequest[];
+  gangJoinResult:          GangJoinResult | null;
+  gangJoinRequestSent:     GangJoinRequestSent | null;
+  nearHangout:             boolean;
+  nearTurf:                boolean;
+  emitGangStatus:          () => void;
+  emitGangAction:          (action: string) => void;
+  emitGangJoinRequest:     (factionSlug: string) => void;
+  emitGangJoinResponse:    (targetSocketId: string, accept: boolean) => void;
+  dismissGangJoinResult:   () => void;
+  onClose:                 () => void;
 }
 
 export default function GangHUD({
   gangStatus,
   gangPresenceEvents,
+  gangJoinRequests,
+  gangJoinResult,
+  gangJoinRequestSent,
   nearHangout,
   nearTurf,
   emitGangStatus,
   emitGangAction,
+  emitGangJoinRequest,
+  emitGangJoinResponse,
+  dismissGangJoinResult,
   onClose,
 }: GangHUDProps) {
   const [lastAction, setLastAction] = useState<string>("");
@@ -79,7 +91,9 @@ export default function GangHUD({
     return "Associate";
   };
 
-  const isMember = gangStatus?.isMember === true;
+  const isMember  = gangStatus?.isMember === true;
+  const isLeader  = isMember && (gangStatus?.factionRank ?? 0) >= GANG_LEADER_MIN_RANK;
+  const hasPending = gangJoinRequests.length > 0;
 
   const btnStyle = (active: boolean): React.CSSProperties => ({
     padding:      "6px 14px",
@@ -163,6 +177,37 @@ export default function GangHUD({
 
         {/* ── Body ───────────────────────────────────────────────────────── */}
         <div style={{ padding: "10px 12px", display: "flex", flexDirection: "column", gap: 10 }}>
+
+          {/* ── Join result toast (shown for both members + non-members) ──── */}
+          {gangJoinResult && (
+            <div
+              style={{
+                padding:      "10px 12px",
+                borderRadius: 6,
+                border:       `1px solid ${gangJoinResult.accepted ? "rgba(76,175,80,0.4)" : "rgba(255,82,82,0.3)"}`,
+                background:   gangJoinResult.accepted ? "rgba(76,175,80,0.10)" : "rgba(255,82,82,0.08)",
+                display:      "flex",
+                flexDirection: "column",
+                gap:          6,
+              }}
+            >
+              <div style={{ fontSize: 11, fontWeight: "bold", color: gangJoinResult.accepted ? GANG_GREEN : "#ef5350" }}>
+                {gangJoinResult.accepted ? "✓ Welcome to the crew" : "✗ Request declined"}
+              </div>
+              {gangJoinResult.accepted && gangJoinResult.factionName && (
+                <div style={{ fontSize: 10, color: GANG_LIGHT }}>
+                  You are now a member of {gangJoinResult.factionName}.
+                </div>
+              )}
+              <button
+                onClick={dismissGangJoinResult}
+                onKeyDown={stopProp}
+                style={{ ...btnStyle(true), alignSelf: "flex-start", fontSize: 10, padding: "4px 10px" }}
+              >
+                Dismiss
+              </button>
+            </div>
+          )}
 
           {isMember ? (
             <>
@@ -298,26 +343,180 @@ export default function GangHUD({
                   </div>
                 </div>
               )}
+
+              {/* ── Leader: pending join requests ─────────────────────────── */}
+              {isLeader && hasPending && (
+                <div>
+                  <div
+                    style={{
+                      fontSize:      10,
+                      color:         GANG_LIGHT,
+                      letterSpacing: 1,
+                      marginBottom:  4,
+                      display:       "flex",
+                      alignItems:    "center",
+                      gap:           5,
+                    }}
+                  >
+                    JOIN REQUESTS
+                    <span
+                      style={{
+                        background:   GANG_GREEN,
+                        color:        "#0a1a0a",
+                        borderRadius: "50%",
+                        width:        14,
+                        height:       14,
+                        display:      "inline-flex",
+                        alignItems:   "center",
+                        justifyContent: "center",
+                        fontSize:     9,
+                        fontWeight:   "bold",
+                      }}
+                    >
+                      {gangJoinRequests.length}
+                    </span>
+                  </div>
+                  <div
+                    style={{
+                      display:       "flex",
+                      flexDirection: "column",
+                      gap:           4,
+                      maxHeight:     130,
+                      overflowY:     "auto",
+                    }}
+                  >
+                    {gangJoinRequests.map((req) => (
+                      <div
+                        key={req.fromId}
+                        style={{
+                          display:      "flex",
+                          alignItems:   "center",
+                          justifyContent: "space-between",
+                          padding:      "5px 8px",
+                          borderRadius: 5,
+                          border:       "1px solid rgba(76,175,80,0.18)",
+                          background:   "rgba(76,175,80,0.05)",
+                          gap:          6,
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 10, color: "#cdd", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {req.fromName}
+                          </div>
+                          <div style={{ fontSize: 9, color: "#4a7a4e" }}>
+                            {new Date(req.ts).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                          </div>
+                        </div>
+                        <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                          <button
+                            onClick={() => emitGangJoinResponse(req.fromId, true)}
+                            onKeyDown={stopProp}
+                            style={{
+                              padding:      "3px 9px",
+                              borderRadius: 4,
+                              border:       `1px solid ${GANG_GREEN}`,
+                              background:   `${GANG_GREEN}22`,
+                              color:        GANG_GREEN,
+                              fontFamily:   "'Courier New', monospace",
+                              fontSize:     10,
+                              cursor:       "pointer",
+                              fontWeight:   "bold",
+                            }}
+                          >
+                            ✓
+                          </button>
+                          <button
+                            onClick={() => emitGangJoinResponse(req.fromId, false)}
+                            onKeyDown={stopProp}
+                            style={{
+                              padding:      "3px 9px",
+                              borderRadius: 4,
+                              border:       "1px solid rgba(255,82,82,0.4)",
+                              background:   "rgba(255,82,82,0.08)",
+                              color:        "#ef5350",
+                              fontFamily:   "'Courier New', monospace",
+                              fontSize:     10,
+                              cursor:       "pointer",
+                              fontWeight:   "bold",
+                            }}
+                          >
+                            ✗
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </>
           ) : (
-            /* Non-member locked view */
+            /* Non-member view: join button / pending state */
             <div
               style={{
-                padding:      "16px 12px",
+                padding:      "14px 12px",
                 textAlign:    "center",
                 borderRadius: 6,
-                border:       "1px solid rgba(255,255,255,0.07)",
-                background:   "rgba(255,255,255,0.02)",
+                border:       "1px solid rgba(76,175,80,0.12)",
+                background:   "rgba(76,175,80,0.03)",
               }}
             >
-              <div style={{ fontSize: 18, marginBottom: 8 }}>🔒</div>
+              <div style={{ fontSize: 18, marginBottom: 8 }}>
+                {gangJoinRequestSent ? "⏳" : nearHangout ? "🏠" : "🔒"}
+              </div>
               <div style={{ fontSize: 11, color: "#667", lineHeight: 1.6 }}>
-                Grove Street Families<br />
-                <span style={{ color: "#334", fontSize: 10 }}>Members only</span>
+                Grove Street Families
               </div>
-              <div style={{ fontSize: 9, color: "#334", marginTop: 8 }}>
-                Contact an admin to join a faction.
-              </div>
+
+              {gangJoinRequestSent ? (
+                /* Request already sent — show pending state */
+                <div style={{ marginTop: 10 }}>
+                  <div
+                    style={{
+                      padding:      "6px 10px",
+                      borderRadius: 5,
+                      border:       "1px solid rgba(76,175,80,0.25)",
+                      background:   "rgba(76,175,80,0.07)",
+                      fontSize:     10,
+                      color:        GANG_LIGHT,
+                    }}
+                  >
+                    Request sent to {gangJoinRequestSent.factionName}.<br />
+                    <span style={{ color: "#4a7a4e" }}>Waiting for a leader to respond…</span>
+                  </div>
+                </div>
+              ) : nearHangout ? (
+                /* Near hangout — show join button */
+                <div style={{ marginTop: 10 }}>
+                  <button
+                    onClick={() => emitGangJoinRequest("grove_street")}
+                    onKeyDown={stopProp}
+                    style={{
+                      padding:      "7px 16px",
+                      borderRadius: 5,
+                      border:       `1px solid ${GANG_GREEN}`,
+                      background:   `${GANG_GREEN}22`,
+                      color:        GANG_GREEN,
+                      fontFamily:   "'Courier New', monospace",
+                      fontSize:     11,
+                      cursor:       "pointer",
+                      fontWeight:   "bold",
+                      letterSpacing: 0.5,
+                    }}
+                  >
+                    Request to Join Grove Street
+                  </button>
+                  <div style={{ fontSize: 9, color: "#334", marginTop: 6 }}>
+                    A leader must accept your request.
+                  </div>
+                </div>
+              ) : (
+                /* Not near hangout — show locked state */
+                <div>
+                  <div style={{ fontSize: 10, color: "#334", marginTop: 8 }}>
+                    Visit the Grove Street hangout to request membership.
+                  </div>
+                </div>
+              )}
             </div>
           )}
 

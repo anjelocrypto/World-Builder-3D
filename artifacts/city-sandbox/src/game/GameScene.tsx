@@ -122,6 +122,18 @@ interface GameSceneProps {
   emitGangStatus: () => void;
   /** Phase 7D: Emit a gang action (e.g. "claim_presence") for server validation. */
   emitGangAction: (action: string) => void;
+  /** Phase 7E: Pending join requests visible to gang leaders. */
+  gangJoinRequests: import("../shared/rpTypes").GangJoinRequest[];
+  /** Phase 7E: Result of a join request (accepted / rejected). */
+  gangJoinResult: import("../shared/rpTypes").GangJoinResult | null;
+  /** Phase 7E: Confirmation that a join request was sent. */
+  gangJoinRequestSent: import("../shared/rpTypes").GangJoinRequestSent | null;
+  /** Phase 7E: Emit rp:gangJoinRequest for a given faction slug. */
+  emitGangJoinRequest: (factionSlug: string) => void;
+  /** Phase 7E: Emit rp:gangJoinResponse (leader accept/reject). */
+  emitGangJoinResponse: (targetSocketId: string, accept: boolean) => void;
+  /** Phase 7E: Clear the gangJoinResult toast. */
+  dismissGangJoinResult: () => void;
 }
 
 export default function GameScene({
@@ -166,6 +178,12 @@ export default function GameScene({
   gangPresenceEvents,
   emitGangStatus,
   emitGangAction,
+  gangJoinRequests,
+  gangJoinResult,
+  gangJoinRequestSent,
+  emitGangJoinRequest,
+  emitGangJoinResponse,
+  dismissGangJoinResult,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -900,10 +918,16 @@ export default function GameScene({
         <GangHUD
           gangStatus={gangStatus}
           gangPresenceEvents={gangPresenceEvents}
+          gangJoinRequests={gangJoinRequests}
+          gangJoinResult={gangJoinResult}
+          gangJoinRequestSent={gangJoinRequestSent}
           nearHangout={nearGangHangout}
           nearTurf={nearGangTurf}
           emitGangStatus={emitGangStatus}
           emitGangAction={emitGangAction}
+          emitGangJoinRequest={emitGangJoinRequest}
+          emitGangJoinResponse={emitGangJoinResponse}
+          dismissGangJoinResult={dismissGangJoinResult}
           onClose={() => setShowGangHUD(false)}
         />
       )}

@@ -179,6 +179,35 @@ export interface GangPresenceEvent {
   createdAt:   number;
 }
 
+/**
+ * Phase 7E: An inbound gang join request as received by a leader via rp:gangJoinRequests.
+ * Safe — no position data, no sensitive fields.
+ */
+export interface GangJoinRequest {
+  fromId:      string;
+  fromName:    string;
+  factionSlug: string;
+  ts:          number;
+}
+
+/**
+ * Phase 7E: Result emitted to the requesting player via rp:gangJoinResult.
+ */
+export interface GangJoinResult {
+  accepted:     boolean;
+  factionSlug:  string;
+  factionName?: string;
+  factionColor?: string;
+}
+
+/**
+ * Phase 7E: Confirmation emitted to the requester via rp:gangJoinRequestSent.
+ */
+export interface GangJoinRequestSent {
+  factionSlug: string;
+  factionName: string;
+}
+
 // ── World coordinate constants ─────────────────────────────────────────────
 // All positions are [x, y, z] in world-space. rotY convention: 0 = front
 // toward −Z (matches vehicleObb + LocalPlayer updateVehicle forward axis).
@@ -379,6 +408,11 @@ export const GROVE_STREET_TURF_CENTER: [number, number, number] = [95, 0, 65];
 
 /** Visual radius (m) of the turf territory ring. */
 export const GROVE_STREET_TURF_RADIUS = 30;
+
+/** Phase 7D/7E: Minimum rank to perform any gang action (claim_presence, etc.). */
+export const GANG_ACTION_MIN_RANK = 0;
+/** Phase 7E: Minimum rank to accept/reject gang join requests. */
+export const GANG_LEADER_MIN_RANK = 4;
 
 /** Phase 6E: Pending fine state received from server via rp:fineIssued. */
 export interface RpPendingFine {

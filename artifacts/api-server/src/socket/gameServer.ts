@@ -25,6 +25,7 @@ import { upsertPlayer } from "../rp/rpPlayerService";
 import { setupRpHandlers, type LicenseContext } from "../rp/setupRpHandlers";
 import { failTest, cleanupOnDisconnect } from "../rp/rpLicenseService";
 import { loadAndSpawnOwnedVehicles } from "../rp/rpVehicleService";
+import { cleanupPendingGangRequest } from "../rp/rpFactionService";
 
 // Clamp a horizontal world coordinate so a hacked client cannot push a
 // player or vehicle outside the playable map. The margin keeps the
@@ -546,6 +547,9 @@ export function setupGameServer(httpServer: HttpServer) {
           });
         }
       });
+
+      // Phase 7E: remove any pending gang join request so leader HUDs stay accurate.
+      cleanupPendingGangRequest(socket.id, ctx);
 
       // Clear RP cache (after test cleanup).
       rpCache.delete(socket.id);
