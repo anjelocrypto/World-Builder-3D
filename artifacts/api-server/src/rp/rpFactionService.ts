@@ -601,11 +601,35 @@ interface PendingGangRequest {
 }
 const pendingGangRequests = new Map<string, PendingGangRequest>();
 
+/** P2: Pending requests older than this are silently dropped. */
+const GANG_REQUEST_TTL_MS = 60_000; // 60 s
+
+/**
+ * Removes expired pending requests for a faction.
+ * Returns true if any entries were pruned (caller can skip rebroadcast if false
+ * and it would be a no-op, though most call sites broadcast unconditionally).
+ */
+function pruneExpiredGangRequests(factionId: string): boolean {
+  const now  = Date.now();
+  let pruned = false;
+  for (const [socketId, req] of pendingGangRequests.entries()) {
+    if (req.factionId === factionId && now - req.ts > GANG_REQUEST_TTL_MS) {
+      pendingGangRequests.delete(socketId);
+      pruned = true;
+      logger.debug({ socketId, factionSlug: req.factionSlug }, "[rpGang] pending join request expired (60 s TTL)");
+    }
+  }
+  return pruned;
+}
+
 /**
  * Broadcasts the current pending requests for a faction to all its online leaders.
- * Called after any mutation (add / remove) to keep leader HUDs in sync.
+ * Called after any mutation (add / remove / expiry) to keep leader HUDs in sync.
+ * Prunes expired requests before building the list.
  */
 function broadcastPendingRequests(ctx: LicenseContext, factionId: string): void {
+  pruneExpiredGangRequests(factionId);
+
   const requests = Array.from(pendingGangRequests.values())
     .filter((r) => r.factionId === factionId)
     .map((r) => ({
@@ -652,6 +676,22 @@ export async function handleGangJoinRequest(
   const entry = ctx.rpCache.get(socket.id);
   if (!entry) return;
 
+  // ── P1: Server-side proximity check — client nearHangout is UX only ──────
+  const playerState = ctx.players.get(socket.id);
+  if (!playerState) {
+    socket.emit("rp:toast", { msg: "Player state not found. Try again.", color: "red", duration: 3000 });
+    return;
+  }
+  {
+    const dx = playerState.x - GROVE_STREET_HANGOUT_POS[0];
+    const dz = playerState.z - GROVE_STREET_HANGOUT_POS[2];
+    const dist = Math.sqrt(dx * dx + dz * dz);
+    if (dist > GROVE_STREET_HANGOUT_RADIUS) {
+      socket.emit("rp:toast", { msg: "You must be at the Grove Street hangout to request membership.", color: "red", duration: 3000 });
+      return;
+    }
+  }
+
   // ── Reject if jailed ──────────────────────────────────────────────────────
   if (entry.jailUntil !== null && entry.jailUntil.getTime() > Date.now()) {
     socket.emit("rp:toast", { msg: "You cannot send a join request while in jail.", color: "red", duration: 3000 });
@@ -662,9 +702,9 @@ export async function handleGangJoinRequest(
     socket.emit("rp:toast", { msg: "You cannot send a join request while restrained.", color: "red", duration: 3000 });
     return;
   }
-  // ── Reject if already in a gang ───────────────────────────────────────────
-  if (isGang(entry)) {
-    socket.emit("rp:toast", { msg: "You are already in a gang.", color: "yellow", duration: 3000 });
+  // ── P1: Reject if player has ANY faction (not just gang) ─────────────────
+  if (entry.factionId !== null) {
+    socket.emit("rp:toast", { msg: "You are already in a faction.", color: "yellow", duration: 3000 });
     return;
   }
   // ── Reject duplicate pending request ──────────────────────────────────────
@@ -695,10 +735,14 @@ export async function handleGangJoinRequest(
     socket.emit("rp:toast", { msg: "That faction does not accept open applications.", color: "yellow", duration: 3000 });
     return;
   }
+  // ── P2: Grove Street is the only gang with a mapped hangout/turf ──────────
+  if (factionRow.slug !== "grove_street") {
+    socket.emit("rp:toast", { msg: "That gang is not currently recruiting via this channel.", color: "yellow", duration: 3000 });
+    return;
+  }
 
   // ── Store request ─────────────────────────────────────────────────────────
-  const playerState = ctx.players.get(socket.id);
-  const username    = playerState?.username ?? socket.id;
+  const username = playerState.username ?? socket.id;
   pendingGangRequests.set(socket.id, {
     socketId:    socket.id,
     username,
@@ -761,6 +805,18 @@ export async function handleGangJoinResponse(
     socket.emit("rp:toast", { msg: "Only gang leaders can respond to join requests.", color: "red", duration: 3000 });
     return;
   }
+  // ── P1: Reject if leader is jailed or cuffed ─────────────────────────────
+  if (entry.jailUntil !== null && entry.jailUntil.getTime() > Date.now()) {
+    socket.emit("rp:toast", { msg: "You cannot respond to join requests while in jail.", color: "red", duration: 3000 });
+    return;
+  }
+  if (entry.cuffedBy !== null) {
+    socket.emit("rp:toast", { msg: "You cannot respond to join requests while restrained.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── P2: Prune expired requests before any processing ─────────────────────
+  if (entry.factionId) pruneExpiredGangRequests(entry.factionId);
 
   // ── Parse payload ─────────────────────────────────────────────────────────
   const payload        = rawPayload as Record<string, unknown> | null | undefined;
@@ -783,11 +839,9 @@ export async function handleGangJoinResponse(
     return;
   }
 
-  // ── Remove from pending store ─────────────────────────────────────────────
-  pendingGangRequests.delete(targetSocketId);
-
-  // ── Reject path ───────────────────────────────────────────────────────────
+  // ── Reject path — delete before broadcast is fine here ───────────────────
   if (!accept) {
+    pendingGangRequests.delete(targetSocketId);
     ctx.io.to(targetSocketId).emit("rp:gangJoinResult", {
       accepted:    false,
       factionSlug: request.factionSlug,
@@ -803,29 +857,49 @@ export async function handleGangJoinResponse(
     return;
   }
 
-  // ── Accept path: validate target is still online ──────────────────────────
+  // ── Accept path: re-validate target is still online + eligible ───────────
   const targetEntry = ctx.rpCache.get(targetSocketId);
   if (!targetEntry) {
     socket.emit("rp:toast", { msg: "Player disconnected before you could accept.", color: "yellow", duration: 4000 });
+    pendingGangRequests.delete(targetSocketId);
     broadcastPendingRequests(ctx, entry.factionId!);
     return;
   }
-  if (isGang(targetEntry)) {
-    socket.emit("rp:toast", { msg: "That player is already in a gang.", color: "yellow", duration: 3000 });
+  // ── P1: Reject if target has any faction (not just gang) ─────────────────
+  if (targetEntry.factionId !== null) {
+    socket.emit("rp:toast", { msg: "That player already belongs to a faction.", color: "yellow", duration: 3000 });
+    pendingGangRequests.delete(targetSocketId);
+    broadcastPendingRequests(ctx, entry.factionId!);
+    return;
+  }
+  // ── P1: Reject if target is currently jailed or cuffed ───────────────────
+  if (targetEntry.jailUntil !== null && targetEntry.jailUntil.getTime() > Date.now()) {
+    socket.emit("rp:toast", { msg: "That player is currently in jail.", color: "yellow", duration: 3000 });
+    pendingGangRequests.delete(targetSocketId);
+    broadcastPendingRequests(ctx, entry.factionId!);
+    return;
+  }
+  if (targetEntry.cuffedBy !== null) {
+    socket.emit("rp:toast", { msg: "That player is currently restrained.", color: "yellow", duration: 3000 });
+    pendingGangRequests.delete(targetSocketId);
     broadcastPendingRequests(ctx, entry.factionId!);
     return;
   }
 
-  // ── DB write: assign faction at rank 0 ───────────────────────────────────
+  // ── P1: DB write first — delete pending only after success ───────────────
   let faction: FactionRow;
   try {
     faction = await setPlayerFaction(targetEntry.playerId, request.factionSlug, 0);
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     socket.emit("rp:toast", { msg, color: "red", duration: 4000 });
+    // Keep request alive so the leader can retry — do NOT delete.
     broadcastPendingRequests(ctx, entry.factionId!);
     return;
   }
+
+  // ── DB succeeded — now remove from pending store ──────────────────────────
+  pendingGangRequests.delete(targetSocketId);
 
   // ── Update in-memory cache for target ────────────────────────────────────
   targetEntry.factionId    = faction.id;
