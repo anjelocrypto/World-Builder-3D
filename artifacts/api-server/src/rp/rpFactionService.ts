@@ -1646,6 +1646,16 @@ const territoryStateById = new Map<string, TerritoryState>(
 );
 
 /**
+ * Per-player+territory pulse rate-limit.
+ * Key: `${playerId}:${territoryId}`, value: Unix ms of last accepted pulse.
+ * Entries are kept indefinitely (tiny set — one entry per active gang member per territory).
+ */
+const pulseCooldownMap = new Map<string, number>();
+
+/** Minimum ms between accepted pulses for the same player+territory. */
+const PULSE_COOLDOWN_MS = 10_000;  // 10 seconds
+
+/**
  * Returns friendly (controlling faction) and rival (other gang) player counts
  * inside the territory using server-authoritative positions from ctx.players.
  * No coordinates, no socket IDs are included in the result.
@@ -1782,17 +1792,38 @@ export function handleGangTerritoryPulse(
     return;
   }
 
+  // ── Guard 6: per-player+territory rate limit (10 s) ──────────────────────
+  const cooldownKey = `${entry.playerId}:${territoryId}`;
+  const lastPulse   = pulseCooldownMap.get(cooldownKey) ?? 0;
+  const nowMs       = Date.now();
+  const remainingMs = PULSE_COOLDOWN_MS - (nowMs - lastPulse);
+  if (remainingMs > 0) {
+    socket.emit("rp:toast", {
+      msg:      `Pulse on cooldown. Wait ${Math.ceil(remainingMs / 1000)}s.`,
+      color:    "yellow",
+      duration: 2000,
+    });
+    return;
+  }
+
   // ── Grove Street holds / defends — increment progress ──────────────────────
+  // Record the cooldown timestamp BEFORE mutating state so a crash/exception
+  // after this line doesn't leave the map without an entry (pessimistic lock).
+  pulseCooldownMap.set(cooldownKey, nowMs);
+
   const PULSE_PROGRESS_GAIN = 5;
   state.progress      = Math.min(100, state.progress + PULSE_PROGRESS_GAIN);
-  state.lastUpdatedAt = Date.now();
+  state.lastUpdatedAt = nowMs;
 
   logger.debug(
     { socketId: socket.id, territoryId, progress: state.progress },
     "[rpGang] territory pulse — progress updated",
   );
 
-  // ── Broadcast safe payload to faction room + requester ─────────────────────
+  // ── Broadcast safe payload to all online faction members ──────────────────
+  // No socket.io room-join for faction rooms exists yet, so we iterate
+  // ctx.rpCache directly — same pattern as faction chat (Phase 7A).
+  // Anti-cheat: payload contains no coordinates, no socket IDs.
   const { friendlyCount, rivalCount } = computeTerritoryPresence(territoryId, ctx);
   const payload = {
     territoryId:            state.territoryId,
@@ -1806,9 +1837,9 @@ export function handleGangTerritoryPulse(
     // Anti-cheat: no coordinates, no socket IDs.
   };
 
-  // io.to(room) delivers to ALL sockets in the room, including the sender if
-  // they've joined that room. socket.emit is added defensively in case the
-  // socket was not yet in the room at broadcast time.
-  ctx.io.to(`faction:${entry.factionSlug}`).emit("rp:gangTerritoryStatus", payload);
-  socket.emit("rp:gangTerritoryStatus", payload);
+  for (const [socketId, cacheEntry] of ctx.rpCache.entries()) {
+    if (cacheEntry.factionSlug === entry.factionSlug) {
+      ctx.io.to(socketId).emit("rp:gangTerritoryStatus", payload);
+    }
+  }
 }
