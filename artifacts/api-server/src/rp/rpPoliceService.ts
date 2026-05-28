@@ -34,6 +34,7 @@ import {
   POLICE_BOOKING_DESK_POS,
   POLICE_BOOKING_RADIUS,
 } from "../socket/cityData";
+import { clearFinesForTarget } from "./rpFineService";
 
 // ── Guards ────────────────────────────────────────────────────────────────────
 
@@ -455,6 +456,9 @@ export async function handleArrest(
     });
     return;
   }
+
+  // ── Phase 6E: cancel any pending fine for the arrested player ────────────
+  clearFinesForTarget(targetSocketId);
 
   // ── Update target cache (DB committed) ───────────────────────────────────
   targetEntry.cash        = newCash;

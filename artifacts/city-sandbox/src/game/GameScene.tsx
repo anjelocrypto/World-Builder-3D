@@ -5,14 +5,15 @@ import * as THREE from "three";
 import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
-import type { RpProfile, RpToast } from "../shared/rpTypes";
-import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine } from "../shared/rpTypes";
+import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
 import LicenseTestHUD from "./LicenseTestHUD";
 import JobHUD from "./JobHUD";
 import VehicleShopHUD from "./VehicleShopHUD";
 import ATMHUD from "./ATMHUD";
+import { IssueFinePanel, PendingFineOverlay } from "./FineHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -90,6 +91,12 @@ interface GameSceneProps {
   emitCuff: (targetId: string) => void;
   /** Phase 6C: Emit rp:uncuff — officer releases a cuffed player. */
   emitUncuff: (targetId: string) => void;
+  /** Phase 6E: Pending fine issued by an officer to this player (from useRpSocket). */
+  pendingFine: RpPendingFine | null;
+  /** Phase 6E: Emit rp:issueFine — officer issues a fine to a nearby player. */
+  emitIssueFine: (targetId: string, amount: number, reason: string) => void;
+  /** Phase 6E: Emit rp:respondFine — target accepts or rejects a pending fine. */
+  emitRespondFine: (accept: boolean) => void;
 }
 
 export default function GameScene({
@@ -120,6 +127,9 @@ export default function GameScene({
   cuffedPlayers,
   emitCuff,
   emitUncuff,
+  pendingFine,
+  emitIssueFine,
+  emitRespondFine,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -149,6 +159,8 @@ export default function GameScene({
   const [showShop, setShowShop] = useState(false);
   // Phase 5F: ATM panel visibility
   const [showATM, setShowATM] = useState(false);
+  // Phase 6E: Issue Fine panel visibility (officer side)
+  const [showFinePanel, setShowFinePanel] = useState(false);
 
   // Stable refs for modal state — read inside the J/K keydown handler
   // (registered once with empty deps) without stale closure issues.
@@ -156,6 +168,8 @@ export default function GameScene({
   showShopRef.current = showShop;
   const showATMRef = useRef(showATM);
   showATMRef.current = showATM;
+  const showFinePanelRef = useRef(showFinePanel);
+  showFinePanelRef.current = showFinePanel;
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -288,6 +302,9 @@ export default function GameScene({
   emitCuffRef.current = emitCuff;
   const emitUncuffRef = useRef(emitUncuff);
   emitUncuffRef.current = emitUncuff;
+  // Phase 6E: stable ref for H-key fine emit.
+  const emitIssueFineRef = useRef(emitIssueFine);
+  emitIssueFineRef.current = emitIssueFine;
 
   // Phase 6A/6B: J/K police action keys.
   // J = Issue 1★ warrant against the nearest player within POLICE_WARRANT_RADIUS.
@@ -295,7 +312,13 @@ export default function GameScene({
   // Safety guards: ignore repeated events, ignore while typing, ignore while modal is open.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.code !== "KeyJ" && e.code !== "KeyK" && e.code !== "KeyU" && e.code !== "KeyI") return;
+      if (
+        e.code !== "KeyJ" &&
+        e.code !== "KeyK" &&
+        e.code !== "KeyU" &&
+        e.code !== "KeyI" &&
+        e.code !== "KeyH"
+      ) return;
       // Ignore key-repeat (held key firing continuously).
       if (e.repeat) return;
       // Ignore while the user is typing in an input/textarea/contenteditable.
@@ -305,7 +328,7 @@ export default function GameScene({
         if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || active.isContentEditable) return;
       }
       // Ignore while any modal overlay is open.
-      if (showShopRef.current || showATMRef.current) return;
+      if (showShopRef.current || showATMRef.current || showFinePanelRef.current) return;
 
       const profile = rpProfileRef.current;
       if (!profile?.onDuty || profile.currentJob !== "police_patrol") return;
@@ -326,7 +349,7 @@ export default function GameScene({
             nearestId   = p.id;
           }
         }
-        if (nearestId) emitIssueWarrantRef.current(nearestId, 1, "Suspicious behaviour");
+        if (nearestId) emitIssueWarrantRef.current(nearestId, 1, "Failure to comply");
         return;
       }
 
@@ -388,6 +411,24 @@ export default function GameScene({
           }
         }
         if (nearestId) emitUncuffRef.current(nearestId);
+        return;
+      }
+
+      if (e.code === "KeyH") {
+        // H = Open Issue Fine panel for the nearest player within POLICE_FINE_RADIUS.
+        let nearestId: string | null = null;
+        let nearestDist = Infinity;
+        for (const p of players) {
+          const dx = p.x - pos.x;
+          const dz = p.z - pos.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist <= POLICE_FINE_RADIUS && dist < nearestDist) {
+            nearestDist = dist;
+            nearestId   = p.id;
+          }
+        }
+        if (nearestId) setShowFinePanel(true);
+        return;
       }
     };
 
@@ -486,6 +527,23 @@ export default function GameScene({
       }
     }
     return null;
+  })();
+
+  // Phase 6E: Nearest player within POLICE_FINE_RADIUS (any player, no warrant needed).
+  // Used for the H-key HUD prompt; the H-key handler also reads this to decide
+  // which target to open the IssueFinePanel for.
+  const nearFineTarget: { id: string; name: string; dist: number } | null = (() => {
+    if (!isOfficerOnDuty || uiState.inVehicle) return null;
+    let best: { id: string; name: string; dist: number } | null = null;
+    for (const p of remotePlayers) {
+      const dx = p.x - playerPosRef.current.x;
+      const dz = p.z - playerPosRef.current.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist <= POLICE_FINE_RADIUS && (!best || dist < best.dist)) {
+        best = { id: p.id, name: (p as { username?: string }).username ?? p.id, dist };
+      }
+    }
+    return best;
   })();
 
   return (
@@ -622,6 +680,27 @@ export default function GameScene({
         />
       )}
 
+      {/* Phase 6E: Issue Fine panel (officer side) */}
+      {showFinePanel && nearFineTarget && (
+        <IssueFinePanel
+          targetId={nearFineTarget.id}
+          targetName={nearFineTarget.name}
+          onIssue={(targetId, amount, reason) => {
+            emitIssueFineRef.current(targetId, amount, reason);
+          }}
+          onClose={() => setShowFinePanel(false)}
+        />
+      )}
+
+      {/* Phase 6E: Pending fine overlay (target side) */}
+      {pendingFine && (
+        <PendingFineOverlay
+          fine={pendingFine}
+          onAccept={() => emitRespondFine(true)}
+          onReject={() => emitRespondFine(false)}
+        />
+      )}
+
       <HUD
         health={uiState.health}
         speed={uiState.speed}
@@ -663,6 +742,7 @@ export default function GameScene({
         cuffedUntil={rpProfile?.cuffedUntil}
         nearBookingDesk={uiState.nearBookingDesk}
         nearBookingTarget={nearBookingTarget}
+        nearFineTarget={nearFineTarget}
       />
     </div>
   );

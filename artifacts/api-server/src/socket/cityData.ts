@@ -591,3 +591,12 @@ export const POLICE_BOOKING_RADIUS = 4;
 
 /** Radius (m) within which a sentence-expired inmate can trigger their release. */
 export const POLICE_RELEASE_RADIUS = 4;
+
+/** Phase 6E: Radius (m) within which an officer may issue a fine to a player. */
+export const POLICE_FINE_RADIUS = 8;
+
+/** Phase 6E: Minimum fine amount the server will accept. */
+export const POLICE_MIN_FINE = 10;
+
+/** Phase 6E: Milliseconds before an unresolved pending fine auto-expires. */
+export const POLICE_FINE_EXPIRE_MS = 60_000;

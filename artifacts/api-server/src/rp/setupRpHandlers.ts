@@ -35,6 +35,10 @@ import {
   handleCuff,
   handleUncuff,
 } from "./rpPoliceService";
+import {
+  issueFine,
+  respondFine,
+} from "./rpFineService";
 
 export type { LicenseContext };
 
@@ -295,6 +299,40 @@ export function setupRpHandlers(
         logger.error({ err, socketId: socket.id }, "[rp] handleUncuff threw");
         socket.emit("rp:toast", {
           msg:      "Server error — uncuff failed. Try again.",
+          color:    "red",
+          duration: 4000,
+        });
+      });
+    },
+  );
+
+  // ── rp:issueFine ──────────────────────────────────────────────────────────
+  // Phase 6E: officer emits { targetId, amount, reason } to issue a fine to a
+  // nearby player. Server validates officer state, proximity, and amount range.
+  socket.on(
+    "rp:issueFine",
+    (data: { targetId?: unknown; amount?: unknown; reason?: unknown } | null | undefined) => {
+      issueFine(socket, ctx, data?.targetId, data?.amount, data?.reason).catch((err) => {
+        logger.error({ err, socketId: socket.id }, "[rp] issueFine threw");
+        socket.emit("rp:toast", {
+          msg:      "Server error — fine not issued. Try again.",
+          color:    "red",
+          duration: 4000,
+        });
+      });
+    },
+  );
+
+  // ── rp:respondFine ────────────────────────────────────────────────────────
+  // Phase 6E: target emits { accept: boolean } to accept or reject a pending fine.
+  // Server is authoritative for the payment outcome.
+  socket.on(
+    "rp:respondFine",
+    (data: { accept?: unknown } | null | undefined) => {
+      respondFine(socket, ctx, data?.accept).catch((err) => {
+        logger.error({ err, socketId: socket.id }, "[rp] respondFine threw");
+        socket.emit("rp:toast", {
+          msg:      "Server error — could not process fine response. Try again.",
           color:    "red",
           duration: 4000,
         });

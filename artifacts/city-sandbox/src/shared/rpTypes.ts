@@ -272,6 +272,21 @@ export const POLICE_BOOKING_RADIUS = 4;
 /** Phase 6D: Radius (m) of the Release Exit trigger zone. */
 export const POLICE_RELEASE_RADIUS = 4;
 
+/** Phase 6E: Radius (m) within which an officer may issue a fine. */
+export const POLICE_FINE_RADIUS = 8;
+
+/** Phase 6E: Minimum fine amount. */
+export const POLICE_MIN_FINE = 10;
+
+/** Phase 6E: Pending fine state received from server via rp:fineIssued. */
+export interface RpPendingFine {
+  officerId:   string;
+  officerName: string;
+  amount:      number;
+  reason:      string;
+  expiresAt:   number; // Unix ms
+}
+
 // ── Phase 5F: Bank / ATM constants ────────────────────────────────────────
 // These MUST stay in sync with ATM_* in api-server/src/socket/cityData.ts.
 

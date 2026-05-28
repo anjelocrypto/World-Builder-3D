@@ -61,6 +61,7 @@ interface PlayerState {
   y: number;
   z: number;
   isInVehicle: boolean;
+  username: string;
 }
 
 // ── Context ────────────────────────────────────────────────────────────────────

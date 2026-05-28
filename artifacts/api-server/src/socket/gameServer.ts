@@ -12,6 +12,7 @@ import {
   POLICE_RELEASE_RADIUS,
 } from "./cityData";
 import { releaseFromJail, jailReleaseInProgress } from "../rp/rpPoliceService";
+import { clearFinesForSocket } from "../rp/rpFineService";
 import {
   validateRpMarkers,
   validateRpMarkerVehicleClearance,
@@ -527,6 +528,9 @@ export function setupGameServer(httpServer: HttpServer) {
 
       // Phase 6A: clear any in-flight jail release guard.
       jailReleaseInProgress.delete(socket.id);
+
+      // Phase 6E: cancel any pending fines issued by or targeting this socket.
+      clearFinesForSocket(socket.id, ctx);
 
       // Phase 6C: release any suspects cuffed by this officer.
       rpCache.forEach((entry, suspectSocketId) => {

@@ -31,6 +31,7 @@ export default function Game({ username }: GameProps) {
     canDriveVehicle,
     wantedByPlayerId,
     cuffedPlayers,
+    pendingFine,
     emitInteract,
     emitLicenseCheckpoint,
     emitBuyVehicle,
@@ -43,6 +44,8 @@ export default function Game({ username }: GameProps) {
     emitArrest,
     emitCuff,
     emitUncuff,
+    emitIssueFine,
+    emitRespondFine,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -101,6 +104,9 @@ export default function Game({ username }: GameProps) {
       cuffedPlayers={cuffedPlayers}
       emitCuff={emitCuff}
       emitUncuff={emitUncuff}
+      pendingFine={pendingFine}
+      emitIssueFine={emitIssueFine}
+      emitRespondFine={emitRespondFine}
     />
   );
 }

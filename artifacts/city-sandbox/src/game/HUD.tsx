@@ -144,6 +144,11 @@ interface HUDProps {
    * K — Book / Arrest Suspect action.
    */
   nearBookingTarget?: { id: string; name: string } | null;
+  /**
+   * Phase 6E: non-null when officer is on duty + a player is within
+   * POLICE_FINE_RADIUS. Shows H — Issue Fine prompt.
+   */
+  nearFineTarget?: { id: string; name: string; dist: number } | null;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -664,6 +669,7 @@ export default function HUD({
   cuffedUntil,
   nearBookingDesk,
   nearBookingTarget,
+  nearFineTarget,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -2011,6 +2017,60 @@ export default function HUD({
             <span style={{ color: "#9bb", fontSize: 11 }}>
               · {nearUncuffTarget.name}
               {" "}({Math.round(nearUncuffTarget.dist)}m)
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Officer: Issue Fine prompt (Phase 6E)
+          H key — shown when officer on duty + any player in fine radius
+          ============================================================ */}
+      {isOfficerOnDuty && nearFineTarget && !inVehicle && (
+        <div
+          style={{
+            position:             "absolute",
+            bottom:               320,
+            left:                 "50%",
+            transform:            "translateX(-50%)",
+            background:           PANEL_BG,
+            border:               "1px solid rgba(255, 200, 100, 0.65)",
+            borderRadius:         PANEL_RADIUS,
+            padding:              "8px 14px 8px 8px",
+            display:              "flex",
+            alignItems:           "center",
+            gap:                  12,
+            boxShadow:            `${PANEL_SHADOW}, 0 0 18px rgba(255,200,100,0.2)`,
+            backdropFilter:       "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width:          28,
+              height:         28,
+              borderRadius:   6,
+              background:     "rgba(255, 200, 100, 0.15)",
+              border:         "1px solid rgba(255, 200, 100, 0.7)",
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              fontSize:       13,
+              fontWeight:     "bold",
+              color:          "#ffc864",
+              boxShadow:      "inset 0 -2px 0 rgba(255,200,100,0.35)",
+            }}
+          >
+            H
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            🏛{" "}
+            <span style={{ color: "#ffc864", fontWeight: "bold" }}>
+              Issue Fine
+            </span>{" "}
+            <span style={{ color: "#9bb", fontSize: 11 }}>
+              · {nearFineTarget.name}
+              {" "}({Math.round(nearFineTarget.dist)}m)
             </span>
           </div>
         </div>

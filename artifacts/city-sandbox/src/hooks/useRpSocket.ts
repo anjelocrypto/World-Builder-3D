@@ -15,7 +15,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine } from "../shared/rpTypes";
 import { canDriveVehicleClient } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
@@ -32,6 +32,12 @@ export function useRpSocket(socket: Socket | null) {
   const [cuffedPlayers, setCuffedPlayers] = useState<
     Record<string, { cuffedBy: string; cuffedUntil: number | null }>
   >({});
+
+  /**
+   * Phase 6E: Pending fine issued by an officer to THIS player.
+   * Null = no active fine. Set by rp:fineIssued; cleared by rp:fineResolved or rp:fineExpired.
+   */
+  const [pendingFine, setPendingFine] = useState<RpPendingFine | null>(null);
 
   useEffect(() => {
     if (!socket) return;
@@ -106,6 +112,33 @@ export function useRpSocket(socket: Socket | null) {
       });
     };
 
+    // Phase 6E: rp:fineIssued — an officer has issued a fine to THIS player.
+    const onFineIssued = (data: {
+      officerId:   string;
+      officerName: string;
+      amount:      number;
+      reason:      string;
+      expiresAt:   number;
+    }) => {
+      setPendingFine({
+        officerId:   data.officerId,
+        officerName: data.officerName,
+        amount:      data.amount,
+        reason:      data.reason,
+        expiresAt:   data.expiresAt,
+      });
+    };
+
+    // Phase 6E: rp:fineResolved — fine was accepted or rejected; clear overlay.
+    const onFineResolved = (_data: { accepted: boolean; amount: number }) => {
+      setPendingFine(null);
+    };
+
+    // Phase 6E: rp:fineExpired — fine timed out; clear overlay.
+    const onFineExpired = () => {
+      setPendingFine(null);
+    };
+
     socket.on("rp:profile",            onProfile);
     socket.on("rp:profileUpdate",      onProfileUpdate);
     socket.on("rp:toast",              onToast);
@@ -113,6 +146,9 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:wantedUpdate",       onWantedUpdate);
     socket.on("rp:jailStatus",         onJailStatus);
     socket.on("rp:cuffedUpdate",       onCuffedUpdate);
+    socket.on("rp:fineIssued",         onFineIssued);
+    socket.on("rp:fineResolved",       onFineResolved);
+    socket.on("rp:fineExpired",        onFineExpired);
 
     return () => {
       socket.off("rp:profile",            onProfile);
@@ -122,6 +158,9 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:wantedUpdate",       onWantedUpdate);
       socket.off("rp:jailStatus",         onJailStatus);
       socket.off("rp:cuffedUpdate",       onCuffedUpdate);
+      socket.off("rp:fineIssued",         onFineIssued);
+      socket.off("rp:fineResolved",       onFineResolved);
+      socket.off("rp:fineExpired",        onFineExpired);
     };
   }, [socket]);
 
@@ -261,6 +300,22 @@ export function useRpSocket(socket: Socket | null) {
     [socket],
   );
 
+  /** Phase 6E: emit rp:issueFine — officer issues a fine to a nearby player. */
+  const emitIssueFine = useCallback(
+    (targetId: string, amount: number, reason: string) => {
+      socket?.emit("rp:issueFine", { targetId, amount, reason });
+    },
+    [socket],
+  );
+
+  /** Phase 6E: emit rp:respondFine — target accepts or rejects a pending fine. */
+  const emitRespondFine = useCallback(
+    (accept: boolean) => {
+      socket?.emit("rp:respondFine", { accept });
+    },
+    [socket],
+  );
+
   return {
     rpProfile,
     rpToasts,
@@ -269,6 +324,7 @@ export function useRpSocket(socket: Socket | null) {
     canDriveVehicle,
     wantedByPlayerId,
     cuffedPlayers,
+    pendingFine,
     emitInteract,
     emitLicenseCheckpoint,
     emitBuyVehicle,
@@ -281,5 +337,7 @@ export function useRpSocket(socket: Socket | null) {
     emitArrest,
     emitCuff,
     emitUncuff,
+    emitIssueFine,
+    emitRespondFine,
   };
 }
