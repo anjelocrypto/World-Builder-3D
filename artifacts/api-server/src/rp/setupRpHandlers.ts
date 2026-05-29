@@ -46,6 +46,7 @@ import {
   handleCityGrant,
   handleGetCityProjects,
   handleCityProjectFund,
+  handleGetCityDashboard,
 } from "./rpGovernmentService";
 import {
   handleFactionChat,
@@ -582,6 +583,19 @@ export function setupRpHandlers(
       logger.error({ err, socketId: socket.id }, "[rp] handleCityProjectFund threw");
       socket.emit("rp:toast", { msg: "Server error — project not funded.", color: "red", duration: 4000 });
     });
+  });
+
+  // ── rp:getCityDashboard ───────────────────────────────────────────────────
+  // Phase 8H: Mayor requests the read-only government status dashboard.
+  // Server validates: Mayor authority, not jailed/cuffed, City Hall proximity.
+  // Read-only — no DB writes, no state mutation. Emits rp:cityDashboard with an
+  // aggregate-only payload (no per-player IDs, coords, wallets, or usernames).
+  socket.on("rp:getCityDashboard", () => {
+    try {
+      handleGetCityDashboard(socket, ctx);
+    } catch (err) {
+      logger.error({ err, socketId: socket.id }, "[rp] handleGetCityDashboard threw");
+    }
   });
 
   // ── rp:cityGrant ──────────────────────────────────────────────────────────

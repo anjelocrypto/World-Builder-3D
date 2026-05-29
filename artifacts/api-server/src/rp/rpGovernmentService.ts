@@ -673,6 +673,129 @@ export function handleGetCityProjects(socket: Socket): void {
   socket.emit("rp:cityProjects", buildProjectsPayload());
 }
 
+// ── handleGetCityDashboard (Phase 8H) ─────────────────────────────────────────
+
+/**
+ * Phase 8H: Read-only government dashboard payload.
+ *
+ * Built ENTIRELY from server-side in-memory state (ctx.players + ctx.rpCache +
+ * in-memory city config/projects). Every figure is an aggregate count or a
+ * value the server already broadcasts (taxRate, cityBudget, project labels).
+ *
+ * Deliberately omits all sensitive per-player fields: no socket IDs, no DB
+ * player IDs, no coordinates, no wallet/cash/bank values, no tokens, and no
+ * usernames (only aggregated counts).
+ */
+interface CityDashboardPayload {
+  taxRate:    number;
+  cityBudget: number;
+  /** Active projects (label + expiry only — same shape as rp:cityProjects). */
+  projects:   { projectId: string; label: string; expiresAt: number }[];
+  onlinePlayers:  number;
+  /** On-duty player counts keyed by job slug (only jobs with ≥1 on duty). */
+  onDutyByJob:    Record<string, number>;
+  /** Faction member counts keyed by factionType (only types with ≥1 member). */
+  factionCounts:  Record<string, number>;
+  wantedPlayers:  number;
+  jailedPlayers:  number;
+  cuffedPlayers:  number;
+}
+
+/**
+ * Build the dashboard payload from current server state only.
+ * Prunes expired projects first so the snapshot is accurate.
+ */
+function buildCityDashboardPayload(ctx: LicenseContext): CityDashboardPayload {
+  pruneExpiredProjects();
+
+  const now = new Date();
+  const onDutyByJob:   Record<string, number> = {};
+  const factionCounts: Record<string, number> = {};
+  let wantedPlayers = 0;
+  let jailedPlayers = 0;
+  let cuffedPlayers = 0;
+
+  for (const entry of ctx.rpCache.values()) {
+    // On-duty job counts (server-authoritative onDuty + currentJob).
+    if (entry.onDuty && entry.currentJob) {
+      onDutyByJob[entry.currentJob] = (onDutyByJob[entry.currentJob] ?? 0) + 1;
+    }
+    // Faction membership counts, aggregated by faction type only.
+    if (entry.factionType) {
+      factionCounts[entry.factionType] = (factionCounts[entry.factionType] ?? 0) + 1;
+    }
+    // Wanted / jailed / cuffed aggregate counts.
+    if (entry.wantedStars > 0) wantedPlayers++;
+    if (entry.jailUntil && entry.jailUntil > now) jailedPlayers++;
+    if (entry.cuffedBy) cuffedPlayers++;
+  }
+
+  return {
+    taxRate:       cityTaxRate,
+    cityBudget,
+    projects:      buildProjectsPayload().projects.map((p) => ({
+      projectId: p.projectId,
+      label:     p.label,
+      expiresAt: p.expiresAt,
+    })),
+    onlinePlayers: ctx.players.size,
+    onDutyByJob,
+    factionCounts,
+    wantedPlayers,
+    jailedPlayers,
+    cuffedPlayers,
+  };
+}
+
+/**
+ * rp:getCityDashboard — Mayor requests the read-only government status panel.
+ *
+ * Authority checks (all server-side, identical to other Mayor actions):
+ *   1. Mayor (government faction + rank >= MAYOR_MIN_RANK) via isMayor().
+ *   2. Not jailed.
+ *   3. Not cuffed.
+ *   4. Within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_POS (server position).
+ *
+ * Read-only: no DB writes, no budget/cooldown/project mutation. Emits
+ * rp:cityDashboard with an aggregate-only payload back to the requesting socket.
+ */
+export function handleGetCityDashboard(socket: Socket, ctx: LicenseContext): void {
+  const entry = ctx.rpCache.get(socket.id);
+  if (!entry) return;
+
+  // ── Guard 1: Mayor ────────────────────────────────────────────────────────
+  if (!isMayor(entry)) {
+    socket.emit("rp:toast", { msg: "Only the Mayor can view the city dashboard.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 2: not jailed ───────────────────────────────────────────────────
+  if (entry.jailUntil && entry.jailUntil > new Date()) {
+    socket.emit("rp:toast", { msg: "You cannot do that while jailed.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 3: not cuffed ───────────────────────────────────────────────────
+  if (entry.cuffedBy) {
+    socket.emit("rp:toast", { msg: "You cannot do that while cuffed.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 4: City Hall proximity ──────────────────────────────────────────
+  const playerState = ctx.players.get(socket.id);
+  if (!playerState) return;
+
+  const [gx, , gz] = GOVERNMENT_OFFICE_POS;
+  const dxg = playerState.x - gx;
+  const dzg = playerState.z - gz;
+  if (Math.sqrt(dxg * dxg + dzg * dzg) > GOVERNMENT_OFFICE_RADIUS) {
+    socket.emit("rp:toast", { msg: "Visit City Hall to view the city dashboard.", color: "red", duration: 3000 });
+    return;
+  }
+
+  socket.emit("rp:cityDashboard", buildCityDashboardPayload(ctx));
+}
+
 // ── handleCityProjectFund (Phase 8F) ──────────────────────────────────────────
 
 /**

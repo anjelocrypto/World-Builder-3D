@@ -2314,6 +2314,55 @@ export default function HUD({
           </div>
         )}
 
+        {/* Phase 8H: D key — City Dashboard (Mayor only, near City Hall) */}
+        {nearGovernmentOffice &&
+          !inVehicle &&
+          factionType === "government" &&
+          (factionRank ?? 0) >= 4 && (
+          <div
+            style={{
+              position:       "absolute",
+              bottom:         298,
+              left:           "50%",
+              transform:      "translateX(-50%)",
+              display:        "flex",
+              alignItems:     "center",
+              gap:            10,
+              background:     "rgba(4,10,28,0.82)",
+              border:         "1px solid rgba(51, 85, 204, 0.35)",
+              borderRadius:   8,
+              padding:        "7px 16px",
+              pointerEvents:  "none",
+              whiteSpace:     "nowrap",
+            }}
+          >
+            <div
+              style={{
+                width:          26,
+                height:         26,
+                background:     "rgba(51,85,204,0.15)",
+                border:         "1px solid rgba(51,85,204,0.55)",
+                borderRadius:   5,
+                display:        "flex",
+                alignItems:     "center",
+                justifyContent: "center",
+                fontSize:       13,
+                fontWeight:     "bold",
+                color:          "#6688ff",
+                boxShadow:      "inset 0 -2px 0 rgba(51,85,204,0.3)",
+              }}
+            >
+              D
+            </div>
+            <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+              🏛️{" "}
+              <span style={{ color: "#6688ff", fontWeight: "bold" }}>
+                City Dashboard
+              </span>
+            </div>
+          </div>
+        )}
+
       {/* ============================================================
           FULL-SCREEN — Jail overlay (Phase 6A)
           Renders on top of everything except modals (z-index 2500).

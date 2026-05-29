@@ -15,7 +15,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard } from "../shared/rpTypes";
 import { canDriveVehicleClient, GROVE_TAG_COOLDOWN_MS, CITY_TAX_DEFAULT } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
@@ -134,6 +134,9 @@ export function useRpSocket(socket: Socket | null) {
 
   /** Phase 8F: Active city projects broadcast by rp:cityProjects. */
   const [cityProjects, setCityProjects] = useState<ActiveCityProject[]>([]);
+
+  /** Phase 8H: Read-only city dashboard snapshot from rp:cityDashboard. */
+  const [cityDashboard, setCityDashboard] = useState<CityDashboard | null>(null);
 
   useEffect(() => {
     if (!socket) return;
@@ -342,6 +345,12 @@ export function useRpSocket(socket: Socket | null) {
       setCityProjects((data.projects ?? []).filter((p) => p.expiresAt > nowMs));
     };
 
+    // Phase 8H: rp:cityDashboard — server pushes a read-only aggregate snapshot
+    // in response to rp:getCityDashboard (Mayor near City Hall). Display-only.
+    const onCityDashboard = (data: CityDashboard) => {
+      setCityDashboard(data ?? null);
+    };
+
     // Phase 7A: rp:factionChat — a faction member sent a message.
     const onFactionChat = (data: {
       fromId:       string;
@@ -387,6 +396,7 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:cityAnnounce",         onCityAnnounce);
     socket.on("rp:cityConfig",           onCityConfig);
     socket.on("rp:cityProjects",         onCityProjects);
+    socket.on("rp:cityDashboard",        onCityDashboard);
 
     return () => {
       socket.off("rp:profile",              onProfile);
@@ -417,6 +427,7 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:cityAnnounce",         onCityAnnounce);
       socket.off("rp:cityConfig",           onCityConfig);
       socket.off("rp:cityProjects",         onCityProjects);
+      socket.off("rp:cityDashboard",        onCityDashboard);
     };
   }, [socket]);
 
@@ -734,6 +745,12 @@ export function useRpSocket(socket: Socket | null) {
     ),
     emitCityProjectFund: useCallback(
       (projectId: string) => { socket?.emit("rp:cityProjectFund", { projectId }); },
+      [socket],
+    ),
+    /** Phase 8H: Read-only city dashboard snapshot + request emitter. */
+    cityDashboard,
+    emitGetCityDashboard: useCallback(
+      () => { socket?.emit("rp:getCityDashboard"); },
       [socket],
     ),
   };

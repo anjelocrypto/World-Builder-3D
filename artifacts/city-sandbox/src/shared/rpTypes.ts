@@ -501,6 +501,31 @@ export const CITY_PROJECT_DEFS_CLIENT = [
 
 export type CityProjectId = typeof CITY_PROJECT_DEFS_CLIENT[number]["id"];
 
+// ── Phase 8H: City Dashboard ────────────────────────────────────────────────────
+
+/**
+ * Read-only government dashboard snapshot emitted in rp:cityDashboard.
+ *
+ * Built entirely from aggregated server state. Contains NO per-player
+ * identifiers, coordinates, wallet values, tokens, or usernames — only
+ * counts and values the server already exposes (taxRate, cityBudget, project
+ * labels). Display-only on the client.
+ */
+export interface CityDashboard {
+  taxRate:    number;
+  cityBudget: number;
+  /** Active projects (same label + expiry shape as ActiveCityProject). */
+  projects:   ActiveCityProject[];
+  onlinePlayers: number;
+  /** On-duty player counts keyed by job slug. */
+  onDutyByJob:   Record<string, number>;
+  /** Faction member counts keyed by faction type. */
+  factionCounts: Record<string, number>;
+  wantedPlayers: number;
+  jailedPlayers: number;
+  cuffedPlayers: number;
+}
+
 // ── Phase 8E: City Grant constants ────────────────────────────────────────────
 // MUST stay in sync with CITY_GRANT_* in api-server/src/socket/cityData.ts.
 

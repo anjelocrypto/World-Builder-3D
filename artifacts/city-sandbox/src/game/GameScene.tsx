@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard } from "../shared/rpTypes";
 import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS, GOVERNMENT_OFFICE_POS, GOVERNMENT_OFFICE_RADIUS, MAYOR_MIN_RANK } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
@@ -22,6 +22,7 @@ import CityAnnouncementHUD from "./CityAnnouncementHUD";
 import CityTaxHUD from "./CityTaxHUD";
 import CityBudgetHUD, { type GrantablePlayer } from "./CityBudgetHUD";
 import CityProjectsHUD from "./CityProjectsHUD";
+import CityDashboardHUD from "./CityDashboardHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -175,6 +176,10 @@ interface GameSceneProps {
   cityProjects: ActiveCityProject[];
   /** Phase 8F: Emit rp:cityProjectFund — Mayor activates a city project. */
   emitCityProjectFund: (projectId: string) => void;
+  /** Phase 8H: Read-only city dashboard snapshot from useRpSocket. */
+  cityDashboard: CityDashboard | null;
+  /** Phase 8H: Emit rp:getCityDashboard — Mayor requests a fresh snapshot. */
+  emitGetCityDashboard: () => void;
 }
 
 export default function GameScene({
@@ -243,6 +248,8 @@ export default function GameScene({
   emitCityGrant,
   cityProjects,
   emitCityProjectFund,
+  cityDashboard,
+  emitGetCityDashboard,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -320,6 +327,10 @@ export default function GameScene({
   const [showCityProjectsHUD, setShowCityProjectsHUD] = useState(false);
   const showCityProjectsHUDRef = useRef(showCityProjectsHUD);
   showCityProjectsHUDRef.current = showCityProjectsHUD;
+  // Phase 8H: City Dashboard HUD visibility (D key at Government Office, Mayor only).
+  const [showCityDashboardHUD, setShowCityDashboardHUD] = useState(false);
+  const showCityDashboardHUDRef = useRef(showCityDashboardHUD);
+  showCityDashboardHUDRef.current = showCityDashboardHUD;
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -474,6 +485,7 @@ export default function GameScene({
         e.code !== "KeyT" &&  // Phase 8B: T at Gov Office for Mayor tax rate
         e.code !== "KeyB" &&  // Phase 8E: B at Gov Office for Mayor city grant
         e.code !== "KeyP" &&  // Phase 8F: P at Gov Office for Mayor city project
+        e.code !== "KeyD" &&  // Phase 8H: D at Gov Office for Mayor city dashboard
         e.code !== "F7"
       ) return;
       // Ignore key-repeat (held key firing continuously).
@@ -496,7 +508,8 @@ export default function GameScene({
         showCityAnnouncementHUDRef.current ||
         showCityTaxHUDRef.current     ||
         showCityBudgetHUDRef.current  ||
-        showCityProjectsHUDRef.current;
+        showCityProjectsHUDRef.current ||
+        showCityDashboardHUDRef.current;
 
       // Phase 7C: F7 toggles faction admin panel (dev-only).
       // Opens only when no other modal is open; always allowed to close itself.
@@ -577,6 +590,22 @@ export default function GameScene({
           return;
         }
         return;
+      }
+
+      // Phase 8H: D at Government Office — Mayor opens read-only City Dashboard.
+      // KeyD is also strafe-right movement, so we only intercept it when the
+      // dashboard is open (to close) or when the Mayor is eligible to open it;
+      // otherwise we fall through and let movement handle the keypress normally.
+      if (e.code === "KeyD") {
+        if (showCityDashboardHUDRef.current) {
+          setShowCityDashboardHUD(false);
+          return;
+        }
+        if (!anyModalOpen && isMayorRef.current && nearGovOfficeRef.current) {
+          setShowCityDashboardHUD(true);
+          return;
+        }
+        // fall through — let KeyboardControls handle D for strafing.
       }
 
       if (anyModalOpen) return;
@@ -1138,6 +1167,15 @@ export default function GameScene({
           activeProjects={cityProjects}
           onFund={emitCityProjectFund}
           onClose={() => setShowCityProjectsHUD(false)}
+        />
+      )}
+
+      {/* Phase 8H: City Dashboard panel (Mayor only, near Gov Office, D key) */}
+      {showCityDashboardHUD && (
+        <CityDashboardHUD
+          dashboard={cityDashboard}
+          onRequest={emitGetCityDashboard}
+          onClose={() => setShowCityDashboardHUD(false)}
         />
       )}
 
