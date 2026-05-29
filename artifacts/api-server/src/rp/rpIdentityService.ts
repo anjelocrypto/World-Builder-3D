@@ -152,7 +152,8 @@ export function handlePoliceInspectID(socket: Socket, ctx: LicenseContext, targe
   ctx.io.to(targetSocketId as string).emit("rp:toast", {
     msg: "An officer inspected your ID.", color: "yellow", duration: 2500,
   });
-  logger.info({ socketId: socket.id, target: v.targetName }, "[rp] police inspected ID");
+  // Phase 11B: no socket ids in logs — log a generic event only.
+  logger.info("[rp] police inspected a nearby ID");
 }
 
 /** Clear a disconnecting player's cooldown entry. */

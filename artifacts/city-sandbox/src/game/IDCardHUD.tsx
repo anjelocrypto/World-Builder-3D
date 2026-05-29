@@ -148,7 +148,7 @@ export default function IDCardHUD({ username, profile, onClose, onShowNearest, n
               {profile.factionName ? (
                 <Row
                   label="Faction"
-                  value={`${profile.factionName}${profile.factionRank ? ` · Rank ${profile.factionRank}` : ""}`}
+                  value={`${profile.factionName}${profile.factionRank !== null && profile.factionRank !== undefined ? ` · Rank ${profile.factionRank}` : ""}`}
                   color={profile.factionColor ?? "#dde"}
                 />
               ) : (

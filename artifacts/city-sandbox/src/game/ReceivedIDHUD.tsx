@@ -121,7 +121,7 @@ export default function ReceivedIDHUD({ card, onClose }: ReceivedIDHUDProps) {
           {card.factionName ? (
             <Row
               label="Faction"
-              value={`${card.factionName}${card.factionRank ? ` · Rank ${card.factionRank}` : ""}`}
+              value={`${card.factionName}${card.factionRank !== null && card.factionRank !== undefined ? ` · Rank ${card.factionRank}` : ""}`}
               color={card.factionColor ?? "#dde"}
             />
           ) : (
