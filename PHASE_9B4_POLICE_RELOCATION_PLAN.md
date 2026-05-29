@@ -54,7 +54,7 @@ Why this block: it's the SW outer-corner residential block, directly south of th
 
 ## Confirmed decisions (locked — awaiting implementation go-ahead)
 - **Target block: (−68, 64)** — SW block, cluster translated by (0, +50). ✅ confirmed.
-- **Station facing: south** — door at **(−68, 71.5)**, toward the interior, clear of the z=45 road. ✅ confirmed.
+- **Station facing: south** — door at **(−68, 72.5)**, toward the interior, clear of the z=45 road. ✅ confirmed.
 
 Final cluster coordinates for 9B-4a (for reference, NOT yet applied):
 | Constant | → New |
@@ -64,6 +64,6 @@ Final cluster coordinates for 9B-4a (for reference, NOT yet applied):
 | `POLICE_RELEASE_POS` | (−68, 1, 72) |
 | `POLICE_BOOKING_DESK_POS` | (−62, 0, 64) |
 | `police_station` building | centre (−68, 64), 20×14, facing south |
-| `POLICE_STATION_DOOR` | (−68, 71.5) |
+| `POLICE_STATION_DOOR` | (−68, 72.5) |
 
 **Status: plan finalized. No coordinates edited. Awaiting your go-ahead to implement 9B-4a.**
