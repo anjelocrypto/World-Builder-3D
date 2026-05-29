@@ -960,10 +960,13 @@ export interface RpHouseDef {
   interior: [number, number, number];
 }
 
+// Phase 13A: relocated from the (±92) city corners (which clipped the ±87
+// landmark towers and the ±100 inner-city-ring road) to clean diagonal
+// peri-city pockets at (±117,±117). MIRROR of api-server cityData.ts.
 export const RP_HOUSES: ReadonlyArray<RpHouseDef> = [
-  { slug: "maple_court",    label: "Maple Court",    price: 25000, x: -92, z: -92, w: 8, d: 8, door: [-92, 1, -86], interior: [-92, 1, -92] },
-  { slug: "lakeside_villa", label: "Lakeside Villa", price: 40000, x: -92, z:  92, w: 8, d: 8, door: [-92, 1,  86], interior: [-92, 1,  92] },
-  { slug: "harbor_flat",    label: "Harbor Flat",    price: 30000, x:  92, z: -92, w: 8, d: 8, door: [ 92, 1, -86], interior: [ 92, 1, -92] },
+  { slug: "maple_court",    label: "Maple Court",    price: 25000, x: -117, z: -117, w: 8, d: 8, door: [-117, 1, -111], interior: [-117, 1, -117] },
+  { slug: "lakeside_villa", label: "Lakeside Villa", price: 40000, x: -117, z:  117, w: 8, d: 8, door: [-117, 1,  111], interior: [-117, 1,  117] },
+  { slug: "harbor_flat",    label: "Harbor Flat",    price: 30000, x:  117, z: -117, w: 8, d: 8, door: [ 117, 1, -111], interior: [ 117, 1, -117] },
 ];
 
 /** Distance (m) within which a player may buy / enter at a house door. */

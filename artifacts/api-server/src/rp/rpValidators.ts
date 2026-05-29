@@ -306,6 +306,28 @@ export function validateRpHouses(
       throw new Error(`[rp] house "${h.slug}" footprint overlaps a road carriageway`);
     }
 
+    // 1b. Phase 13A — clear of the entire city-core envelope. The inner-city-ring
+    // road sits at |x|=|z|=100 with width 12 → its outer edge is at 106. EVERYTHING
+    // in the core (the ±45 grid roads, all 52 procedural buildings, all 13 highrise/
+    // landmark towers, and the ring road itself) is contained within the square
+    // [-106,106]². Requiring each house footprint to clear that square on at least
+    // one axis therefore guarantees no overlap with ANY of them — without the
+    // api-server importing client geometry (BUILDINGS/REGIONAL_ROADS live in
+    // city-sandbox). This catches the Phase 12A regression where the (±92) houses
+    // clipped the ±87 landmark towers and the ±100 ring road. The literal
+    // house-vs-full-BUILDINGS / vs-REGIONAL_ROADS check lives in the client dev
+    // validation block (cityData.ts `if (isViteDev)`), where that data exists.
+    const CITY_CORE_OUTER_RADIUS = 106;
+    const CORE_MARGIN = 1;
+    const clearOnX = Math.abs(h.x) - h.w / 2 >= CITY_CORE_OUTER_RADIUS + CORE_MARGIN;
+    const clearOnZ = Math.abs(h.z) - h.d / 2 >= CITY_CORE_OUTER_RADIUS + CORE_MARGIN;
+    if (!clearOnX && !clearOnZ) {
+      throw new Error(
+        `[rp] house "${h.slug}" footprint intersects the city-core envelope ` +
+        `(|x|,|z| ≤ ${CITY_CORE_OUTER_RADIUS} m) — would clip the ring road, towers, or buildings`,
+      );
+    }
+
     // 2. clearance from every RP building
     for (const b of RP_BUILDINGS) {
       if (gap(h, b) < RP_BUILDING_MIN_GAP) {

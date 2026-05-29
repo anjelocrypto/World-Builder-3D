@@ -950,10 +950,16 @@ export interface RpHouseDef {
   interior: [number, number, number];
 }
 
+// Phase 13A: relocated from the (±92) city corners — those clipped the landmark
+// towers (±87) and the inner-city-ring road (±100). Re-solved against the FULL
+// world to clean diagonal peri-city pockets at (±117,±117): outside the ring,
+// below the 125 m city-edge tree belt, and in the gaps between the cardinal
+// homestead clusters. Door faces inward (toward city centre); interior is the
+// sealed shell centre.
 export const RP_HOUSES: ReadonlyArray<RpHouseDef> = [
-  { slug: "maple_court",   label: "Maple Court",   price: 25000, x: -92, z: -92, w: 8, d: 8, door: [-92, 1, -86], interior: [-92, 1, -92] },
-  { slug: "lakeside_villa", label: "Lakeside Villa", price: 40000, x: -92, z:  92, w: 8, d: 8, door: [-92, 1,  86], interior: [-92, 1,  92] },
-  { slug: "harbor_flat",   label: "Harbor Flat",   price: 30000, x:  92, z: -92, w: 8, d: 8, door: [ 92, 1, -86], interior: [ 92, 1, -92] },
+  { slug: "maple_court",    label: "Maple Court",    price: 25000, x: -117, z: -117, w: 8, d: 8, door: [-117, 1, -111], interior: [-117, 1, -117] },
+  { slug: "lakeside_villa", label: "Lakeside Villa", price: 40000, x: -117, z:  117, w: 8, d: 8, door: [-117, 1,  111], interior: [-117, 1,  117] },
+  { slug: "harbor_flat",    label: "Harbor Flat",    price: 30000, x:  117, z: -117, w: 8, d: 8, door: [ 117, 1, -111], interior: [ 117, 1, -117] },
 ];
 
 /** Distance (m) within which a player may buy / enter at a house door. */

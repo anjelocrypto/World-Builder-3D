@@ -260,3 +260,54 @@ Highrises (8) and landmarks (5) were left unchanged — the audit confirms they 
 **Verification:** tsc ×4 pass. api-server build, Vite build, and tsx RP validators run on the
 Mac (no server/validator code changed in Batch A). Batch B (new `validateGeneratedBuildings`,
 wiring real `STATIC_OBSTACLES`, bounded road segments) is **not** implemented — awaiting approval.
+
+---
+
+## 9. MISSED FINDING (post-Batch-A) — P1 — 12A starter houses clipped landmarks + ring road
+
+**Audit miss:** the Phase 12A house validation (and §5.8 of this audit) only checked the central
+grid roads (±45) and RP-building footprints. It never checked the **landmark towers (±87)** or the
+**inner-city-ring road (±100, width 12 → carriageway |coord|∈[94,106])**. Codex independently
+flagged this. Computed overlaps for the original (±92) plots:
+
+| House | original pos | overlaps landmark | clips ring road |
+|-------|-------------|-------------------|-----------------|
+| maple_court | (−92,−92) | landmark (−87,−87) 12×12 (Δ5 < 10) | x=−100 & z=−100 ring (house x_min −96 < −94) |
+| lakeside_villa | (−92,92) | landmark (−87,87) | x=−100 & z=100 ring |
+| harbor_flat | (92,−92) | landmark (87,−87) | x=100 & z=−100 ring |
+
+**Why it matters:** the sealed house shells visually intersect the tallest landmark towers and sit
+on the ring carriageway — broken geometry, and the ring road would clip into the house collider.
+
+**Fix (implemented below, §10):** relocate all 3 houses to verified-clean diagonal peri-city
+pockets at (±117,±117), re-solved against the FULL world; and extend the validators so a house
+can never again be placed against the core/ring/towers.
+
+---
+
+## 10. Relocation — starter houses moved to clean peri-city corners
+
+Re-solved via a full-world grid search (central ROADS, REGIONAL_ROADS incl. inner-city-ring,
+all BUILDINGS = generated+highrise+landmark, RP_BUILDINGS, STATIC_OBSTACLES incl. homesteads,
+parked cars, spawns, ATMs, gang turf, and the 125–230 city-edge tree belt). The four diagonal
+corners are clean (cardinal homestead clusters don't reach the diagonals; below the tree belt;
+outside the ring). New plots (8×8):
+
+| House | new pos | door | interior | min margin |
+|-------|---------|------|----------|-----------|
+| maple_court | (−117,−117) | (−117,−111) | (−117,−117) | 12.4 m |
+| lakeside_villa | (−117,117) | (−117,111) | (−117,117) | 12.4 m |
+| harbor_flat | (117,−117) | (117,−111) | (117,−117) | 12.4 m |
+
+**Validator hardening (so it can't regress):**
+- Server `validateRpHouses`: added a drift-free **city-core-outer-radius** assertion
+  (`CITY_CORE_OUTER_RADIUS = 106`) — every house footprint must be fully outside the core
+  envelope, which contains the grid, all 52 procedural buildings, all 13 towers/landmarks, and
+  the inner-city-ring road. One check covers them all without importing client geometry.
+- Client dev validation block (`if (isViteDev)` in cityData.ts): added a literal RP_HOUSES check
+  against the real `BUILDINGS`, `REGIONAL_ROADS`, `STATIC_OBSTACLES`, and `INITIAL_VEHICLES`
+  arrays (no mirror, no drift) — the complete full-world coverage, placed where that data lives
+  (the api-server must never import from city-sandbox).
+
+**Computed after relocation:** houses vs all buildings = 0; vs all roads incl. regional = 0; vs
+cars/spawns/ATMs/turf/homesteads = clear (see §10 verification in the commit).

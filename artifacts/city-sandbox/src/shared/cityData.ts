@@ -25,7 +25,9 @@ import { distancePointToPolyline } from "./roadGeom";
 // Phase 13A: RP civic building footprints, used only to keep procedural towers
 // out of the civic shells (see GENERATED_BUILDINGS filter below). rpTypes is a
 // pure leaf module (no imports), so this does not create an import cycle.
-import { RP_BUILDINGS } from "./rpTypes";
+// RP_HOUSES is used only by the dev validation block to assert houses clear the
+// full world (BUILDINGS / REGIONAL_ROADS / obstacles / cars).
+import { RP_BUILDINGS, RP_HOUSES } from "./rpTypes";
 
 // =============================================================
 // WORLD BOUNDS
@@ -2286,6 +2288,66 @@ if (isViteDev) {
     for (const [x, z] of r.points) {
       if (!inBounds(x, z, 0)) {
         issues.push(`regional road ${r.id} point (${x}, ${z}) is outside WORLD bounds`);
+        break;
+      }
+    }
+  }
+
+  // ---- Phase 13A: RP houses vs the FULL world ---------------------------
+  // The api-server validateRpHouses can only assert the city-core envelope
+  // (it must not import client geometry). The literal, drift-free check —
+  // RP_HOUSES vs every BUILDING, every REGIONAL_ROAD, every STATIC_OBSTACLE,
+  // and every parked car — lives here, where that data actually exists. This
+  // is what catches the Phase 12A regression (houses clipping landmark towers
+  // and the inner-city-ring road) and any future procedural/road drift.
+  const HOUSE_MARGIN = 1;
+  for (const h of RP_HOUSES) {
+    for (const b of BUILDINGS) {
+      if (
+        Math.abs(h.x - b.x) < (h.w + b.w) / 2 + HOUSE_MARGIN &&
+        Math.abs(h.z - b.z) < (h.d + b.d) / 2 + HOUSE_MARGIN
+      ) {
+        issues.push(`RP house ${h.slug} overlaps building at (${b.x.toFixed(0)},${b.z.toFixed(0)}) ${b.w.toFixed(0)}x${b.d.toFixed(0)}`);
+        break;
+      }
+    }
+    for (const o of STATIC_OBSTACLES) {
+      if (
+        Math.abs(h.x - o.x) < (h.w + o.w) / 2 + HOUSE_MARGIN &&
+        Math.abs(h.z - o.z) < (h.d + o.d) / 2 + HOUSE_MARGIN
+      ) {
+        issues.push(`RP house ${h.slug} overlaps obstacle ${o.kind} at (${o.x},${o.z})`);
+        break;
+      }
+    }
+    for (const v of INITIAL_VEHICLES) {
+      if (
+        Math.abs(h.x - v.x) < h.w / 2 + 1.5 &&
+        Math.abs(h.z - v.z) < h.d / 2 + 1.5
+      ) {
+        issues.push(`RP house ${h.slug} overlaps vehicle ${v.id}`);
+        break;
+      }
+    }
+    // Roads: central grid (bounded ±100) + every regional polyline (incl.
+    // inner-city-ring) — footprint approximated by its corner radius.
+    const houseRadius = Math.hypot(h.w / 2, h.d / 2);
+    for (const rx of ROADS.ns) {
+      if (Math.abs(h.x - rx) < ROAD_HALF + h.w / 2 && Math.abs(h.z) < 100 + h.d / 2) {
+        issues.push(`RP house ${h.slug} clips central road x=${rx}`);
+        break;
+      }
+    }
+    for (const rz of ROADS.ew) {
+      if (Math.abs(h.z - rz) < ROAD_HALF + h.d / 2 && Math.abs(h.x) < 100 + h.w / 2) {
+        issues.push(`RP house ${h.slug} clips central road z=${rz}`);
+        break;
+      }
+    }
+    for (const r of REGIONAL_ROADS) {
+      const d = distancePointToPolyline(h.x, h.z, r.points);
+      if (d < r.width / 2 + houseRadius + HOUSE_MARGIN) {
+        issues.push(`RP house ${h.slug} clips regional road ${r.id} (dist ${d.toFixed(1)}m < ${(r.width / 2 + houseRadius).toFixed(1)}m)`);
         break;
       }
     }
