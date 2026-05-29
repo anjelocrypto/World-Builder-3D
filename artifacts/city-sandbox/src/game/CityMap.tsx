@@ -432,39 +432,30 @@ function Buildings() {
 // =============================================================
 
 const LAMP_HEAD_COLOR = "#fff2c0";
-const LAMP_POOL_COLOR = "#ffcc70";
 
 function StreetLamps() {
-  // Was: 90 lamps × 4 child meshes = 360 individual meshes. Now: 4
-  // InstancedMesh objects (pole / arm / head / pool) regardless of
-  // count — and the pole no longer casts shadows since the lamps are
-  // thin and far from gameplay focus.
+  // 3 InstancedMesh objects (pole / arm / head) regardless of count — the
+  // pole doesn't cast shadows (thin + far from gameplay focus). The old
+  // flat ground-pool disc was removed (Phase: lamp lighting) — night glow now
+  // comes from real nearest-N point lights in BiomeRender's DynamicPointLights.
   const count = STREET_LIGHTS.length;
   const poleRef = useRef<THREE.InstancedMesh>(null);
   const armRef = useRef<THREE.InstancedMesh>(null);
   const headRef = useRef<THREE.InstancedMesh>(null);
-  const poolRef = useRef<THREE.InstancedMesh>(null);
   const headMatRef = useRef<THREE.MeshBasicMaterial>(null);
-  const poolMatRef = useRef<THREE.MeshBasicMaterial>(null);
   const baseHeadColor = useMemo(() => new THREE.Color(LAMP_HEAD_COLOR), []);
-  // Stronger pool at night (0.38) — additive blending means it won't
-  // over-expose; depthWrite=false prevents z-sorting artefacts on the road.
-  const STREET_POOL_BASE_OPACITY = 0.38;
   useFrame(() => {
     const n = dayNightRuntime.nightFactor;
-    if (poolMatRef.current) poolMatRef.current.opacity = STREET_POOL_BASE_OPACITY * n;
     if (headMatRef.current) {
-      // Head dims to ~35% of full brightness during the day so it doesn't
-      // read as a bright white square in sunlight.
-      headMatRef.current.color.copy(baseHeadColor).multiplyScalar(0.35 + 0.65 * n);
+      // Head dims to ~35% during the day so it doesn't read as a bright white
+      // square in sunlight, and brightens slightly above full at night for a
+      // hot emissive glow (capped so bloom-free tone mapping won't blow out).
+      headMatRef.current.color.copy(baseHeadColor).multiplyScalar(0.35 + 0.85 * n);
     }
   });
   useEffect(() => {
     const m = new THREE.Matrix4();
     const idQ = new THREE.Quaternion();
-    const flatQ = new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(-Math.PI / 2, 0, 0),
-    );
     const s = new THREE.Vector3(1, 1, 1);
     for (let i = 0; i < count; i++) {
       const lamp = STREET_LIGHTS[i];
@@ -474,10 +465,8 @@ function StreetLamps() {
       armRef.current?.setMatrixAt(i, m);
       m.compose(new THREE.Vector3(lamp.x, 5.95, lamp.z), idQ, s);
       headRef.current?.setMatrixAt(i, m);
-      m.compose(new THREE.Vector3(lamp.x, 0.04, lamp.z), flatQ, s);
-      poolRef.current?.setMatrixAt(i, m);
     }
-    for (const r of [poleRef, armRef, headRef, poolRef]) {
+    for (const r of [poleRef, armRef, headRef]) {
       if (r.current) {
         r.current.instanceMatrix.needsUpdate = true;
         r.current.computeBoundingSphere();
@@ -498,19 +487,6 @@ function StreetLamps() {
       <instancedMesh ref={headRef} args={[undefined, undefined, count]}>
         <boxGeometry args={[0.7, 0.3, 0.7]} />
         <meshBasicMaterial ref={headMatRef} color={LAMP_HEAD_COLOR} />
-      </instancedMesh>
-      <instancedMesh ref={poolRef} args={[undefined, undefined, count]}>
-        <circleGeometry args={[5.5, 20]} />
-        {/* Additive blending makes the pool look like real emitted light on
-            the dark asphalt. depthWrite=false prevents z-sort artefacts. */}
-        <meshBasicMaterial
-          ref={poolMatRef}
-          color={LAMP_POOL_COLOR}
-          transparent
-          opacity={STREET_POOL_BASE_OPACITY}
-          blending={THREE.AdditiveBlending}
-          depthWrite={false}
-        />
       </instancedMesh>
     </group>
   );

@@ -283,8 +283,12 @@ export default function DayNightController() {
       // eslint-disable-next-line no-console
       console.log(
         `lightingRealism OK: toneMapping=ACES, shadowMap=PCFSoft, ` +
-          `activePointLights<=8, windowsNightReactive=true, ` +
-          `lampPoolsNightReactive=true`,
+          `activePointLights<=8, windowsNightReactive=true`,
+      );
+      // eslint-disable-next-line no-console
+      console.log(
+        `lampLighting OK: noGroundPools=true, activePointLights<=8 ` +
+          `(nearest-N over curated anchors + every lamp head)`,
       );
     }
   });

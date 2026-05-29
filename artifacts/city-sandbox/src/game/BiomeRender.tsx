@@ -13,6 +13,7 @@ import {
   VILLAGE_REAL_LIGHTS,
   JUNCTION_REAL_LIGHTS,
   MOUNTAIN_REAL_LIGHTS,
+  STREET_LIGHTS,
   ROAD_ELEVATION_PROFILES,
   MOUNTAIN_ROAD_IDS,
   CITY_EDGE_TREES,
@@ -778,26 +779,15 @@ function VillageParkingPads() {
 // =============================================================
 
 const FOREST_LAMP_HEAD = "#ffd58a";
-const FOREST_LAMP_POOL = "#f0c074";
 const FOREST_LAMP_POLE = "#3a2b1c";
 
 function ForestLamps() {
-  // Three SHARED materials so the day/night useFrame only mutates 3
-  // refs total instead of one per lamp instance. Each lamp's three
-  // meshes attach the corresponding material via the `material` prop.
+  // Two SHARED materials so the day/night useFrame only mutates refs total
+  // instead of one per lamp instance. The old flat ground-pool disc was
+  // removed (Phase: lamp lighting); night glow now comes from real nearest-N
+  // point lights in DynamicPointLights.
   const headMat = useMemo(
     () => new THREE.MeshBasicMaterial({ color: FOREST_LAMP_HEAD }),
-    [],
-  );
-  const poolMat = useMemo(
-    () =>
-      new THREE.MeshBasicMaterial({
-        color: FOREST_LAMP_POOL,
-        transparent: true,
-        opacity: 0.32,
-        blending: THREE.AdditiveBlending,
-        depthWrite: false,
-      }),
     [],
   );
   const poleMat = useMemo(
@@ -805,21 +795,18 @@ function ForestLamps() {
     [],
   );
   const baseHeadColor = useMemo(() => new THREE.Color(FOREST_LAMP_HEAD), []);
-  const FOREST_POOL_BASE_OPACITY = 0.32;
 
   useFrame(() => {
     const n = dayNightRuntime.nightFactor;
-    poolMat.opacity = FOREST_POOL_BASE_OPACITY * n;
-    headMat.color.copy(baseHeadColor).multiplyScalar(0.4 + 0.6 * n);
+    headMat.color.copy(baseHeadColor).multiplyScalar(0.4 + 0.85 * n);
   });
 
   useEffect(() => {
     return () => {
       headMat.dispose();
-      poolMat.dispose();
       poleMat.dispose();
     };
-  }, [headMat, poolMat, poleMat]);
+  }, [headMat, poleMat]);
 
   return (
     <group>
@@ -833,19 +820,8 @@ function ForestLamps() {
           <mesh position={[0, 5.0, 0]} material={headMat}>
             <boxGeometry args={[0.55, 0.5, 0.55]} />
           </mesh>
-          {/* Fake light pool on the ground */}
-          <mesh
-            position={[0, 0.04, 0]}
-            rotation={[-Math.PI / 2, 0, 0]}
-            material={poolMat}
-          >
-            <circleGeometry args={[4, 14]} />
-          </mesh>
         </group>
       ))}
-      {/* Real point lights for the village centre live in
-          JunctionRealLights so the entire scene's pointLight set is
-          declared in exactly one place. */}
     </group>
   );
 }
@@ -871,31 +847,27 @@ interface LampStyleDef {
   headColor: string;
   headSize: [number, number, number];
   headY: number;
-  poolColor: string;
-  poolRadius: number;
-  poolOpacity: number;
 }
 
+// Per-style pole + emissive head only. The flat ground-pool disc was removed
+// (Phase: lamp lighting) — night glow now comes from real nearest-N point
+// lights in DynamicPointLights.
 const LAMP_STYLE_DEFS: Record<LampStyle, LampStyleDef> = {
   urban: {
     poleColor: "#444448", poleHeight: 6.0, poleRadius: 0.10, poleTopY: 3.0,
     headColor: "#fff2c0", headSize: [0.7, 0.3, 0.7], headY: 5.95,
-    poolColor: "#ffe49a", poolRadius: 5.5, poolOpacity: 0.34,
   },
   bridge: {
     poleColor: "#3a3a3e", poleHeight: 6.4, poleRadius: 0.11, poleTopY: 3.2,
     headColor: "#fff0b0", headSize: [0.8, 0.35, 0.8], headY: 6.35,
-    poolColor: "#ffe0a0", poolRadius: 6.5, poolOpacity: 0.38,
   },
   rural: {
     poleColor: "#3a2b1c", poleHeight: 4.6, poleRadius: 0.10, poleTopY: 2.3,
     headColor: "#ffc880", headSize: [0.55, 0.5, 0.55], headY: 4.7,
-    poolColor: "#f0a060", poolRadius: 4.5, poolOpacity: 0.28,
   },
   mountain: {
     poleColor: "#2c2c30", poleHeight: 3.0, poleRadius: 0.09, poleTopY: 1.5,
     headColor: "#ffb070", headSize: [0.5, 0.3, 0.5], headY: 3.05,
-    poolColor: "#e09060", poolRadius: 3.5, poolOpacity: 0.30,
   },
 };
 
@@ -960,58 +932,15 @@ function HeadLayer({ lamps, style }: InstancedLampLayerProps) {
   useFrame(() => {
     const m = matRef.current;
     if (!m) return;
-    // Dim the head color toward neutral when the sun is up so the
-    // emissive lamp head doesn't read as full bright in midday light.
-    m.color.copy(baseColor).multiplyScalar(0.4 + 0.6 * dayNightRuntime.nightFactor);
+    // Dim the head color toward neutral when the sun is up so the emissive
+    // lamp head doesn't read as full bright in midday light; brighten it a
+    // touch above full at night for a hotter glow.
+    m.color.copy(baseColor).multiplyScalar(0.4 + 0.85 * dayNightRuntime.nightFactor);
   });
   return (
     <instancedMesh ref={ref} args={[undefined, undefined, lamps.length]}>
       <boxGeometry args={style.headSize} />
       <meshBasicMaterial ref={matRef} color={style.headColor} />
-    </instancedMesh>
-  );
-}
-
-function PoolLayer({ lamps, style }: InstancedLampLayerProps) {
-  const ref = useRef<THREE.InstancedMesh>(null);
-  const matRef = useRef<THREE.MeshBasicMaterial>(null);
-  useEffect(() => {
-    const mesh = ref.current;
-    if (!mesh) return;
-    const m = new THREE.Matrix4();
-    const q = new THREE.Quaternion();
-    // Lay the disc flat on the ground (rotate around X by -PI/2).
-    const flat = new THREE.Quaternion().setFromEuler(
-      new THREE.Euler(-Math.PI / 2, 0, 0)
-    );
-    const s = new THREE.Vector3(1, 1, 1);
-    for (let i = 0; i < lamps.length; i++) {
-      const l = lamps[i];
-      q.copy(flat);
-      m.compose(new THREE.Vector3(l.x, 0.04 + lampGroundY(l), l.z), q, s);
-      mesh.setMatrixAt(i, m);
-    }
-    mesh.instanceMatrix.needsUpdate = true;
-    mesh.computeBoundingSphere();
-  }, [lamps, style]);
-  useFrame(() => {
-    const m = matRef.current;
-    if (!m) return;
-    // Pool fades almost completely during the day — by night the
-    // disc reaches its full base opacity.
-    m.opacity = style.poolOpacity * dayNightRuntime.nightFactor;
-  });
-  return (
-    <instancedMesh ref={ref} args={[undefined, undefined, lamps.length]}>
-      <circleGeometry args={[style.poolRadius, 14]} />
-      <meshBasicMaterial
-        ref={matRef}
-        color={style.poolColor}
-        transparent
-        opacity={style.poolOpacity}
-        blending={THREE.AdditiveBlending}
-        depthWrite={false}
-      />
     </instancedMesh>
   );
 }
@@ -1035,7 +964,6 @@ function RegionalRoadLamps() {
           <group key={style}>
             <PoleLayer lamps={lamps} style={def} />
             <HeadLayer lamps={lamps} style={def} />
-            <PoolLayer lamps={lamps} style={def} />
           </group>
         );
       })}
@@ -1062,9 +990,17 @@ interface RealLightSource {
   distance: number;
 }
 
-// Plaza (was 4 hard-coded pointLights in CityMap), JUNCTION, VILLAGE,
-// MOUNTAIN — consolidated into one source list so we have a single
-// place to nearest-N filter. Driver headlight stays in LocalPlayer.
+// Candidate real-light sources, nearest-N filtered each frame. There are two
+// tiers, merged into ONE candidate list:
+//   1. Curated "scene anchor" lights — plaza, junctions, village centre,
+//      mountain passes (~25 entries). Brighter / wider reach.
+//   2. EVERY lamp head — city street lamps + regional-road lamps + village
+//      lamps (~340 entries). Dimmer / shorter reach, so a lamp the player
+//      walks past actually casts real localized light instead of relying on
+//      the removed flat ground disc.
+// With ~365 candidates, a full sort every frame would be wasteful, so the
+// selection below is a PARTIAL nearest-K scan (no allocation, no sort) that
+// also skips any candidate beyond CANDIDATE_MAX_DIST2 cheaply.
 const PLAZA_LIGHT_COORDS: ReadonlyArray<readonly [number, number, number]> = [
   [ 15, 6,  15],
   [-15, 6,  15],
@@ -1072,7 +1008,16 @@ const PLAZA_LIGHT_COORDS: ReadonlyArray<readonly [number, number, number]> = [
   [-15, 6, -15],
 ];
 
+// Per-regional-style lamp-head Y + intensity/reach (modest + localized).
+const REGIONAL_LAMP_LIGHT: Record<LampStyle, { y: number; intensity: number; distance: number; color: string }> = {
+  urban:    { y: 5.95, intensity: 2.4, distance: 18, color: "#ffe6b0" },
+  bridge:   { y: 6.35, intensity: 2.6, distance: 20, color: "#ffe2b0" },
+  rural:    { y: 4.7,  intensity: 2.0, distance: 16, color: "#ffcf90" },
+  mountain: { y: 3.05, intensity: 1.8, distance: 14, color: "#ffc488" },
+};
+
 const ALL_REAL_LIGHTS: RealLightSource[] = [
+  // Tier 1 — curated scene anchors.
   ...PLAZA_LIGHT_COORDS.map(([x, y, z]) => ({
     x, y, z, color: "#ffd9a0", intensity: 6, distance: 28,
   })),
@@ -1085,9 +1030,26 @@ const ALL_REAL_LIGHTS: RealLightSource[] = [
   ...MOUNTAIN_REAL_LIGHTS.map(([x, y, z]) => ({
     x, y, z, color: "#ffd0a0", intensity: 3.5, distance: 40,
   })),
+  // Tier 2 — every lamp head (city + regional + village).
+  ...STREET_LIGHTS.map((l) => ({
+    x: l.x, y: 5.95, z: l.z, color: "#ffe6b0", intensity: 2.4, distance: 18,
+  })),
+  ...REGIONAL_ROAD_LAMPS.map((l) => {
+    const d = REGIONAL_LAMP_LIGHT[l.style];
+    return {
+      x: l.x, y: d.y + getRoadElevationAt(l.x, l.z), z: l.z,
+      color: d.color, intensity: d.intensity, distance: d.distance,
+    };
+  }),
+  ...VILLAGE_LAMPS.map((l) => ({
+    x: l.x, y: 5.0, z: l.z, color: "#ffd58a", intensity: 2.2, distance: 16,
+  })),
 ];
 
 const MAX_ACTIVE_LIGHTS = 7; // + 1 driver headlight = 8 total budget.
+// Candidates farther than this (squared, metres²) from the camera are skipped
+// before the nearest-K test — no lamp reaches the eye from beyond ~60 m anyway.
+const CANDIDATE_MAX_DIST2 = 60 * 60;
 
 function DynamicPointLights() {
   const { camera } = useThree();
@@ -1098,39 +1060,50 @@ function DynamicPointLights() {
     () => ALL_REAL_LIGHTS.map((s) => ({ ...s, _color: new THREE.Color(s.color) })),
     [],
   );
-  // Reused selection buffer so we don't allocate every frame.
-  const distBuf = useRef<{ i: number; d: number }[]>(
-    sources.map((_, i) => ({ i, d: 0 })),
-  );
+  // Reused nearest-K result buffers (index + squared distance), no per-frame
+  // allocation. selN tracks how many slots are currently filled.
+  const selIdx = useRef<number[]>(new Array(MAX_ACTIVE_LIGHTS).fill(-1));
+  const selDist = useRef<number[]>(new Array(MAX_ACTIVE_LIGHTS).fill(Infinity));
 
   useFrame(() => {
     const cx = camera.position.x;
     const cy = camera.position.y;
     const cz = camera.position.z;
-    const buf = distBuf.current;
+    const idx = selIdx.current;
+    const dist = selDist.current;
+    // Reset the nearest-K buffer.
+    let selN = 0;
+    for (let k = 0; k < MAX_ACTIVE_LIGHTS; k++) { idx[k] = -1; dist[k] = Infinity; }
+
+    // Partial nearest-K selection: one linear scan, insert into a tiny sorted
+    // (ascending) buffer of size MAX_ACTIVE_LIGHTS. O(candidates × K) with a
+    // tiny K — far cheaper than sorting all ~365 candidates each frame, and it
+    // allocates nothing.
     for (let i = 0; i < sources.length; i++) {
       const s = sources[i];
       const dx = s.x - cx;
       const dy = s.y - cy;
       const dz = s.z - cz;
-      buf[i].i = i;
-      buf[i].d = dx * dx + dy * dy + dz * dz;
+      const d2 = dx * dx + dy * dy + dz * dz;
+      if (d2 > CANDIDATE_MAX_DIST2) continue;            // cheap range cull
+      if (selN >= MAX_ACTIVE_LIGHTS && d2 >= dist[MAX_ACTIVE_LIGHTS - 1]) continue; // worse than worst kept
+      // Insertion sort into the small buffer.
+      let p = Math.min(selN, MAX_ACTIVE_LIGHTS - 1);
+      while (p > 0 && dist[p - 1] > d2) { dist[p] = dist[p - 1]; idx[p] = idx[p - 1]; p--; }
+      dist[p] = d2;
+      idx[p] = i;
+      if (selN < MAX_ACTIVE_LIGHTS) selN++;
     }
-    // Small N (~25): a full sort each frame is fine.
-    buf.sort((a, b) => a.d - b.d);
-    // Daylight kills lamp realism: gate every real point light by
-    // nightFactor so the budget collapses to zero during midday and
-    // the lights smoothly come back on at dusk.
+
+    // Daylight kills lamp realism: gate every real point light by nightFactor
+    // so the budget collapses to zero during midday and lights come back at dusk.
     const n = dayNightRuntime.nightFactor;
     for (let k = 0; k < MAX_ACTIVE_LIGHTS; k++) {
       const ref = refs.current[k];
       if (!ref) continue;
-      const sel = buf[k];
-      if (!sel) {
-        ref.intensity = 0;
-        continue;
-      }
-      const s = sources[sel.i];
+      const si = idx[k];
+      if (si < 0) { ref.intensity = 0; continue; }
+      const s = sources[si];
       ref.position.set(s.x, s.y, s.z);
       ref.color.copy(s._color);
       ref.intensity = s.intensity * n;
