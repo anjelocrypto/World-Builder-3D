@@ -135,6 +135,39 @@ export function footprintHitsRoad(
   return false;
 }
 
+/**
+ * Phase 13A (Batch B): bounded variant of footprintHitsRoad.
+ *
+ * footprintHitsRoad above treats each central road centerline as an INFINITE
+ * line (no length bound). That is a safe (stricter) superset for objects inside
+ * the city core, but it is WRONG for peri-city objects: a footprint far north
+ * at x≈45 would be falsely flagged as on the "x=45" road even though that grid
+ * road only spans z∈[-CITY_GRID_HALF, +CITY_GRID_HALF]. This bounded version
+ * only reports an overlap when the footprint also lies within the road's actual
+ * length, so it is correct for objects placed outside the core (e.g. the
+ * relocated RP houses). The central grid roads run the full ±CITY_GRID_HALF.
+ */
+const CITY_GRID_HALF = 100;
+export function footprintHitsCentralRoadBounded(
+  cx: number,
+  cz: number,
+  w: number,
+  d: number,
+  margin = 0,
+): boolean {
+  const x0 = cx - w / 2 - margin, x1 = cx + w / 2 + margin;
+  const z0 = cz - d / 2 - margin, z1 = cz + d / 2 + margin;
+  // N-S roads run along z within [-CITY_GRID_HALF, CITY_GRID_HALF].
+  for (const rx of NS_ROADS_X)
+    if (x1 > rx - ROAD_HALF && x0 < rx + ROAD_HALF &&
+        z1 > -CITY_GRID_HALF && z0 < CITY_GRID_HALF) return true;
+  // E-W roads run along x within [-CITY_GRID_HALF, CITY_GRID_HALF].
+  for (const rz of EW_ROADS_Z)
+    if (z1 > rz - ROAD_HALF && z0 < rz + ROAD_HALF &&
+        x1 > -CITY_GRID_HALF && x0 < CITY_GRID_HALF) return true;
+  return false;
+}
+
 /** Edge-to-edge gap (m) between two AABB footprints; negative = overlap. */
 function footprintGap(a: RpBuildingDef, b: RpBuildingDef): number {
   return Math.max(
@@ -301,9 +334,10 @@ export function validateRpHouses(
   for (let i = 0; i < RP_HOUSES.length; i++) {
     const h = RP_HOUSES[i];
 
-    // 1. off-road footprint
-    if (footprintHitsRoad(h.x, h.z, h.w, h.d)) {
-      throw new Error(`[rp] house "${h.slug}" footprint overlaps a road carriageway`);
+    // 1. off-road footprint (bounded central-road check — houses are peri-city,
+    //    so the infinite-line variant would mis-handle them).
+    if (footprintHitsCentralRoadBounded(h.x, h.z, h.w, h.d)) {
+      throw new Error(`[rp] house "${h.slug}" footprint overlaps a central road carriageway`);
     }
 
     // 1b. Phase 13A — clear of the entire city-core envelope. The inner-city-ring
@@ -347,8 +381,8 @@ export function validateRpHouses(
 
     // 4. door off-road, outside the shell, and reachable
     const [dx, , dz] = h.door;
-    if (footprintHitsRoad(dx, dz, 0, 0)) {
-      throw new Error(`[rp] house "${h.slug}" door [${dx}, ${dz}] is on a road carriageway`);
+    if (footprintHitsCentralRoadBounded(dx, dz, 0, 0)) {
+      throw new Error(`[rp] house "${h.slug}" door [${dx}, ${dz}] is on a central road carriageway`);
     }
     if (insideFootprint(dx, dz, h)) {
       throw new Error(`[rp] house "${h.slug}" door [${dx}, ${dz}] is inside the sealed shell (would trap)`);

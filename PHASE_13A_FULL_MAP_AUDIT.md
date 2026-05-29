@@ -311,3 +311,66 @@ outside the ring). New plots (8×8):
 
 **Computed after relocation:** houses vs all buildings = 0; vs all roads incl. regional = 0; vs
 cars/spawns/ATMs/turf/homesteads = clear (see §10 verification in the commit).
+
+---
+
+## 11. Batch B — Full-map validator upgrades (validator-only; no coordinates moved)
+
+**No map bug was found.** A pre-flight of every new assertion against current data read 0
+overlaps. One important methodology note: a naïve centre+radius "circle" road test reports a
+false −1.49 m on the (±87) landmark towers vs the inner-city-ring; the towers are in fact a
+real 1 m clear of the ring. The new validator therefore uses **proper AABB-vs-road-band
+geometry** (axis-aligned segments tested exactly; diagonal segments conservative), which
+correctly reports 0. No object was moved.
+
+### Server (`rpValidators.ts`) — server-owned constants only
+- Added `footprintHitsCentralRoadBounded(cx,cz,w,d,margin)` — a length-bounded variant of
+  `footprintHitsRoad` (the old one treats grid centerlines as infinite lines, which is a safe
+  superset for in-city objects but wrong for peri-city ones). `validateRpHouses` now uses the
+  bounded helper for the house footprint + door road checks (houses are peri-city at ±117).
+- `validateRpHouses` already gained (in the §10 fix) the drift-free `CITY_CORE_OUTER_RADIUS`
+  envelope assertion covering the grid, all 52 procedural buildings, all 13 towers/landmarks,
+  and the inner-city-ring in one check.
+
+### Client dev block (`cityData.ts` `if (isViteDev)`) — full real geometry, no mirrors
+- Added `footprintHitsRoadPath()` — proper AABB-vs-road-band helper (used below).
+- RP_HOUSES vs the FULL world: every BUILDING, every REGIONAL_ROAD (AABB-band), the central
+  grid, every STATIC_OBSTACLE (incl. homestead house+fence obstacles), and every parked car.
+- RP_BUILDINGS vs all BUILDINGS (margin 0) — regression guard for the Batch A procedural
+  keep-out; and RP_BUILDINGS vs every REGIONAL_ROAD.
+- All BUILDINGS (generated + highrise + landmark) vs every REGIONAL_ROAD carriageway.
+
+### Updated coverage matrix
+
+| Category | Server validator | Client dev validator | Asserts | Remaining gap |
+|----------|------------------|----------------------|---------|---------------|
+| Central roads | `footprintHitsRoad` + new `…Bounded` | grid checks | footprint vs grid (bounded) | — |
+| Regional roads (incl. inner-city-ring, outer-loop, spurs, driveways) | — (client-only data) | `footprintHitsRoadPath` | buildings/RP/houses vs band; rail pillars; lamps; connectivity | diagonal segments use conservative distance (over-safe) |
+| Procedural buildings | — | YES | vs grid, vs regional roads, vs RP buildings | self-overlap (§5.2) still cosmetic-only, unchecked |
+| Highrise / landmark | — | YES | vs regional roads, vs RP buildings (in BUILDINGS set) | — |
+| RP buildings | `validateRpBuildings` | NEW | road/gap/cars/doors/walls/jail + vs full BUILDINGS + regional | — |
+| RP houses | `validateRpHouses` (+core envelope, bounded roads) | NEW (full world) | road/RP-gap/cars/doors/interior/markers/core + vs BUILDINGS/regional/obstacles/cars | — |
+| Static obstacles / homesteads / fences | — | PARTIAL | houses & spawns & vehicles vs obstacles; homesteads vs vehicles/lamps/station/stairs | obstacle-vs-road not asserted (hand-placed roadside by design) |
+| Parked cars | `validateRpBuildings`/`…Houses`/`…VehicleClearance` | YES | vs RP buildings/houses, 8 m marker clearance, vs buildings/obstacles, grounding | — |
+| Spawns | `validateRpMarkers`/`safeStationSpawn` | YES | off-road + obstacle + bounds + vs buildings | legacy plaza `SPAWN_POINTS` on grid (P3, §5.4) — unmoved |
+| ATMs / job & checkpoint markers | `validateRpMarkers`/`…VehicleClearance` | — | on/off-road per role, obstacle, 8 m car clearance | — |
+| Gang turf / tag points | `validateRpMarkers` + `validateRpHouses` | — | off-road; house turf-radius clearance | — |
+| NPC traffic routes | — | YES | waypoint bounds + on-road metric (`trafficWaypointsOnRoad`) | per-waypoint hard-fail not enforced (metric only) |
+| Bridge / rail / station / skybridges | — | YES | rail loop closed, pillars clear of all roads, station clear of roads+buildings, train path clear, skybridge clearance | render-only massifs/decks have no collision (by design) |
+| Old race system | grep-confirmed removed | — | n/a | none |
+
+### Intentionally still uncovered (and why)
+- **Procedural self-overlap** (§5.2, 92 pairs): cosmetic merged towers; no collision/gameplay
+  impact. Deferred to Batch F (visual polish).
+- **Static-obstacle-vs-road footprints**: warehouses/cabins/gas-stop are hand-placed *beside*
+  regional roads by design; a footprint-vs-road check would flag intentional roadside placement.
+  Left as-is to avoid false positives.
+- **NPC route per-waypoint hard-fail**: the dev block reports an on-road metric; promoting it to
+  a hard assertion is Batch C/D.
+
+### Verification
+- tsc ×4 pass.
+- Pre-flight overlap script (proper AABB-band): RP↔BUILDINGS 0, BUILDINGS↔grid 0,
+  BUILDINGS↔regional 0, houses↔(buildings/regional/obstacles/cars) 0, cars↔houses 0.
+- api-server build, `BASE_PATH=/ PORT=5173 pnpm build` (Vite), and tsx `rpValidators` run on the
+  Mac; the client dev validator runs at Vite dev module-load (console-warns, non-fatal).

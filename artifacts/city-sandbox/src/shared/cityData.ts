@@ -2252,6 +2252,42 @@ if (isViteDev) {
     return false;
   };
 
+  // Phase 13A (Batch B): proper AABB-footprint vs polyline-road-carriageway test.
+  // Axis-aligned segments (the whole inner-city-ring, spines, grid spurs) are
+  // tested exactly as AABB-vs-band; diagonal segments (outer-loop chamfers,
+  // forest/mountain curves) fall back to a conservative centre-to-segment
+  // distance minus the footprint corner radius. Using true band geometry — not
+  // a centre+radius circle — avoids false positives on objects deliberately
+  // placed ~1 m off a straight road (e.g. the landmark towers beside the ring).
+  const footprintHitsRoadPath = (
+    cx: number, cz: number, w: number, d: number,
+    road: { points: readonly (readonly [number, number])[]; width: number },
+    margin = 0,
+  ): boolean => {
+    const half = road.width / 2;
+    const pts = road.points;
+    for (let i = 0; i < pts.length - 1; i++) {
+      const [ax, az] = pts[i];
+      const [bx, bz] = pts[i + 1];
+      if (ax === bx) {
+        const zmin = Math.min(az, bz) - half, zmax = Math.max(az, bz) + half;
+        if (Math.abs(cx - ax) < w / 2 + half + margin &&
+            cz + d / 2 + margin > zmin && cz - d / 2 - margin < zmax) return true;
+      } else if (az === bz) {
+        const xmin = Math.min(ax, bx) - half, xmax = Math.max(ax, bx) + half;
+        if (Math.abs(cz - az) < d / 2 + half + margin &&
+            cx + w / 2 + margin > xmin && cx - w / 2 - margin < xmax) return true;
+      } else {
+        const dx = bx - ax, dz = bz - az, l2 = dx * dx + dz * dz;
+        let t = l2 ? ((cx - ax) * dx + (cz - az) * dz) / l2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        const dist = Math.hypot(cx - (ax + t * dx), cz - (az + t * dz));
+        if (dist < half + Math.hypot(w / 2, d / 2) + margin) return true;
+      }
+    }
+    return false;
+  };
+
   // ---- City building / road sanity (existing checks) --------------------
   for (const sp of SPAWN_POINTS) {
     if (checkBuildingCollision(sp[0], sp[2])) {
@@ -2329,29 +2365,65 @@ if (isViteDev) {
         break;
       }
     }
-    // Roads: central grid (bounded ±100) + every regional polyline (incl.
-    // inner-city-ring) — footprint approximated by its corner radius.
-    const houseRadius = Math.hypot(h.w / 2, h.d / 2);
+    // Roads: central grid (bounded ±CITY_HALF) + every regional polyline
+    // (incl. inner-city-ring), using proper AABB-vs-band geometry.
     for (const rx of ROADS.ns) {
-      if (Math.abs(h.x - rx) < ROAD_HALF + h.w / 2 && Math.abs(h.z) < 100 + h.d / 2) {
-        issues.push(`RP house ${h.slug} clips central road x=${rx}`);
-        break;
+      if (Math.abs(h.x - rx) < ROAD_HALF + h.w / 2 && Math.abs(h.z) < CITY_HALF + h.d / 2) {
+        issues.push(`RP house ${h.slug} clips central road x=${rx}`); break;
       }
     }
     for (const rz of ROADS.ew) {
-      if (Math.abs(h.z - rz) < ROAD_HALF + h.d / 2 && Math.abs(h.x) < 100 + h.w / 2) {
-        issues.push(`RP house ${h.slug} clips central road z=${rz}`);
+      if (Math.abs(h.z - rz) < ROAD_HALF + h.d / 2 && Math.abs(h.x) < CITY_HALF + h.w / 2) {
+        issues.push(`RP house ${h.slug} clips central road z=${rz}`); break;
+      }
+    }
+    for (const r of REGIONAL_ROADS) {
+      if (footprintHitsRoadPath(h.x, h.z, h.w, h.d, r, HOUSE_MARGIN)) {
+        issues.push(`RP house ${h.slug} clips regional road ${r.id}`); break;
+      }
+    }
+  }
+
+  // ---- Phase 13A (Batch B): RP civic buildings vs the FULL world --------
+  // Guards the Batch A procedural keep-out (RP buildings must stay clear of
+  // every generated/highrise/landmark tower) and asserts RP buildings clear
+  // the regional roads (esp. the inner-city-ring) — the same class of bug the
+  // 12A houses hit. Central-road + RP-to-RP gaps are already asserted server
+  // side (validateRpBuildings); this adds the client-only categories.
+  for (const rp of RP_BUILDINGS) {
+    for (const b of BUILDINGS) {
+      if (
+        Math.abs(rp.x - b.x) < (rp.w + b.w) / 2 &&
+        Math.abs(rp.z - b.z) < (rp.d + b.d) / 2
+      ) {
+        issues.push(`RP building ${rp.id} overlaps a procedural/tower building at (${b.x.toFixed(0)},${b.z.toFixed(0)})`);
         break;
       }
     }
     for (const r of REGIONAL_ROADS) {
-      const d = distancePointToPolyline(h.x, h.z, r.points);
-      if (d < r.width / 2 + houseRadius + HOUSE_MARGIN) {
-        issues.push(`RP house ${h.slug} clips regional road ${r.id} (dist ${d.toFixed(1)}m < ${(r.width / 2 + houseRadius).toFixed(1)}m)`);
+      if (footprintHitsRoadPath(rp.x, rp.z, rp.w, rp.d, r)) {
+        issues.push(`RP building ${rp.id} clips regional road ${r.id}`);
         break;
       }
     }
   }
+
+  // ---- Phase 13A (Batch B): all BUILDINGS vs regional roads -------------
+  // The center-city grid + procedural buildings are already checked vs the
+  // grid (building-on-road, below). This adds full BUILDINGS vs every regional
+  // road carriageway (proper AABB-band), so a future tower/block can't be
+  // pushed onto the inner-city-ring or any regional road undetected.
+  let buildingsOnRegionalRoad = 0;
+  for (const b of BUILDINGS) {
+    for (const r of REGIONAL_ROADS) {
+      if (footprintHitsRoadPath(b.x, b.z, b.w, b.d, r)) {
+        buildingsOnRegionalRoad++;
+        issues.push(`building at (${b.x.toFixed(0)},${b.z.toFixed(0)}) clips regional road ${r.id}`);
+        break;
+      }
+    }
+  }
+  void buildingsOnRegionalRoad;
 
   // ---- Forest / mountain instance bounds ---------------------------------
   for (const t of FOREST_TREES) {
