@@ -669,7 +669,7 @@ export interface RpPendingFine {
 export const ATM_LOCATIONS: { id: string; pos: [number, number, number] }[] = [
   { id: "atm-central",    pos: [  18, 0, -30] },
   { id: "atm-station",    pos: [ 132, 0, -58] },
-  { id: "atm-police",     pos: [ -80, 0,  14] },
+  { id: "atm-police",     pos: [ -80, 0,  64] }, // Phase 9B-4: moved with the police station
   { id: "atm-medical",    pos: [ -80, 0,  28] },
   { id: "atm-dealership", pos: [  82, 0, -78] },
 ];

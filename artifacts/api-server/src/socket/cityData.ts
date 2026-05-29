@@ -439,11 +439,11 @@ export const MEDIC_PAY_PER_M = 1.1;
 export const MEDIC_ROUTE_COOLDOWN_MS = 60_000;
 
 // ── Phase 5E: Police Patrol job ───────────────────────────────────────────
-// POLICE_STATION originally suggested as [-68, 0, 0]; adjusted to [-68, 0, 14]
-// because z=0 falls on the E-W road carriageway at z=0 (half-width 10 m).
-// Adjusted position [-68, 0, 14]: off-road ✓, nearest parked car (car-5) 25.55 m ✓.
-// All 6 POLICE_PATROL_POINTS are on road carriageways ✓; min parked-car clearance
-// 8.94 m (PP1 vs car-7) ✓ — no further adjustments required.
+// POLICE_STATION: Phase 9B-4 relocated the whole police cluster (0,+50) to its
+// own SW precinct block at [-68, 0, 64] (was [-68, 0, 14], wedged between Medic
+// and Mechanic). Off-road ✓, nearest parked car (car-13) 27.7 m ✓.
+// All 6 POLICE_PATROL_POINTS are on road carriageways ✓ and were NOT moved;
+// min parked-car clearance 8.94 m (PP1 vs car-7) ✓ — no further adjustments required.
 
 /** Police Station — west SW block (own precinct block, south of the Medical Center).
  *  Phase 9B-4: cluster relocated (0,+50) from (−68,14)→(−68,64) so a real 20×14
@@ -506,14 +506,14 @@ export const POLICE_PATROL_ROUTE_COOLDOWN_MS = 60_000;
  * Geometry audit results (run Node.js check before each commit):
  *   atm-central    [ 18, 0, -30] ✅ off-road, clear
  *   atm-station    [132, 0, -58] ✅ off-road, clear
- *   atm-police     [-80, 0,  14] ✅ 12 m west of POLICE_STATION ([-68,0,14])
+ *   atm-police     [-80, 0,  64] ✅ 12 m west of POLICE_STATION ([-68,0,64]) — moved with the station in Phase 9B-4
  *   atm-medical    [-80, 0,  28] ✅ 12 m west of MEDIC_CENTER   ([-68,0,28])
  *   atm-dealership [ 82, 0, -78] ✅ 12 m east of DEALERSHIP     ([ 70,0,-78])
  */
 export const ATM_LOCATIONS: { id: string; pos: [number, number, number] }[] = [
   { id: "atm-central",    pos: [  18, 0, -30] },
   { id: "atm-station",    pos: [ 132, 0, -58] },
-  { id: "atm-police",     pos: [ -80, 0,  14] },
+  { id: "atm-police",     pos: [ -80, 0,  64] },
   { id: "atm-medical",    pos: [ -80, 0,  28] },
   { id: "atm-dealership", pos: [  82, 0, -78] },
 ];
