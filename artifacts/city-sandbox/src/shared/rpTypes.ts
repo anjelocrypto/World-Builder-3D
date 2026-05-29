@@ -242,8 +242,9 @@ export const STATION_SPAWN_JITTER_X = 4;
 /** Random jitter applied per-spawn: Z ∈ [−JITTER_Z, +JITTER_Z]. */
 export const STATION_SPAWN_JITTER_Z = 3;
 
-/** Licensing Office entrance — SE inner block, east-facing sidewalk. */
-export const LICENSING_OFFICE_POS: [number, number, number] = [14, 0, -30];
+/** Licensing Office (DMV / auto school) — S-center inner block.
+ *  Phase 9B-3: moved (14,−30)→(17,−29). Must mirror server cityData.ts. */
+export const LICENSING_OFFICE_POS: [number, number, number] = [17, 0, -29];
 
 /** Vehicle dealership entrance — NE outer district. */
 export const DEALERSHIP_POS: [number, number, number] = [68, 0, -72];
@@ -260,10 +261,11 @@ export const VEHICLE_SHOP_CATALOG: VehicleShopItem[] = [
 ];
 
 /**
- * Test vehicle starting position (Phase 2). Center at x=13; body edge at
- * x=12 → 2 m clearance from the x=0 road boundary at x=10.
+ * Test vehicle starting position. Phase 9B-3: (13,−30)→(11,−30); OBB-verified
+ * clear of all road carriageways and outside the relocated DMV footprint.
+ * Must mirror server cityData.ts.
  */
-export const TEST_VEHICLE_SPAWN: [number, number, number] = [13, 0.6, -30];
+export const TEST_VEHICLE_SPAWN: [number, number, number] = [11, 0.6, -30];
 
 /** Cash cost to attempt the driver license test (Phase 2). */
 export const TEST_FEE = 200;
@@ -300,7 +302,7 @@ export const LICENSE_TEST_CHECKPOINTS: [number, number, number][] = [
   [  2, 0.5, -40],   // CP0 — south on x=0 road, approaching z=−45 intersection
   [ 42, 0.5, -44],   // CP1 — east on z=−45 road, at x=45 intersection
   [ 42, 0.5, -14],   // CP2 — north on x=45 road, mid-block
-  [ 14, 0.5, -26],   // CP3 — finish line near Licensing Office entrance
+  [ 17, 0.5, -23.5], // CP3 — Phase 9B-3: finish at the relocated DMV door (off-road)
 ];
 
 // ── Phase 5A: Taxi Driver job constants ───────────────────────────────────
@@ -740,6 +742,8 @@ export const RP_BUILDINGS: ReadonlyArray<RpBuildingDef> = [
   // Phase 9B-2: Delivery Hub warehouse. Centre (66,−26) is distinct from
   // DELIVERY_HUB (58,−28), the unchanged delivery payout origin.
   { id: "delivery_hub",      x: 66,                       z: -26,                      w: 18, d: 14, facing: "west",  label: "Delivery Hub" },
+  // Phase 9B-3: Licensing Office (DMV). South door coincides with test finish CP3.
+  { id: "licensing_office",  x: LICENSING_OFFICE_POS[0],  z: LICENSING_OFFICE_POS[2],  w: 10, d:  8, facing: "south", label: "Licensing Office" },
 ];
 
 /** Door/interact point for a building: front-edge midpoint pushed outside. */
@@ -773,3 +777,4 @@ export const MECHANIC_GARAGE_DOOR:   [number, number, number] = buildingDoorById
 export const DEALERSHIP_DOOR:        [number, number, number] = buildingDoorById("dealership");
 export const TAXI_DEPOT_DOOR:        [number, number, number] = buildingDoorById("taxi_depot");
 export const DELIVERY_HUB_DOOR:      [number, number, number] = buildingDoorById("delivery_hub");
+export const LICENSING_OFFICE_DOOR:  [number, number, number] = buildingDoorById("licensing_office");

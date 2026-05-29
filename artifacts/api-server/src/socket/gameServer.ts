@@ -144,7 +144,8 @@ export function setupGameServer(httpServer: HttpServer) {
     // OBB check: all four corners of the test-vehicle body must clear every
     // road carriageway. Static building obstacles are not available server-side
     // in Phase 1B/2 — pre-validated in NEMOVERSE_RP_PLAN.md §5.3.
-    const TEST_VEH_X = 13;
+    // Phase 9B-3: TEST_VEHICLE_SPAWN relocated (13,−30)→(11,−30) with the DMV.
+    const TEST_VEH_X = 11;
     const TEST_VEH_Z = -30;
     if (!validateVehicleSpawnOBB(TEST_VEH_X, TEST_VEH_Z)) {
       throw new Error(

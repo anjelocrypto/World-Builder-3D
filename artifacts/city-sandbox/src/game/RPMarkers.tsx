@@ -17,7 +17,7 @@ import * as THREE from "three";
 import type { ActiveTest, ActiveJob, ActiveGangMission, GangTerritoryStatus } from "../shared/rpTypes";
 import {
   STATION_MARKER_POS,
-  LICENSING_OFFICE_POS,
+  LICENSING_OFFICE_DOOR,
   DEALERSHIP_DOOR,
   LICENSE_TEST_CHECKPOINTS,
   CITY_WORKER_DEPOT_DOOR,
@@ -434,7 +434,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
 
       {/* ════ Licensing Office marker ════════════════════════════════════════ */}
       {(() => {
-        const [ox, , oz] = LICENSING_OFFICE_POS;
+        const [ox, , oz] = LICENSING_OFFICE_DOOR;
         return (
           <group position={[ox, 0, oz]}>
             {/* Ground ring — 5–6 m radius */}
@@ -452,32 +452,9 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
               />
             </mesh>
 
-            {/* Sign post */}
-            <mesh position={[0, 1.8, -0.3]}>
-              <boxGeometry args={[0.12, 3.6, 0.12]} />
-              <meshStandardMaterial color="#2a2a2a" roughness={0.7} metalness={0.5} />
-            </mesh>
-
-            {/* Sign board */}
-            <mesh position={[0, 3.3, -0.3]}>
-              <boxGeometry args={[4.4, 0.8, 0.1]} />
-              <meshStandardMaterial
-                ref={officeSignRef}
-                color="#1a0e00"
-                emissive="#cc7700"
-                emissiveIntensity={0.8}
-                roughness={0.3}
-                metalness={0.2}
-              />
-            </mesh>
-
-            {/* Sign text strip */}
-            <mesh position={[0, 3.6, -0.24]}>
-              <boxGeometry args={[4.0, 0.1, 0.01]} />
-              <meshStandardMaterial color="#ffffff" emissive="#ffe066" emissiveIntensity={2} />
-            </mesh>
-
-            <pointLight position={[0, 4, 0]} color="#ffaa22" intensity={2.5} distance={14} decay={2} />
+            {/* Phase 9B-3: signpost/board removed — the RPBuildings DMV shell now
+                provides identity (consistent with Batch D). Subtle accent light kept. */}
+            <pointLight position={[0, 2.5, 0]} color="#ffaa22" intensity={1.0} distance={12} decay={2} />
           </group>
         );
       })()}

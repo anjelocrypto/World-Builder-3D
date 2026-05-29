@@ -22,7 +22,7 @@ import type { RpCacheEntry, TestState } from "./rpCache";
 import { buildProfile } from "./rpCache";
 import { walletTransfer, RpError } from "./rpWalletService";
 import {
-  LICENSING_OFFICE_POS,
+  LICENSING_OFFICE_DOOR,
   TEST_VEHICLE_SPAWN,
   TEST_FEE,
   LICENSE_TEST_CHECKPOINTS,
@@ -190,9 +190,10 @@ export async function startLicenseTest(
     logger.warn({ socketId: socket.id }, "[rp] startLicenseTest: player not in map");
     return;
   }
+  // Phase 9B-3: gate at the DMV door (building centre is now walled).
   const distToOffice = dist2d(
     player.x, player.z,
-    LICENSING_OFFICE_POS[0], LICENSING_OFFICE_POS[2],
+    LICENSING_OFFICE_DOOR[0], LICENSING_OFFICE_DOOR[2],
   );
   if (distToOffice > INTERACT_RADIUS) {
     socket.emit("rp:toast", {

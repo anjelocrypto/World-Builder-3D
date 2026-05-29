@@ -5,7 +5,7 @@ import * as THREE from "three";
 import type { VehicleState } from "../shared/types";
 import type { ActiveTest, ActiveJob, ActiveGangMission } from "../shared/rpTypes";
 import {
-  LICENSING_OFFICE_POS,
+  LICENSING_OFFICE_DOOR,
   DEALERSHIP_DOOR,
   CITY_WORKER_DEPOT_DOOR,
   CITY_WORKER_DEPOT_RADIUS,
@@ -804,7 +804,8 @@ export default function LocalPlayer({
     const raceTime = raceActive.current ? Date.now() - raceStart.current : 0;
 
     // Proximity to Licensing Office entrance (walking player only, 6m radius)
-    const [offX, , offZ] = LICENSING_OFFICE_POS;
+    // Phase 9B-3: measured to the DMV door (matches server start-test gate).
+    const [offX, , offZ] = LICENSING_OFFICE_DOOR;
     const odx = curPos.x - offX;
     const odz = curPos.z - offZ;
     const nearOffice =
@@ -1299,7 +1300,8 @@ export default function LocalPlayer({
         }
       } else {
         // No unoccupied vehicle nearby — check Licensing Office (Phase 2) or dealership (Phase 3).
-        const [offX2, , offZ2] = LICENSING_OFFICE_POS;
+        // Phase 9B-3: measured to the DMV door (matches server start-test gate).
+        const [offX2, , offZ2] = LICENSING_OFFICE_DOOR;
         const odx2 = pos.current.x - offX2;
         const odz2 = pos.current.z - offZ2;
         if (odx2 * odx2 + odz2 * odz2 < 6 * 6) {

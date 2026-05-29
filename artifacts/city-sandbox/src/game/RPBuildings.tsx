@@ -38,6 +38,7 @@ const STYLES: Record<string, BuildingStyle> = {
   dealership:        { wall: "#d8dde4", roof: "#9aa3ad", sign: "#3aa0d8", signText: "AUTO SALES" },
   taxi_depot:        { wall: "#d8c24a", roof: "#8a7c2e", sign: "#f1c40f", signText: "TAXI DEPOT" },
   delivery_hub:      { wall: "#9c8a6a", roof: "#5a4a36", sign: "#cf7a33", signText: "DELIVERY HUB" },
+  licensing_office:  { wall: "#cfd6dc", roof: "#8b94a0", sign: "#3f7fbf", signText: "DMV / AUTO SCHOOL" },
 };
 
 const DEFAULT_STYLE: BuildingStyle = { wall: "#bcc0c6", roof: "#80858c", sign: "#5577ee", signText: "" };

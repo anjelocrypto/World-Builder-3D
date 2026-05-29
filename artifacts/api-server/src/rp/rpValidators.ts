@@ -222,9 +222,10 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
 
   const OFF_ROAD = [
     { label: "STATION_SPAWN",           x: 128,                       z: -65 },
-    { label: "LICENSING_OFFICE_POS",    x:  14,                       z: -30 },
-    { label: "TEST_VEHICLE_SPAWN",      x:  13,                       z: -30 },
-    { label: "CP3_FINISH",              x:  14,                       z: -26 },
+    // Phase 9B-3: licensing office/spawn/CP3 relocated (mirror cityData.ts).
+    { label: "LICENSING_OFFICE_POS",    x:  17,                       z: -29 },
+    { label: "TEST_VEHICLE_SPAWN",      x:  11,                       z: -30 },
+    { label: "CP3_FINISH",              x:  17,                       z: -23.5 },
     // Phase 3
     { label: "DEALERSHIP_POS",          x: DEALERSHIP_POS[0],         z: DEALERSHIP_POS[2] },
     ...deliverySlotMarkers,
@@ -377,8 +378,9 @@ export function validateRpMarkerVehicleClearance(vehicles: VehiclePos[]): void {
   }));
 
   const markers = [
-    { label: "LICENSING_OFFICE_POS",    x:  14,                       z: -30 },
-    { label: "TEST_VEHICLE_SPAWN",      x:  13,                       z: -30 },
+    // Phase 9B-3: licensing office/spawn relocated (mirror cityData.ts).
+    { label: "LICENSING_OFFICE_POS",    x:  17,                       z: -29 },
+    { label: "TEST_VEHICLE_SPAWN",      x:  11,                       z: -30 },
     { label: "STATION_SPAWN",           x: 128,                       z: -65 },
     // Phase 3 — dealership entrance + all delivery slots
     { label: "DEALERSHIP_POS",          x: DEALERSHIP_POS[0],         z: DEALERSHIP_POS[2] },

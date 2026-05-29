@@ -519,11 +519,16 @@ export const ATM_INTERACT_RADIUS = 4;
 
 // ── Licensing Office (Phase 2) ─────────────────────────────────────────────
 
-/** Entrance of the Licensing Office — SE inner block, east-facing sidewalk. */
-export const LICENSING_OFFICE_POS: [number, number, number] = [14, 0, -30];
+/** Licensing Office (DMV / auto school) — S-center inner block.
+ *  Phase 9B-3: moved (14,−30)→(17,−29) so a real 10×8 DMV footprint clears the
+ *  road grid and keeps ≥6 m from every other RP building. Only the coupled
+ *  finish (CP3) + TEST_VEHICLE_SPAWN follow it; CP0–CP2 are unchanged on-road.
+ *  Mirror: client LICENSING_OFFICE_POS in rpTypes.ts. */
+export const LICENSING_OFFICE_POS: [number, number, number] = [17, 0, -29];
 
-/** Test vehicle spawn — 2 m clear of the x=0 road edge at x=10. */
-export const TEST_VEHICLE_SPAWN: [number, number, number] = [13, 0.6, -30];
+/** Test vehicle spawn — Phase 9B-3: (13,−30)→(11,−30); OBB-verified clear of
+ *  all road carriageways and outside the DMV footprint. Mirror: client rpTypes.ts. */
+export const TEST_VEHICLE_SPAWN: [number, number, number] = [11, 0.6, -30];
 
 /** Cash required to attempt the driver license test. */
 export const TEST_FEE = 200;
@@ -538,7 +543,7 @@ export const LICENSE_TEST_CHECKPOINTS: [number, number, number][] = [
   [  2, 0.5, -40],  // CP0 — south on x=0 road, approaching z=−45
   [ 42, 0.5, -44],  // CP1 — east on z=−45 road, at x=45 intersection
   [ 42, 0.5, -14],  // CP2 — north on x=45 road, mid-block
-  [ 14, 0.5, -26],  // CP3 — finish line near Licensing Office entrance
+  [ 17, 0.5, -23.5], // CP3 — Phase 9B-3: finish at the relocated DMV door (off-road)
 ];
 
 // ── Phase 6A: Police Wanted + Arrest ─────────────────────────────────────────
@@ -860,6 +865,9 @@ export const RP_BUILDINGS: ReadonlyArray<RpBuildingDef> = [
   // The payout origin sits inside this footprint (warehouse over the dock), and
   // the west-facing door at (55.5,−26) is the clock-in point near the x=45 road.
   { id: "delivery_hub",      x: 66,                       z: -26,                      w: 18, d: 14, facing: "west",  label: "Delivery Hub" },
+  // Phase 9B-3: Licensing Office (DMV / auto school). South door at (17,−23.5)
+  // coincides with the license-test finish CP3 — drive back to the door to finish.
+  { id: "licensing_office",  x: LICENSING_OFFICE_POS[0],  z: LICENSING_OFFICE_POS[2],  w: 10, d:  8, facing: "south", label: "Licensing Office" },
 ];
 
 /** Door/interact point for a building: front-edge midpoint pushed outside. */
@@ -902,3 +910,4 @@ export const MECHANIC_GARAGE_DOOR:   [number, number, number] = buildingDoorById
 export const DEALERSHIP_DOOR:        [number, number, number] = buildingDoorById("dealership");
 export const TAXI_DEPOT_DOOR:        [number, number, number] = buildingDoorById("taxi_depot");
 export const DELIVERY_HUB_DOOR:      [number, number, number] = buildingDoorById("delivery_hub");
+export const LICENSING_OFFICE_DOOR:  [number, number, number] = buildingDoorById("licensing_office");
