@@ -306,8 +306,9 @@ export const LICENSE_TEST_CHECKPOINTS: [number, number, number][] = [
 // ── Phase 5A: Taxi Driver job constants ───────────────────────────────────
 // These MUST stay in sync with TAXI_* in api-server/src/socket/cityData.ts.
 
-/** Taxi Depot position [x, y, z]. */
-export const TAXI_DEPOT: [number, number, number] = [-30, 0, -15];
+/** Taxi Depot position [x, y, z].
+ *  Phase 9B-1: moved (−30,−15)→(−28,16). Must mirror server cityData.ts. */
+export const TAXI_DEPOT: [number, number, number] = [-28, 0, 16];
 
 /** Radius (m) within which the player can clock in/out at the Taxi Depot. */
 export const TAXI_DEPOT_RADIUS = 6;
@@ -734,6 +735,8 @@ export const RP_BUILDINGS: ReadonlyArray<RpBuildingDef> = [
   { id: "medic_center",      x: MEDIC_CENTER[0],          z: MEDIC_CENTER[2],          w: 18, d: 10, facing: "east",  label: "Medical Center" },
   { id: "mechanic_garage",   x: MECHANIC_GARAGE[0],       z: MECHANIC_GARAGE[2],       w: 18, d: 10, facing: "east",  label: "Mechanic Garage" },
   { id: "dealership",        x: DEALERSHIP_POS[0],        z: DEALERSHIP_POS[2],        w: 22, d: 16, facing: "north", label: "Dealership" },
+  // Phase 9B-1: Taxi Depot — relocated SW-north pocket; small 10×8 yard.
+  { id: "taxi_depot",        x: TAXI_DEPOT[0],            z: TAXI_DEPOT[2],            w: 10, d:  8, facing: "south", label: "Taxi Depot" },
 ];
 
 /** Door/interact point for a building: front-edge midpoint pushed outside. */
@@ -765,3 +768,4 @@ export const CITY_WORKER_DEPOT_DOOR: [number, number, number] = buildingDoorById
 export const MEDIC_CENTER_DOOR:      [number, number, number] = buildingDoorById("medic_center");
 export const MECHANIC_GARAGE_DOOR:   [number, number, number] = buildingDoorById("mechanic_garage");
 export const DEALERSHIP_DOOR:        [number, number, number] = buildingDoorById("dealership");
+export const TAXI_DEPOT_DOOR:        [number, number, number] = buildingDoorById("taxi_depot");

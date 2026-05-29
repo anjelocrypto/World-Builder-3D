@@ -36,6 +36,7 @@ const STYLES: Record<string, BuildingStyle> = {
   medic_center:      { wall: "#e8e8ee", roof: "#c2c6cf", sign: "#e2554e", signText: "MEDICAL CENTER" },
   mechanic_garage:   { wall: "#7d8893", roof: "#525a63", sign: "#e08a2b", signText: "MECHANIC" },
   dealership:        { wall: "#d8dde4", roof: "#9aa3ad", sign: "#3aa0d8", signText: "AUTO SALES" },
+  taxi_depot:        { wall: "#d8c24a", roof: "#8a7c2e", sign: "#f1c40f", signText: "TAXI DEPOT" },
 };
 
 const DEFAULT_STYLE: BuildingStyle = { wall: "#bcc0c6", roof: "#80858c", sign: "#5577ee", signText: "" };

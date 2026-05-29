@@ -207,12 +207,19 @@ export const JOB_CP_ACCEPT_RADIUS    = 8;
 // ── Taxi Driver job (Phase 5A) ────────────────────────────────────────────
 
 /**
- * Taxi Depot — NW inner block, clear of all roads.
- * x=−30: |−30−(−45)|=15>10 (x=−45 NS road), |−30−0|=30>10 (x=0 road);
- * z=−15: |−15−(−45)|=30>10 (z=−45 EW road), |−15−0|=15>10 (z=0 road).
- * Nearest parked car (car-3 at −22,−31, relocated in Phase 9A): dist≈17.9 m > 8 m.
+ * Taxi Depot — SW inner block, clear of all roads.
+ * Phase 9B-1: moved (−30,−15)→(−28,16) so a real depot footprint (10×8) clears
+ * the road grid and keeps ≥6 m from every other RP building. The old origin's
+ * pocket is now occupied by the City Hall footprint (Phase 9A), so the yard
+ * shifts north of the z=0 road, staying adjacent to taxi pickups P1/P3.
+ * x=−28: |−28−(−45)|=17>10 (x=−45 NS road), |−28−0|=28>10 (x=0 road);
+ * z=16:  |16−45|=29>10 (z=45 EW road),  |16−0|=16>10 (z=0 road).
+ * 10×8 footprint → road edge 2.0 m; nearest car (car-1 at −22,22) ≈ 8.5 m > 8 m;
+ * nearest taxi pickup (P3 at −42,20) ≈ 14.6 m.
+ * Taxi fare is pickup→dropoff distance (NOT depot-based), so payouts are unaffected.
+ * Pickups/dropoffs are NOT moved. Mirror: client TAXI_DEPOT in rpTypes.ts.
  */
-export const TAXI_DEPOT: [number, number, number] = [-30, 0, -15];
+export const TAXI_DEPOT: [number, number, number] = [-28, 0, 16];
 
 /** Radius (m) player must be within to clock in/out at the Taxi Depot. */
 export const TAXI_DEPOT_RADIUS = 6;
@@ -846,6 +853,8 @@ export const RP_BUILDINGS: ReadonlyArray<RpBuildingDef> = [
   { id: "medic_center",      x: MEDIC_CENTER[0],          z: MEDIC_CENTER[2],          w: 18, d: 10, facing: "east",  label: "Medical Center" },
   { id: "mechanic_garage",   x: MECHANIC_GARAGE[0],       z: MECHANIC_GARAGE[2],       w: 18, d: 10, facing: "east",  label: "Mechanic Garage" },
   { id: "dealership",        x: DEALERSHIP_POS[0],        z: DEALERSHIP_POS[2],        w: 22, d: 16, facing: "north", label: "Dealership" },
+  // Phase 9B-1: Taxi Depot — relocated SW-north pocket; small 10×8 yard.
+  { id: "taxi_depot",        x: TAXI_DEPOT[0],            z: TAXI_DEPOT[2],            w: 10, d:  8, facing: "south", label: "Taxi Depot" },
 ];
 
 /** Door/interact point for a building: front-edge midpoint pushed outside. */
@@ -886,3 +895,4 @@ export const CITY_WORKER_DEPOT_DOOR: [number, number, number] = buildingDoorById
 export const MEDIC_CENTER_DOOR:      [number, number, number] = buildingDoorById("medic_center");
 export const MECHANIC_GARAGE_DOOR:   [number, number, number] = buildingDoorById("mechanic_garage");
 export const DEALERSHIP_DOOR:        [number, number, number] = buildingDoorById("dealership");
+export const TAXI_DEPOT_DOOR:        [number, number, number] = buildingDoorById("taxi_depot");

@@ -11,7 +11,7 @@ import {
   CITY_WORKER_DEPOT_RADIUS,
   CITY_WORKER_CHECKPOINTS,
   JOB_CP_ACCEPT_RADIUS,
-  TAXI_DEPOT,
+  TAXI_DEPOT_DOOR,
   TAXI_DEPOT_RADIUS,
   TAXI_CP_ACCEPT_RADIUS,
   DELIVERY_HUB,
@@ -830,7 +830,7 @@ export default function LocalPlayer({
     nearDepotRef.current = nearDepot;
 
     // Phase 5A: Taxi Depot proximity (also writes to ref for E key handler)
-    const [tdepX, , tdepZ] = TAXI_DEPOT;
+    const [tdepX, , tdepZ] = TAXI_DEPOT_DOOR;
     const tdepdx = curPos.x - tdepX;
     const tdepdz = curPos.z - tdepZ;
     const nearTaxiDepot =

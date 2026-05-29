@@ -53,7 +53,7 @@ import {
   JOB_ROUTE_COOLDOWN_MS,
   JOB_CP_ACCEPT_RADIUS,
   // Taxi Driver
-  TAXI_DEPOT,
+  TAXI_DEPOT_DOOR,
   TAXI_DEPOT_RADIUS,
   TAXI_PICKUPS,
   TAXI_DROPOFFS,
@@ -312,8 +312,9 @@ export async function toggleDuty(
       const dz = player.z - CITY_WORKER_DEPOT_DOOR[2];
       atDepot = dx * dx + dz * dz <= CITY_WORKER_DEPOT_RADIUS * CITY_WORKER_DEPOT_RADIUS;
     } else if (activeState.job === "taxi_driver") {
-      const dx = player.x - TAXI_DEPOT[0];
-      const dz = player.z - TAXI_DEPOT[2];
+      // Phase 9B-1: gate at the taxi depot door (fare logic unchanged).
+      const dx = player.x - TAXI_DEPOT_DOOR[0];
+      const dz = player.z - TAXI_DEPOT_DOOR[2];
       atDepot = dx * dx + dz * dz <= TAXI_DEPOT_RADIUS * TAXI_DEPOT_RADIUS;
     } else if (activeState.job === "delivery_driver") {
       const dx = player.x - DELIVERY_HUB[0];
@@ -485,8 +486,8 @@ async function clockInTaxi(
     return;
   }
 
-  // Must be at Taxi Depot
-  const distToDepot = dist2d(player.x, player.z, TAXI_DEPOT[0], TAXI_DEPOT[2]);
+  // Must be at Taxi Depot — Phase 9B-1: gate at the depot door (fare logic unchanged).
+  const distToDepot = dist2d(player.x, player.z, TAXI_DEPOT_DOOR[0], TAXI_DEPOT_DOOR[2]);
   if (distToDepot > TAXI_DEPOT_RADIUS) {
     socket.emit("rp:toast", {
       msg:      "You must be at the Taxi Depot to clock in as Taxi Driver.",
