@@ -65,6 +65,19 @@ const ITEM_CATALOG: Record<string, CatalogEntry> = {
   },
 };
 
+/**
+ * Phase 11D: starter items every player should carry. All slugs MUST exist in
+ * ITEM_CATALOG and remain non-usable / non-economic (no effects, no value).
+ * Seeding is idempotent at the DB level via the UNIQUE(player_id, item_slug)
+ * index, so re-running on reconnect can never duplicate a stack.
+ */
+const STARTER_ITEMS: ReadonlyArray<{ slug: string; quantity: number }> = [
+  { slug: "phone",        quantity: 1 },
+  { slug: "keys",         quantity: 1 },
+  { slug: "notebook",     quantity: 1 },
+  { slug: "water_bottle", quantity: 1 },
+];
+
 /** A single inventory line as sent to the client. No ids, no secrets. */
 interface InventoryItemPayload {
   slug:        string;
@@ -142,4 +155,37 @@ export async function handleGetInventory(socket: Socket, ctx: LicenseContext): P
 /** Clear a disconnecting player's fetch-cooldown entry. */
 export function clearInventoryFetchForPlayer(playerId: string): void {
   inventoryFetchCooldown.delete(playerId);
+}
+
+/**
+ * Phase 11D: ensure a player has the safe starter inventory items.
+ *
+ * Server-only. The playerId is supplied by the trusted player-load path
+ * (never from the client). All rows insert with ON CONFLICT DO NOTHING against
+ * the UNIQUE(player_id, item_slug) index, so this is fully idempotent: calling
+ * it on every reconnect/respawn/refresh inserts each missing starter item
+ * exactly once and never duplicates or overwrites existing quantities. Existing
+ * players who predate this phase receive any missing starter items on next join.
+ *
+ * Read-only foundation: this only inserts inventory rows. It touches no wallet,
+ * bank, license, job, faction, vehicle, or city-budget state. Failures are
+ * logged (without player or socket ids) and swallowed so login never blocks.
+ */
+export async function ensureStarterInventoryForPlayer(playerId: string): Promise<void> {
+  if (!playerId) return;
+  try {
+    await db
+      .insert(rpInventoryItems)
+      .values(
+        STARTER_ITEMS.map((s) => ({
+          playerId,
+          itemSlug: s.slug,
+          quantity: s.quantity,
+        })),
+      )
+      .onConflictDoNothing();
+  } catch (err) {
+    // Table may not exist yet (pre-migration) or DB unreachable — never fatal.
+    logger.error({ err }, "[rpInventory] starter seed failed");
+  }
 }

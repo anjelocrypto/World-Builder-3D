@@ -28,7 +28,7 @@ import { failTest, cleanupOnDisconnect } from "../rp/rpLicenseService";
 import { loadAndSpawnOwnedVehicles } from "../rp/rpVehicleService";
 import { cleanupPendingGangRequest, cleanupGangMission } from "../rp/rpFactionService";
 import { clearIdShareForPlayer } from "../rp/rpIdentityService";
-import { clearInventoryFetchForPlayer } from "../rp/rpInventoryService";
+import { clearInventoryFetchForPlayer, ensureStarterInventoryForPlayer } from "../rp/rpInventoryService";
 
 // Clamp a horizontal world coordinate so a hacked client cannot push a
 // player or vehicle outside the playable map. The margin keeps the
@@ -239,6 +239,14 @@ export function setupGameServer(httpServer: HttpServer) {
               { socketId: socket.id, playerId: rpEntry.playerId },
               "[rp] profile loaded",
             );
+            // Phase 11D: ensure starter inventory exists (idempotent via the
+            // unique index). Isolated try/catch so a seed failure never blocks
+            // login or the vehicle load below.
+            try {
+              await ensureStarterInventoryForPlayer(rpEntry.playerId);
+            } catch (err) {
+              logger.error({ err }, "[rp] ensureStarterInventoryForPlayer failed");
+            }
             // Phase 3: load + spawn owned vehicles; emits rp:profileUpdate with
             // ownedVehicles array and vehicleAdded for each vehicle.
             await loadAndSpawnOwnedVehicles(socket.id, ctx);
