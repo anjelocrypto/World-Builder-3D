@@ -19,7 +19,7 @@
 
 import { Text } from "@react-three/drei";
 import type { RpBuildingDef, RpBuildingFacing } from "../shared/rpTypes";
-import { RP_BUILDINGS } from "../shared/rpTypes";
+import { RP_BUILDINGS, RP_INTERIOR_BUILDING_IDS } from "../shared/rpTypes";
 
 // ── Per-building visual identity (color only — geometry comes from the table) ──
 
@@ -28,17 +28,18 @@ interface BuildingStyle {
   roof:      string;
   sign:      string;   // fascia band + emissive accent
   signText:  string;   // readable label rendered on the fascia
+  floor?:    string;   // Phase 10A: interior lobby floor (only for walk-in buildings)
 }
 
 const STYLES: Record<string, BuildingStyle> = {
-  government_office: { wall: "#c9c4b4", roof: "#8a8576", sign: "#5577ee", signText: "CITY HALL" },
+  government_office: { wall: "#c9c4b4", roof: "#8a8576", sign: "#5577ee", signText: "CITY HALL", floor: "#3b4252" },
   city_worker_depot: { wall: "#b6893f", roof: "#6e5526", sign: "#e0a93b", signText: "PUBLIC WORKS" },
   medic_center:      { wall: "#e8e8ee", roof: "#c2c6cf", sign: "#e2554e", signText: "MEDICAL CENTER" },
   mechanic_garage:   { wall: "#7d8893", roof: "#525a63", sign: "#e08a2b", signText: "MECHANIC" },
   dealership:        { wall: "#d8dde4", roof: "#9aa3ad", sign: "#3aa0d8", signText: "AUTO SALES" },
   taxi_depot:        { wall: "#d8c24a", roof: "#8a7c2e", sign: "#f1c40f", signText: "TAXI DEPOT" },
   delivery_hub:      { wall: "#9c8a6a", roof: "#5a4a36", sign: "#cf7a33", signText: "DELIVERY HUB" },
-  licensing_office:  { wall: "#cfd6dc", roof: "#8b94a0", sign: "#3f7fbf", signText: "DMV / AUTO SCHOOL" },
+  licensing_office:  { wall: "#cfd6dc", roof: "#8b94a0", sign: "#3f7fbf", signText: "DMV / AUTO SCHOOL", floor: "#41484f" },
   police_station:    { wall: "#b9c2cc", roof: "#3a4654", sign: "#2f6fd0", signText: "POLICE" },
 };
 
@@ -150,6 +151,12 @@ function RPBuildingMesh({ b }: { b: RpBuildingDef }) {
     return { y, out };
   })();
 
+  // Phase 10A: walk-in interior — distinct lobby floor for interior-enabled
+  // buildings (City Hall + DMV). Inset slightly inside the walls; visual only.
+  const hasInterior = RP_INTERIOR_BUILDING_IDS.includes(b.id) && !!s.floor;
+  const floorW = b.w - 2 * WALL_THICKNESS;
+  const floorD = b.d - 2 * WALL_THICKNESS;
+
   return (
     <group position={[b.x, 0, b.z]}>
       {/* Walls */}
@@ -159,6 +166,14 @@ function RPBuildingMesh({ b }: { b: RpBuildingDef }) {
           <meshStandardMaterial color={s.wall} roughness={0.78} metalness={0.06} />
         </mesh>
       ))}
+
+      {/* Phase 10A: interior lobby floor (walk-in buildings only) */}
+      {hasInterior && (
+        <mesh position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+          <planeGeometry args={[floorW, floorD]} />
+          <meshStandardMaterial color={s.floor} roughness={0.9} metalness={0.04} />
+        </mesh>
+      )}
 
       {/* Door lintel (header above the opening) */}
       {lintel && (

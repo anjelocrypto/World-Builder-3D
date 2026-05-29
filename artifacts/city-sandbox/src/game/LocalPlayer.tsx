@@ -55,6 +55,7 @@ import {
   obbVsObb,
   playerHitsAnyBuilding,
   playerHitsAnyObstacle,
+  playerHitsAnyRpWall,
   vehicleHitsAnyBuilding,
   vehicleHitsAnyObstacle,
   npcPositionAt,
@@ -1094,6 +1095,7 @@ export default function LocalPlayer({
     if (
       playerHitsAnyBuilding(nx, pos.current.z) ||
       playerHitsAnyObstacle(nx, pos.current.z) ||
+      playerHitsAnyRpWall(nx, pos.current.z) ||
       obstacles.some((o) =>
         circleVsObb({ x: nx, z: pos.current.z, r: PLAYER_BODY_RADIUS }, o),
       )
@@ -1105,6 +1107,7 @@ export default function LocalPlayer({
     if (
       playerHitsAnyBuilding(nx, nz) ||
       playerHitsAnyObstacle(nx, nz) ||
+      playerHitsAnyRpWall(nx, nz) ||
       obstacles.some((o) =>
         circleVsObb({ x: nx, z: nz, r: PLAYER_BODY_RADIUS }, o),
       )

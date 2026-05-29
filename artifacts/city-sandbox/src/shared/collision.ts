@@ -12,6 +12,7 @@ import {
   STATIC_OBSTACLES,
   VARIANT_DIMENSIONS,
 } from "./cityData";
+import { RP_BUILDING_WALL_BOXES } from "./rpTypes";
 import { distancePointToPolyline } from "./roadGeom";
 
 // =====================================================
@@ -208,6 +209,28 @@ export function playerHitsAnyObstacle(
 export function vehicleHitsAnyObstacle(o: OBB): boolean {
   for (const obs of STATIC_OBSTACLES) {
     if (obbVsAabb(o, obstacleAabb(obs, VEHICLE_BUILDING_MARGIN))) return true;
+  }
+  return false;
+}
+
+// =====================================================
+// Phase 10A: walk-in RP building walls (player-only)
+// =====================================================
+//
+// Solid per-wall collision for the interior-enabled RP civic buildings
+// (City Hall + DMV in Batch A). The doorway gap has no box, so the player
+// can walk in. This is intentionally PLAYER-ONLY — vehicles are unaffected
+// this batch (every wall box was verified clear of road carriageways, so
+// driving is never blocked regardless).
+
+export function playerHitsAnyRpWall(
+  px: number,
+  pz: number,
+  r = PLAYER_BODY_RADIUS,
+): boolean {
+  const c: Circle = { x: px, z: pz, r };
+  for (const w of RP_BUILDING_WALL_BOXES) {
+    if (circleVsAabb(c, { x: w.x, z: w.z, hw: w.w / 2, hd: w.d / 2 })) return true;
   }
   return false;
 }

@@ -201,6 +201,36 @@ export function validateRpBuildings(
       }
     }
 
+    // 5. Phase 10A — the doorway must not be blocked by the building's own wall
+    //    segments. Derive the 5 per-wall boxes (back + 2 sides + 2 front jambs
+    //    around the doorway gap) and assert the door point lies in the open gap.
+    const WALL_T = 0.5;
+    const DOOR_W = 3.0;
+    const fz = b.facing === "north" || b.facing === "south";
+    const sgn = b.facing === "north" || b.facing === "west" ? -1 : 1;
+    const hw = b.w / 2, hd = b.d / 2;
+    const wallBoxes: { x: number; z: number; w: number; d: number }[] = [];
+    if (fz) {
+      wallBoxes.push({ x: b.x, z: b.z - sgn * hd, w: b.w, d: WALL_T });
+      wallBoxes.push({ x: b.x - hw, z: b.z, w: WALL_T, d: b.d });
+      wallBoxes.push({ x: b.x + hw, z: b.z, w: WALL_T, d: b.d });
+      const jamb = (b.w - DOOR_W) / 2;
+      wallBoxes.push({ x: b.x - (DOOR_W / 2 + jamb / 2), z: b.z + sgn * hd, w: jamb, d: WALL_T });
+      wallBoxes.push({ x: b.x + (DOOR_W / 2 + jamb / 2), z: b.z + sgn * hd, w: jamb, d: WALL_T });
+    } else {
+      wallBoxes.push({ x: b.x - sgn * hw, z: b.z, w: WALL_T, d: b.d });
+      wallBoxes.push({ x: b.x, z: b.z - hd, w: b.w, d: WALL_T });
+      wallBoxes.push({ x: b.x, z: b.z + hd, w: b.w, d: WALL_T });
+      const jamb = (b.d - DOOR_W) / 2;
+      wallBoxes.push({ x: b.x + sgn * hw, z: b.z - (DOOR_W / 2 + jamb / 2), w: WALL_T, d: jamb });
+      wallBoxes.push({ x: b.x + sgn * hw, z: b.z + (DOOR_W / 2 + jamb / 2), w: WALL_T, d: jamb });
+    }
+    for (const wbox of wallBoxes) {
+      if (Math.abs(doorX - wbox.x) < wbox.w / 2 && Math.abs(doorZ - wbox.z) < wbox.d / 2) {
+        throw new Error(`[rp] building "${b.id}" entrance [${doorX}, ${doorZ}] is blocked by its own wall`);
+      }
+    }
+
     console.info(`[rp] building OK: ${b.id} (${b.w}x${b.d} @ [${b.x}, ${b.z}], door [${doorX}, ${doorZ}])`);
   }
 }

@@ -762,6 +762,71 @@ export function rpBuildingDoor(b: RpBuildingDef): [number, number] {
   }
 }
 
+// ── Phase 10A: walk-in interiors + per-wall collision ─────────────────────────
+//
+// Shared wall geometry so the RPBuildings renderer, the collision system, and
+// the validator all derive the SAME boxes from RP_BUILDINGS (no drift). Each
+// building is a 4-wall shell whose front wall is split into two jambs around a
+// doorway gap; the doorway is left open so the player can walk in.
+
+/** Wall thickness (m) — must match RPBuildings render. */
+export const RP_WALL_THICKNESS = 0.5;
+/** Doorway opening width (m) on the facing wall — must match RPBuildings render. */
+export const RP_DOOR_WIDTH = 3.0;
+
+/** One axis-aligned wall collider box (X/Z plane). */
+export interface RpWallBox {
+  x: number;
+  z: number;
+  w: number;
+  d: number;
+}
+
+/**
+ * The 5 per-wall AABB boxes for a building shell: back wall, two side walls,
+ * and two front jambs flanking the doorway gap. The doorway itself has NO box,
+ * so the player can walk through it. Geometry mirrors RPBuildingMesh exactly.
+ */
+export function rpBuildingWallBoxes(b: RpBuildingDef): RpWallBox[] {
+  const hw = b.w / 2;
+  const hd = b.d / 2;
+  const t = RP_WALL_THICKNESS;
+  const facingZ = b.facing === "north" || b.facing === "south";
+  const sign = b.facing === "north" || b.facing === "west" ? -1 : 1;
+  const boxes: RpWallBox[] = [];
+  if (facingZ) {
+    boxes.push({ x: b.x, z: b.z - sign * hd, w: b.w, d: t });            // back
+    boxes.push({ x: b.x - hw, z: b.z, w: t, d: b.d });                    // side
+    boxes.push({ x: b.x + hw, z: b.z, w: t, d: b.d });                    // side
+    const jamb = (b.w - RP_DOOR_WIDTH) / 2;
+    boxes.push({ x: b.x - (RP_DOOR_WIDTH / 2 + jamb / 2), z: b.z + sign * hd, w: jamb, d: t });
+    boxes.push({ x: b.x + (RP_DOOR_WIDTH / 2 + jamb / 2), z: b.z + sign * hd, w: jamb, d: t });
+  } else {
+    boxes.push({ x: b.x - sign * hw, z: b.z, w: t, d: b.d });             // back
+    boxes.push({ x: b.x, z: b.z - hd, w: b.w, d: t });                    // side
+    boxes.push({ x: b.x, z: b.z + hd, w: b.w, d: t });                    // side
+    const jamb = (b.d - RP_DOOR_WIDTH) / 2;
+    boxes.push({ x: b.x + sign * hw, z: b.z - (RP_DOOR_WIDTH / 2 + jamb / 2), w: t, d: jamb });
+    boxes.push({ x: b.x + sign * hw, z: b.z + (RP_DOOR_WIDTH / 2 + jamb / 2), w: t, d: jamb });
+  }
+  return boxes;
+}
+
+/**
+ * Building ids that have walk-in interiors + solid wall collision in this batch.
+ * Phase 10A Batch A: City Hall + DMV only (lowest-risk, gate-only, no teleports).
+ * Police Station + Medical Center collision are deferred to Phase 10B.
+ */
+export const RP_INTERIOR_BUILDING_IDS: ReadonlyArray<string> = [
+  "government_office",
+  "licensing_office",
+];
+
+/** Flattened per-wall collider boxes for the interior-enabled buildings. */
+export const RP_BUILDING_WALL_BOXES: ReadonlyArray<RpWallBox> = RP_BUILDINGS
+  .filter((b) => RP_INTERIOR_BUILDING_IDS.includes(b.id))
+  .flatMap((b) => rpBuildingWallBoxes(b));
+
 // ── Phase 9A Batch E: building door / interact points ─────────────────────────
 // Mirror of the *_DOOR constants in artifacts/api-server/src/socket/cityData.ts.
 // Visual interaction rings + the player-facing proximity source for these 5
