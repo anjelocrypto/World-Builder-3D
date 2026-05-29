@@ -232,6 +232,14 @@ export function setupGameServer(httpServer: HttpServer) {
       if (token) {
         upsertPlayer(token, username)
           .then(async (rpEntry) => {
+            // Phase 11D: ensure starter inventory exists BEFORE the player can
+            // become active and fetch it. Idempotent via the unique index;
+            // isolated try/catch so a seed failure never blocks login.
+            try {
+              await ensureStarterInventoryForPlayer(rpEntry.playerId);
+            } catch (err) {
+              logger.error({ err }, "[rp] ensureStarterInventoryForPlayer failed");
+            }
             rpCache.set(socket.id, rpEntry);
             // Emit initial profile (ownedVehicles = [] until vehicles load)
             socket.emit("rp:profile", buildProfile(rpEntry));
@@ -239,14 +247,6 @@ export function setupGameServer(httpServer: HttpServer) {
               { socketId: socket.id, playerId: rpEntry.playerId },
               "[rp] profile loaded",
             );
-            // Phase 11D: ensure starter inventory exists (idempotent via the
-            // unique index). Isolated try/catch so a seed failure never blocks
-            // login or the vehicle load below.
-            try {
-              await ensureStarterInventoryForPlayer(rpEntry.playerId);
-            } catch (err) {
-              logger.error({ err }, "[rp] ensureStarterInventoryForPlayer failed");
-            }
             // Phase 3: load + spawn owned vehicles; emits rp:profileUpdate with
             // ownedVehicles array and vehicleAdded for each vehicle.
             await loadAndSpawnOwnedVehicles(socket.id, ctx);
