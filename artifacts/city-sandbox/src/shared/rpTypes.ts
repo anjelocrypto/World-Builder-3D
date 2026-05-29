@@ -271,8 +271,9 @@ export const TEST_FEE = 200;
 // ── Phase 4: City Worker job constants ────────────────────────────────────
 // These MUST stay in sync with CITY_WORKER_* in api-server/src/socket/cityData.ts.
 
-/** City Worker depot position [x, y, z]. */
-export const CITY_WORKER_DEPOT: [number, number, number] = [30, 0, 28];
+/** City Worker depot position [x, y, z].
+ *  Phase 9A: moved (30,28)→(24,24). Must mirror server cityData.ts. */
+export const CITY_WORKER_DEPOT: [number, number, number] = [24, 0, 24];
 
 /** Radius (m) within which the player can clock in/out at the depot. */
 export const CITY_WORKER_DEPOT_RADIUS = 6;
@@ -433,8 +434,9 @@ export const GANG_LEADER_MIN_RANK = 4;
 // MUST stay in sync with the corresponding exports in
 // artifacts/api-server/src/socket/cityData.ts.
 
-/** Government Office (City Hall) entrance position. */
-export const GOVERNMENT_OFFICE_POS: [number, number, number] = [-22, 0, -32];
+/** Government Office (City Hall) entrance position.
+ *  Phase 9A: moved (−22,−32)→(−22,−22). Must mirror server cityData.ts. */
+export const GOVERNMENT_OFFICE_POS: [number, number, number] = [-22, 0, -22];
 
 /** Interaction radius (m) for the Government Office. */
 export const GOVERNMENT_OFFICE_RADIUS = 8;

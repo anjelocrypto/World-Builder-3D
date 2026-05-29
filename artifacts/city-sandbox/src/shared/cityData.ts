@@ -364,8 +364,8 @@ export const INITIAL_VEHICLES: VehicleState[] = [
   // ===== City (14 cars) — original 200x200 hub =====
   { id: "car-0",  x:  22, y: 0.6, z: -22, rotY: 0,                  speed: 0, driverId: null, variant: "sedan",   color: "#e74c3c" },
   { id: "car-1",  x: -22, y: 0.6, z:  22, rotY: Math.PI,            speed: 0, driverId: null, variant: "sedan",   color: "#3498db" },
-  { id: "car-2",  x:  22, y: 0.6, z:  22, rotY: 0,                  speed: 0, driverId: null, variant: "compact", color: "#c0392b" },
-  { id: "car-3",  x: -22, y: 0.6, z: -22, rotY: Math.PI,            speed: 0, driverId: null, variant: "van",     color: "#7f8c8d" },
+  { id: "car-2",  x:  22, y: 0.6, z:  15, rotY: 0,                  speed: 0, driverId: null, variant: "compact", color: "#c0392b" }, // Phase 9A: moved (22,22)→(22,15) to clear City Worker depot footprint
+  { id: "car-3",  x: -22, y: 0.6, z: -31, rotY: Math.PI,            speed: 0, driverId: null, variant: "van",     color: "#7f8c8d" }, // Phase 9A: moved (-22,-22)→(-22,-31) to clear City Hall footprint
   { id: "car-4",  x:  55, y: 0.6, z:   8, rotY: Math.PI / 2,        speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
   { id: "car-5",  x: -55, y: 0.6, z:  -8, rotY: -Math.PI / 2,       speed: 0, driverId: null, variant: "compact", color: "#f39c12" },
   { id: "car-6",  x:   8, y: 0.6, z:  55, rotY: Math.PI,            speed: 0, driverId: null, variant: "sedan",   color: "#9b59b6" },

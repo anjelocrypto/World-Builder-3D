@@ -14,8 +14,8 @@ export const INITIAL_VEHICLES = [
   // ===== City (14 cars) — original 200x200 hub =====
   { id: "car-0",  x:  22, y: 0.6, z: -22, rotY: 0,                  speed: 0, driverId: null, variant: "sedan",   color: "#e74c3c" },
   { id: "car-1",  x: -22, y: 0.6, z:  22, rotY: Math.PI,            speed: 0, driverId: null, variant: "sedan",   color: "#3498db" },
-  { id: "car-2",  x:  22, y: 0.6, z:  22, rotY: 0,                  speed: 0, driverId: null, variant: "compact", color: "#c0392b" },
-  { id: "car-3",  x: -22, y: 0.6, z: -22, rotY: Math.PI,            speed: 0, driverId: null, variant: "van",     color: "#7f8c8d" },
+  { id: "car-2",  x:  22, y: 0.6, z:  15, rotY: 0,                  speed: 0, driverId: null, variant: "compact", color: "#c0392b" }, // Phase 9A: moved (22,22)→(22,15) to clear City Worker depot footprint
+  { id: "car-3",  x: -22, y: 0.6, z: -31, rotY: Math.PI,            speed: 0, driverId: null, variant: "van",     color: "#7f8c8d" }, // Phase 9A: moved (-22,-22)→(-22,-31) to clear City Hall footprint
   { id: "car-4",  x:  55, y: 0.6, z:   8, rotY: Math.PI / 2,        speed: 0, driverId: null, variant: "taxi",    color: "#f1c40f" },
   { id: "car-5",  x: -55, y: 0.6, z:  -8, rotY: -Math.PI / 2,       speed: 0, driverId: null, variant: "compact", color: "#f39c12" },
   { id: "car-6",  x:   8, y: 0.6, z:  55, rotY: Math.PI,            speed: 0, driverId: null, variant: "sedan",   color: "#9b59b6" },
@@ -166,12 +166,16 @@ export const VEHICLE_SHOP_CATALOG = [
 // ── City Worker job (Phase 4) ─────────────────────────────────────────────
 
 /**
- * City Worker depot entrance — NE inner block, clear of all roads and cars.
- * Validated: x=30 → |30−45|=15>10 (x=45 NS road), |30−0|=30>10 (x=0 road);
- *             z=28 → |28−45|=17>10 (z=45 EW road), |28−0|=28>10 (z=0 road).
- * Vehicle clearance: nearest car is car-2 at (22,22) → dist≈10 m > 8 m.
+ * City Worker depot entrance — SE inner block, clear of all roads and cars.
+ * Phase 9A: moved (30,28)→(24,24) so a real depot footprint (16×12) clears the
+ * road grid (road edge 3.0 m) and sits ≥31 m from other civic buildings.
+ * Validated: x=24 → |24−45|=21>10 (x=45 NS road), |24−0|=24>10 (x=0 road);
+ *             z=24 → |24−45|=21>10 (z=45 EW road), |24−0|=24>10 (z=0 road).
+ * car-2 relocated (22,22)→(22,15) to clear the new footprint.
+ * Clock-in is a proximity gate only; CITY_WORKER_CHECKPOINTS are NOT moved.
+ * Mirror: client CITY_WORKER_DEPOT in city-sandbox/src/shared/rpTypes.ts.
  */
-export const CITY_WORKER_DEPOT: [number, number, number] = [30, 0, 28];
+export const CITY_WORKER_DEPOT: [number, number, number] = [24, 0, 24];
 
 /** Radius (m) player must be within to clock in/out at the depot. */
 export const CITY_WORKER_DEPOT_RADIUS = 6;
@@ -703,17 +707,18 @@ export const GANG_TERRITORIES: Array<{
 
 // ── Phase 8A: Government Office / City Hall ────────────────────────────────
 //
-// Location: NW inner civic block at [−22, 0, −32].
-// Geometry audit:
+// Location: NW inner civic block at [−22, 0, −22].
+// Geometry audit (Phase 9A — moved from [−22,−32] so a real City Hall footprint fits):
 //   x=−22: nearest NS road x=0,   |−22−0|  =22 > ROAD_HALF(10) ✅
 //           nearest NS road x=−45, |−22−(−45)|=23 > ROAD_HALF(10) ✅
-//   z=−32: nearest EW road z=0,   |−32−0|  =32 > ROAD_HALF(10) ✅
-//           nearest EW road z=−45, |−32−(−45)|=13 > ROAD_HALF(10) ✅
-// Nearest parked car: car-3 at [−22, 0.6, −22]; dist=10 m > 8 m ✅
-// Nearest RP marker: Licensing Office [14, 0, −30]; dist ≈ 36 m ✅
+//   z=−22: nearest EW road z=0,   |−22−0|  =22 > ROAD_HALF(10) ✅
+//           nearest EW road z=−45, |−22−(−45)|=23 > ROAD_HALF(10) ✅
+// 18×12 footprint → road edge clearance 3.0 m; ≥27 m from other civic buildings.
+// car-3 relocated [−22,−22]→[−22,−31] to clear the new footprint.
+// Mirror: client GOVERNMENT_OFFICE_POS in city-sandbox/src/shared/rpTypes.ts.
 
 /** Government Office (City Hall) entrance — NW inner civic block. Off-road. */
-export const GOVERNMENT_OFFICE_POS: [number, number, number] = [-22, 0, -32];
+export const GOVERNMENT_OFFICE_POS: [number, number, number] = [-22, 0, -22];
 
 /** Radius (m) within which a player can interact with the Government Office. */
 export const GOVERNMENT_OFFICE_RADIUS = 8;
