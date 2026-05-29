@@ -34,7 +34,7 @@ interface BuildingStyle {
 const STYLES: Record<string, BuildingStyle> = {
   government_office: { wall: "#c9c4b4", roof: "#8a8576", sign: "#5577ee", signText: "CITY HALL", floor: "#3b4252" },
   city_worker_depot: { wall: "#b6893f", roof: "#6e5526", sign: "#e0a93b", signText: "PUBLIC WORKS" },
-  medic_center:      { wall: "#e8e8ee", roof: "#c2c6cf", sign: "#e2554e", signText: "MEDICAL CENTER" },
+  medic_center:      { wall: "#e8e8ee", roof: "#c2c6cf", sign: "#e2554e", signText: "MEDICAL CENTER", floor: "#dfe6ea" },
   mechanic_garage:   { wall: "#7d8893", roof: "#525a63", sign: "#e08a2b", signText: "MECHANIC" },
   dealership:        { wall: "#d8dde4", roof: "#9aa3ad", sign: "#3aa0d8", signText: "AUTO SALES" },
   taxi_depot:        { wall: "#d8c24a", roof: "#8a7c2e", sign: "#f1c40f", signText: "TAXI DEPOT" },
