@@ -1738,13 +1738,27 @@ function makeMountainRocks(): RockInstance[] {
   const r = seededRandom(99999);
   const out: RockInstance[] = [];
   const ROCK_TARGET = 120;
-  for (let i = 0; i < ROCK_TARGET * 4 && out.length < ROCK_TARGET; i++) {
+  for (let i = 0; i < ROCK_TARGET * 6 && out.length < ROCK_TARGET; i++) {
     // Keep clear of every rendered road polyline (switchbacks +
     // lookout spur). Old code only rejected |x|<14, which let rocks
     // intrude on the switchback corners at x=±80.
     const x = (r() - 0.5) * 290; // ±145
     const z = -460 + r() * 275;  // -460..-185
     if (tooCloseToAnyRoad(x, z, SCATTER_ROAD_CLEARANCE)) continue;
+    // Phase 13A (Batch E): also reject points that land inside a placed
+    // mountain obstacle (cliff walls, boulders, observatory, guardrails) so a
+    // scatter rock never visually clips a hand-placed cliff/boulder. Deterministic
+    // (same seed; the loop just skips the few colliding draws and the try budget
+    // is raised to ×6 so the target count is still met). Flora-only — no road,
+    // building, or house coordinate is affected.
+    let onObstacle = false;
+    for (const o of STATIC_OBSTACLES) {
+      if (Math.abs(x - o.x) < o.w / 2 + 1 && Math.abs(z - o.z) < o.d / 2 + 1) {
+        onObstacle = true;
+        break;
+      }
+    }
+    if (onObstacle) continue;
     out.push({ x, z, scale: 1.0 + r() * 2.5, rotY: r() * Math.PI * 2 });
   }
   return out;
@@ -3495,6 +3509,111 @@ if (isViteDev) {
     }
   }
   const treesClearOfYards = CITY_EDGE_TREES.length - treesInYards;
+
+  // ---- Phase 13A (Batch E): flora / rock clearance + density ------------
+  // Every tree/rock trunk centre must clear: the central road grid, every
+  // regional road / driveway carriageway, RP houses (±117) + RP buildings,
+  // homestead yards, village parking pads, and placed static obstacles
+  // (cliffs/boulders/cabins/etc). Roads were already enforced at generation
+  // time (SCATTER_ROAD_CLEARANCE); this adds the RP / obstacle / yard / pad
+  // categories as hard assertions so a future seed/region change can't drift.
+  const ALL_FLORA: { x: number; z: number; kind: string }[] = [
+    ...FOREST_TREES.map((t) => ({ x: t.x, z: t.z, kind: "forest_tree" })),
+    ...FOREST_ROCKS.map((t) => ({ x: t.x, z: t.z, kind: "forest_rock" })),
+    ...MOUNTAIN_ROCKS.map((t) => ({ x: t.x, z: t.z, kind: "mountain_rock" })),
+    ...CITY_EDGE_TREES.map((t) => ({ x: t.x, z: t.z, kind: "city_edge_tree" })),
+  ];
+  const onCentralGrid = (x: number, z: number): boolean => {
+    for (const rx of ROADS.ns) if (Math.abs(x - rx) < ROAD_HALF && Math.abs(z) < CITY_HALF) return true;
+    for (const rz of ROADS.ew) if (Math.abs(z - rz) < ROAD_HALF && Math.abs(x) < CITY_HALF) return true;
+    return false;
+  };
+  let floraOnGrid = 0, floraOnRegional = 0, floraInRpHouse = 0, floraInRpBuilding = 0,
+      floraInObstacle = 0, floraInYard = 0, floraOnPad = 0;
+  for (const f of ALL_FLORA) {
+    if (onCentralGrid(f.x, f.z)) {
+      floraOnGrid++;
+      issues.push(`flora ${f.kind} (${f.x.toFixed(0)},${f.z.toFixed(0)}) on a central road carriageway`);
+    }
+    for (const r of REGIONAL_ROADS) {
+      if (distancePointToPolyline(f.x, f.z, r.points) < r.width / 2) {
+        floraOnRegional++;
+        issues.push(`flora ${f.kind} (${f.x.toFixed(0)},${f.z.toFixed(0)}) on regional road ${r.id}`);
+        break;
+      }
+    }
+    for (const h of RP_HOUSES) {
+      if (Math.abs(f.x - h.x) < h.w / 2 && Math.abs(f.z - h.z) < h.d / 2) {
+        floraInRpHouse++;
+        issues.push(`flora ${f.kind} (${f.x.toFixed(0)},${f.z.toFixed(0)}) inside RP house ${h.slug}`);
+        break;
+      }
+    }
+    for (const b of RP_BUILDINGS) {
+      if (Math.abs(f.x - b.x) < b.w / 2 && Math.abs(f.z - b.z) < b.d / 2) {
+        floraInRpBuilding++;
+        issues.push(`flora ${f.kind} (${f.x.toFixed(0)},${f.z.toFixed(0)}) inside RP building ${b.id}`);
+        break;
+      }
+    }
+    for (const o of STATIC_OBSTACLES) {
+      if (o.kind === "yard_fence") continue; // thin fence panels handled by yard check
+      if (Math.abs(f.x - o.x) < o.w / 2 + 1 && Math.abs(f.z - o.z) < o.d / 2 + 1) {
+        floraInObstacle++;
+        issues.push(`flora ${f.kind} (${f.x.toFixed(0)},${f.z.toFixed(0)}) inside obstacle ${o.kind} (${o.x},${o.z})`);
+        break;
+      }
+    }
+    for (const h of PERI_CITY_HOMESTEADS) {
+      const yb = homesteadYardBounds(h);
+      if (f.x >= yb.x0 && f.x <= yb.x1 && f.z >= yb.z0 && f.z <= yb.z1) {
+        floraInYard++;
+        issues.push(`flora ${f.kind} (${f.x.toFixed(0)},${f.z.toFixed(0)}) inside homestead ${h.id} yard`);
+        break;
+      }
+    }
+    for (const p of VILLAGE_PARKING_PADS) {
+      if (Math.hypot(f.x - p.x, f.z - p.z) < 3) {
+        floraOnPad++;
+        issues.push(`flora ${f.kind} (${f.x.toFixed(0)},${f.z.toFixed(0)}) on village parking pad (${p.x},${p.z})`);
+        break;
+      }
+    }
+  }
+  // Density by region (warning-only — flags an EMPTY region, which would
+  // signal a generator regression, without failing on intentional balance).
+  const floraRegion = (x: number, z: number): string => {
+    if (Math.max(Math.abs(x), Math.abs(z)) <= CITY_HALF) return "city-core";
+    if (z < -CITY_HALF) return "mountain";
+    if (z > 180) return "forest";
+    if (z >= CITY_HALF && z <= 180 && Math.abs(x) <= 30) return "bridge";
+    if (x > CITY_HALF) return "east";
+    if (x < -CITY_HALF) return "west";
+    return "peri-city";
+  };
+  const floraDensity: Record<string, number> = {};
+  for (const f of ALL_FLORA) {
+    const rg = floraRegion(f.x, f.z);
+    floraDensity[rg] = (floraDensity[rg] ?? 0) + 1;
+  }
+  // The forest + mountain biomes should never be empty (their scatter is the
+  // whole point); an empty one means the generator broke.
+  for (const rg of ["forest", "mountain"] as const) {
+    if ((floraDensity[rg] ?? 0) === 0) {
+      issues.push(`flora density: ${rg} region has 0 trees/rocks (generator regression?)`);
+    }
+  }
+  const floraTotal = ALL_FLORA.length;
+  const floraViolations = floraOnGrid + floraOnRegional + floraInRpHouse +
+    floraInRpBuilding + floraInObstacle + floraInYard + floraOnPad;
+  const floraLine =
+    `floraClearance OK: ${floraTotal} trees+rocks, violations=${floraViolations} ` +
+    `[grid:${floraOnGrid},regional:${floraOnRegional},rpHouse:${floraInRpHouse},` +
+    `rpBuilding:${floraInRpBuilding},obstacle:${floraInObstacle},yard:${floraInYard},pad:${floraOnPad}], ` +
+    `density={` +
+    Object.keys(floraDensity).sort().map((k) => `${k}:${floraDensity[k]}`).join(",") +
+    `}`;
+
   // (4) Sides — at least one homestead per cardinal side. The side is
   // taken from `gateSide`, which already encodes which direction the
   // homestead opens onto the city ring.
@@ -4177,6 +4296,8 @@ if (isViteDev) {
     // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${periCityHomesteadsLine}`);
     // eslint-disable-next-line no-console
+    console.warn(`[city-sandbox] ${floraLine}`);
+    // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${mountainRingLine}`);
     // eslint-disable-next-line no-console
     console.warn(`[city-sandbox] ${vehicleGroundingLine}`);
@@ -4208,6 +4329,8 @@ if (isViteDev) {
     console.info(`[city-sandbox] ${cityForestBeltLine}`);
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${periCityHomesteadsLine}`);
+    // eslint-disable-next-line no-console
+    console.info(`[city-sandbox] ${floraLine}`);
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${mountainRingLine}`);
     // eslint-disable-next-line no-console

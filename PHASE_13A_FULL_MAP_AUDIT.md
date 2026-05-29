@@ -3,8 +3,9 @@
 **Originally an audit-only report.** All findings below are computed (seeded building generator
 replicated exactly; distances/overlaps calculated in code), not eyeballed. **Status:** Batch A
 (§8), the post-audit house relocation (§9–§10), Batch B full-map validators (§11), Batch C
-parked-car / NPC + traffic validators (§12), and Batch D homestead + legacy-spawn validators
-(§13) are implemented and verified; Batches E–F remain optional polish, pending approval.
+parked-car / NPC + traffic validators (§12), Batch D homestead + legacy-spawn validators (§13),
+and Batch E flora/rock clearance + density validators (§14) are implemented and verified; Batch F
+remains optional visual polish, pending approval.
 
 ---
 
@@ -225,9 +226,12 @@ overlap. No action.
   plaza spawns off-road (§5.4); added spawn-off-road + spawn-vs-RP validators, homestead yard/house/
   fence vs RP buildings + RP houses, and an explicit gate-gap ≥ driveway-width check (homestead
   driveway-connectivity + gate-alignment were already validated).
-- **Batch E — nature/tree/rock density polish.** Audit flora density per region (west fields look
-  sparse; some corner clusters dense); assert no trunk/rock sits on a driveway, cabin door, or path;
-  optionally lightly populate the under-used west zone.
+- **Batch E — nature/tree/rock density polish. ✅ IMPLEMENTED (§14).** Ran the real generators
+  in-sandbox: 0 path-clearance bugs (nothing on roads/driveways/gates/RP houses/RP buildings/yards/
+  pads). Fixed 3 mountain scatter rocks that clipped placed cliff/boulder obstacles (added an
+  obstacle-reject rule to `makeMountainRocks`, still deterministic, still 120 rocks). Added flora-vs-
+  everything clearance assertions + per-region density counters. Density already balanced — no
+  additive scatter needed.
 - **Batch F — visual-only quality.** Reduce intra-block procedural overlaps (§5.2); document the
   render-only/no-collision systems (massifs, bridge deck, skybridges, rail); minor skyline variety.
 
@@ -359,7 +363,8 @@ correctly reports 0. No object was moved.
 | Highrise / landmark | — | YES | vs regional roads, vs RP buildings (in BUILDINGS set) | — |
 | RP buildings | `validateRpBuildings` | NEW | road/gap/cars/doors/walls/jail + vs full BUILDINGS + regional | — |
 | RP houses | `validateRpHouses` (+core envelope, bounded roads) | NEW (full world) | road/RP-gap/cars/doors/interior/markers/core + vs BUILDINGS/regional/obstacles/cars | — |
-| Static obstacles / homesteads / fences | — | PARTIAL | houses & spawns & vehicles vs obstacles; homesteads vs vehicles/lamps/station/stairs | obstacle-vs-road not asserted (hand-placed roadside by design) |
+| Static obstacles / homesteads / fences | — | PARTIAL | houses & spawns & vehicles vs obstacles; homesteads vs vehicles/lamps/station/stairs/RP (Batch D) | obstacle-vs-road not asserted (hand-placed roadside by design) |
+| Trees / flora / rocks | — | YES (Batch E, §14) | every trunk vs central grid, regional roads/driveways, RP houses, RP buildings, static obstacles, homestead yards, village pads; per-region density counters (forest/mountain non-empty hard-fail) | individual flora has no runtime collision (visual instances) — by design |
 | Parked cars | `validateRpBuildings`/`…Houses`/`…VehicleClearance` | YES | vs RP buildings/houses, 8 m marker clearance, vs buildings/obstacles, grounding | — |
 | Spawns | `validateRpMarkers`/`safeStationSpawn` | YES (Batch D, §13) | station spawn off-road + obstacle + bounds; legacy plaza `SPAWN_POINTS` relocated off-road (Batch D) and now asserted off-grid + clear of buildings / RP buildings / RP houses / obstacles + ≥4.5 m from parked cars | — |
 | ATMs / job & checkpoint markers | `validateRpMarkers`/`…VehicleClearance` | — | on/off-road per role, obstacle, 8 m car clearance | — |
@@ -479,3 +484,53 @@ was only 4.47 m from car-2 (22,15) — under the 4.5 m bar — so it was re-solv
   assert no trunk/rock on a driveway/cabin door/path; optional light west-zone population.
 - **Batch F:** reduce intra-block procedural building self-overlap (§5.2, cosmetic); document the
   render-only/no-collision systems (massifs, bridge deck, skybridges, rail); minor skyline variety.
+
+---
+
+## 14. Batch E — flora / rock clearance + density (validator-only, 1 cosmetic fix)
+
+**Method:** ran the *real* client generators in-sandbox (Node 22 `--experimental-strip-types`,
+extensionless imports patched) — not a re-implementation — so the pre-flight tested the true
+seeded positions: FOREST_TREES 220, FOREST_ROCKS 60, MOUNTAIN_ROCKS 120, CITY_EDGE_TREES 420.
+
+### Pre-flight findings
+- **0 path-clearance bugs.** No tree/rock on: the central road grid, any regional road/driveway,
+  RP houses (±117), RP buildings, homestead yards, or village parking pads.
+- **1 cosmetic issue — 3 mountain scatter rocks clipping placed cliff/boulder obstacles**:
+  `(142,−259)` in a large_rock, `(−101,−316)` & `(114,−261)` in cliff_walls. `makeMountainRocks`
+  rejected roads but not static obstacles. Rock-on-cliff in the unwalkable mountain zone — not a
+  path blocker, but a real flora-vs-obstacle overlap.
+
+### Fix (smallest, flora-only, deterministic)
+Added a static-obstacle reject rule to `makeMountainRocks` (skip any draw within obstacle
+half-extent + 1 m); raised the try budget ×4→×6 so the count still hits 120. Same seed (99999);
+only the few colliding draws are skipped. **No road / building / house / cliff coordinate moved.**
+Re-pre-flight: MOUNTAIN_ROCKS still 120, **all clearance categories 0**.
+
+### Density report (balanced — no additive scatter needed)
+- By source: forest_tree 220, forest_rock 60, mountain_rock 120, city_edge_tree 420.
+- city_edge_tree by cardinal: N 126, S 63, E 110, W 121 (S lower by design — the bridge corridor
+  and forest seam occupy the south band; not empty, not a bug).
+- forest_tree by side: W(x<0) 107, E(x≥0) 113 — the "west fields look sparse" note from §1 was a
+  *city-edge belt* impression, not the forest; forest scatter is well-balanced. No region empty.
+
+### Validators added (client dev block)
+- **Flora clearance:** every tree/rock trunk vs central grid, regional roads/driveways, RP houses,
+  RP buildings, static obstacles, homestead yards, and village parking pads (hard assertions).
+- **Density counters:** per-region tally with a hard fail if the forest or mountain biome is ever
+  empty (generator-regression guard); the rest report as an info line (`floraClearance OK: … density={…}`).
+
+### Coverage delta (§11)
+"Trees/flora" and "Rocks" rows move from NO to fully asserted (clearance + density). Driveway/gate
+clearance is covered transitively (driveways are regional roads; gates sit on yard perimeters, and
+yards are asserted flora-free).
+
+### Verification
+- tsc ×4 pass.
+- Direct replay (real generators): flora violations grid 0 / regional 0 / RP house 0 / RP building
+  0 / obstacle 0 / yard 0 / pad 0 = **TOTAL 0**; MOUNTAIN_ROCKS 120; no biome empty.
+- api-server build, `BASE_PATH=/ PORT=5173 pnpm build`, tsx `rpValidators` run on the Mac.
+
+### Remaining — Batch F (optional visual polish, not a blocker)
+Reduce intra-block procedural building self-overlap (§5.2, cosmetic); document render-only/no-
+collision systems (massifs, bridge deck, skybridges, rail); minor skyline variety.
