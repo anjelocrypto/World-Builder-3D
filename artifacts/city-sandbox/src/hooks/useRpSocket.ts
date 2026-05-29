@@ -13,9 +13,9 @@
  *   canDriveVehicle — optimistic client check (server enforces independently)
  */
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard, CityLedger, ReceivedIDCard, PlayerInventory } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard, CityLedger, ReceivedIDCard, PlayerInventory, HouseInfo } from "../shared/rpTypes";
 import { canDriveVehicleClient, GROVE_TAG_COOLDOWN_MS, CITY_TAX_DEFAULT } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
@@ -145,6 +145,11 @@ export function useRpSocket(socket: Socket | null) {
   const [receivedID, setReceivedID] = useState<ReceivedIDCard | null>(null);
   // Phase 11C: the local player's own inventory (read-only), fetched on demand.
   const [playerInventory, setPlayerInventory] = useState<PlayerInventory | null>(null);
+  // Phase 12A: house ownership list (safe payload — no owner UUIDs).
+  const [houses, setHouses] = useState<HouseInfo[]>([]);
+  // Phase 12A: pending server-authorised house teleport target for the local
+  // player. GameScene passes this ref straight to LocalPlayer, which snaps to it.
+  const houseTeleportRef = useRef<[number, number, number] | null>(null);
 
   useEffect(() => {
     if (!socket) return;
@@ -375,6 +380,16 @@ export function useRpSocket(socket: Socket | null) {
       setPlayerInventory(data && Array.isArray(data.items) ? data : { items: [] });
     };
 
+    // Phase 12A: rp:houses — safe ownership list; rp:houseTeleport — snap target.
+    const onHouses = (data: { houses?: HouseInfo[] }) => {
+      setHouses(data && Array.isArray(data.houses) ? data.houses : []);
+    };
+    const onHouseTeleport = (data: { pos?: [number, number, number] }) => {
+      if (data && Array.isArray(data.pos) && data.pos.length === 3) {
+        houseTeleportRef.current = data.pos;
+      }
+    };
+
     // Phase 7A: rp:factionChat — a faction member sent a message.
     const onFactionChat = (data: {
       fromId:       string;
@@ -425,6 +440,8 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:idShown",              onIDShown);
     socket.on("rp:idInspected",          onIDInspected);
     socket.on("rp:inventory",            onInventory);
+    socket.on("rp:houses",               onHouses);
+    socket.on("rp:houseTeleport",        onHouseTeleport);
 
     return () => {
       socket.off("rp:profile",              onProfile);
@@ -460,6 +477,8 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:idShown",              onIDShown);
       socket.off("rp:idInspected",          onIDInspected);
       socket.off("rp:inventory",            onInventory);
+      socket.off("rp:houses",               onHouses);
+      socket.off("rp:houseTeleport",        onHouseTeleport);
     };
   }, [socket]);
 
@@ -600,6 +619,12 @@ export function useRpSocket(socket: Socket | null) {
 
   /** Phase 11C: request the local player's own inventory (server-authoritative). */
   const emitGetInventory = useCallback(() => { socket?.emit("rp:getInventory"); }, [socket]);
+
+  /** Phase 12A: housing emitters. Client sends only a slug; server is authoritative. */
+  const emitGetHouses   = useCallback(() => { socket?.emit("rp:getHouses"); }, [socket]);
+  const emitBuyHouse    = useCallback((slug: string) => { socket?.emit("rp:buyHouse", { slug }); }, [socket]);
+  const emitEnterHouse  = useCallback((slug: string) => { socket?.emit("rp:enterHouse", { slug }); }, [socket]);
+  const emitExitHouse   = useCallback(() => { socket?.emit("rp:exitHouse"); }, [socket]);
 
   /** Phase 6C: emit rp:cuff — officer cuffs a nearby wanted player. */
   const emitCuff = useCallback(
@@ -817,5 +842,12 @@ export function useRpSocket(socket: Socket | null) {
     /** Phase 11C: read-only personal inventory. */
     playerInventory,
     emitGetInventory,
+    /** Phase 12A: player housing. */
+    houses,
+    houseTeleportRef,
+    emitGetHouses,
+    emitBuyHouse,
+    emitEnterHouse,
+    emitExitHouse,
   };
 }

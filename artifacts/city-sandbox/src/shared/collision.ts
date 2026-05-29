@@ -12,7 +12,7 @@ import {
   STATIC_OBSTACLES,
   VARIANT_DIMENSIONS,
 } from "./cityData";
-import { RP_BUILDING_WALL_BOXES } from "./rpTypes";
+import { RP_BUILDING_WALL_BOXES, RP_HOUSE_WALL_BOXES } from "./rpTypes";
 import { distancePointToPolyline } from "./roadGeom";
 
 // =====================================================
@@ -230,6 +230,26 @@ export function playerHitsAnyRpWall(
 ): boolean {
   const c: Circle = { x: px, z: pz, r };
   for (const w of RP_BUILDING_WALL_BOXES) {
+    if (circleVsAabb(c, { x: w.x, z: w.z, hw: w.w / 2, hd: w.d / 2 })) return true;
+  }
+  return false;
+}
+
+// =====================================================
+// Phase 12A: sealed player-house shells (player-only)
+// =====================================================
+//
+// Houses are sealed 8×8 shells (4 solid walls, NO doorway gap), so a player
+// can never physically walk in — owner-only entry is granted exclusively by the
+// server teleport. Player-only, like the RP building walls; vehicles unaffected
+// (every house plot is ≥30 m off any road carriageway).
+export function playerHitsAnyHouse(
+  px: number,
+  pz: number,
+  r = PLAYER_BODY_RADIUS,
+): boolean {
+  const c: Circle = { x: px, z: pz, r };
+  for (const w of RP_HOUSE_WALL_BOXES) {
     if (circleVsAabb(c, { x: w.x, z: w.z, hw: w.w / 2, hd: w.d / 2 })) return true;
   }
   return false;

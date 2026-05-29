@@ -227,3 +227,29 @@ export const rpInventoryItems = pgTable(
     check("rp_inventory_quantity_nonneg", sql`${t.quantity} >= 0`),
   ],
 );
+
+// ── 11. rp_houses ───────────────────────────────────────────────────────────
+// Phase 12A: starter player housing ownership.
+//
+// Houses are defined as STATIC constants in mirrored server/client code
+// (slug, label, price, footprint, door, interior). This table persists ONLY
+// ownership: one row per house slug, seeded idempotently on boot. A house has
+// at most one owner; owner_id is NULL when unowned.
+//
+// Purchase claims a house atomically inside a transaction via a conditional
+// UPDATE (… WHERE slug = ? AND owner_id IS NULL RETURNING *), so two players
+// cannot buy the same house. Price/geometry are NEVER read from the client.
+export const rpHouses = pgTable(
+  "rp_houses",
+  {
+    id:          uuid("id").primaryKey().defaultRandom(),
+    slug:        text("slug").unique().notNull(),
+    ownerId:     uuid("owner_id")
+                   .references(() => rpPlayers.id, { onDelete: "set null" }),
+    purchasedAt: timestamp("purchased_at", { withTimezone: true }),
+    updatedAt:   timestamp("updated_at",   { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("idx_rp_houses_owner").on(t.ownerId),
+  ],
+);

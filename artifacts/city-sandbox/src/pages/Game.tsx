@@ -91,6 +91,12 @@ export default function Game({ username }: GameProps) {
     dismissReceivedID,
     playerInventory,
     emitGetInventory,
+    houses,
+    houseTeleportRef,
+    emitGetHouses,
+    emitBuyHouse,
+    emitEnterHouse,
+    emitExitHouse,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -197,6 +203,12 @@ export default function Game({ username }: GameProps) {
       dismissReceivedID={dismissReceivedID}
       playerInventory={playerInventory}
       emitGetInventory={emitGetInventory}
+      houses={houses}
+      houseTeleportRef={houseTeleportRef}
+      emitGetHouses={emitGetHouses}
+      emitBuyHouse={emitBuyHouse}
+      emitEnterHouse={emitEnterHouse}
+      emitExitHouse={emitExitHouse}
     />
   );
 }

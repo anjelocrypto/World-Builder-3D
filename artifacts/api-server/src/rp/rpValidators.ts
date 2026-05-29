@@ -45,8 +45,11 @@ import {
   RP_BUILDINGS,
   RP_BUILDING_MIN_GAP,
   rpBuildingDoor,
+  RP_HOUSES,
+  HOUSE_INTERACT_RADIUS,
+  isInsideHouseFootprint,
 } from "../socket/cityData";
-import type { RpBuildingDef } from "../socket/cityData";
+import type { RpBuildingDef, RpHouseDef } from "../socket/cityData";
 import type { RpCacheEntry, TestState } from "./rpCache";
 
 // ── Local geometry types ───────────────────────────────────────────────────
@@ -266,6 +269,85 @@ export function validateRpBuildings(
       );
     }
     console.info(`[rp] jail confinement OK: radius ${POLICE_JAIL_RADIUS} fits interior + clears door`);
+  }
+}
+
+/**
+ * Phase 12A — startup assertion for the starter player houses. Throws if any
+ * house footprint or door violates placement rules. Read-only geometry check
+ * over RP_HOUSES; mirrors the client RP_HOUSES used for collision + rendering.
+ *
+ * Asserts, for each house:
+ *   1. footprint clears every road carriageway,
+ *   2. footprint keeps ≥ RP_BUILDING_MIN_GAP from every RP building,
+ *   3. no parked car sits inside the footprint (+ margin),
+ *   4. the door point is OFF-road, OUTSIDE the shell, and within reach
+ *      (≤ HOUSE_INTERACT_RADIUS of the shell) so entry/exit can never trap,
+ *   5. houses don't overlap each other (so interiors — which are the shells —
+ *      never overlap), and
+ *   6. the interior teleport target is inside its own footprint (owner lands
+ *      inside the sealed shell).
+ */
+export function validateRpHouses(
+  vehicles: VehiclePos[],
+  vehicleFootprintMargin = 1,
+): void {
+  const gap = (a: { x: number; z: number; w: number; d: number }, b: { x: number; z: number; w: number; d: number }) =>
+    Math.max(Math.abs(a.x - b.x) - (a.w / 2 + b.w / 2), Math.abs(a.z - b.z) - (a.d / 2 + b.d / 2));
+  const insideFootprint = (px: number, pz: number, h: RpHouseDef) =>
+    Math.abs(px - h.x) <= h.w / 2 && Math.abs(pz - h.z) <= h.d / 2;
+
+  for (let i = 0; i < RP_HOUSES.length; i++) {
+    const h = RP_HOUSES[i];
+
+    // 1. off-road footprint
+    if (footprintHitsRoad(h.x, h.z, h.w, h.d)) {
+      throw new Error(`[rp] house "${h.slug}" footprint overlaps a road carriageway`);
+    }
+
+    // 2. clearance from every RP building
+    for (const b of RP_BUILDINGS) {
+      if (gap(h, b) < RP_BUILDING_MIN_GAP) {
+        throw new Error(`[rp] house "${h.slug}" is within ${RP_BUILDING_MIN_GAP} m of building "${b.id}"`);
+      }
+    }
+
+    // 3. no parked car inside the footprint (+ margin)
+    for (const v of vehicles) {
+      if (
+        Math.abs(v.x - h.x) <= h.w / 2 + vehicleFootprintMargin &&
+        Math.abs(v.z - h.z) <= h.d / 2 + vehicleFootprintMargin
+      ) {
+        throw new Error(`[rp] house "${h.slug}" footprint is within ${vehicleFootprintMargin} m of a parked vehicle`);
+      }
+    }
+
+    // 4. door off-road, outside the shell, and reachable
+    const [dx, , dz] = h.door;
+    if (footprintHitsRoad(dx, dz, 0, 0)) {
+      throw new Error(`[rp] house "${h.slug}" door [${dx}, ${dz}] is on a road carriageway`);
+    }
+    if (insideFootprint(dx, dz, h)) {
+      throw new Error(`[rp] house "${h.slug}" door [${dx}, ${dz}] is inside the sealed shell (would trap)`);
+    }
+    const doorReach = Math.max(Math.abs(dx - h.x) - h.w / 2, Math.abs(dz - h.z) - h.d / 2);
+    if (doorReach > HOUSE_INTERACT_RADIUS) {
+      throw new Error(`[rp] house "${h.slug}" door is ${doorReach.toFixed(2)} m from the shell — beyond reach ${HOUSE_INTERACT_RADIUS} m`);
+    }
+
+    // 5. no overlap with another house
+    for (let j = i + 1; j < RP_HOUSES.length; j++) {
+      if (gap(h, RP_HOUSES[j]) < RP_BUILDING_MIN_GAP) {
+        throw new Error(`[rp] houses "${h.slug}" and "${RP_HOUSES[j].slug}" are within ${RP_BUILDING_MIN_GAP} m`);
+      }
+    }
+
+    // 6. interior teleport target lands inside the shell
+    if (!insideFootprint(h.interior[0], h.interior[2], h) || !isInsideHouseFootprint(h, h.interior[0], h.interior[2])) {
+      throw new Error(`[rp] house "${h.slug}" interior target is not inside its shell`);
+    }
+
+    console.info(`[rp] house OK: ${h.slug} (${h.w}x${h.d} @ [${h.x}, ${h.z}], door [${dx}, ${dz}])`);
   }
 }
 

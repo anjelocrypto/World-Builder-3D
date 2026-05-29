@@ -6,7 +6,8 @@ import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
 import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard, CityLedger, ReceivedIDCard, PlayerInventory } from "../shared/rpTypes";
-import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS, GOVERNMENT_OFFICE_DOOR, GOVERNMENT_OFFICE_RADIUS, MAYOR_MIN_RANK, ID_SHARE_RADIUS } from "../shared/rpTypes";
+import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS, GOVERNMENT_OFFICE_DOOR, GOVERNMENT_OFFICE_RADIUS, MAYOR_MIN_RANK, ID_SHARE_RADIUS, RP_HOUSES, HOUSE_INTERACT_RADIUS, isInsideHouseFootprint } from "../shared/rpTypes";
+import type { HouseInfo } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
 import LicenseTestHUD from "./LicenseTestHUD";
@@ -28,6 +29,8 @@ import IDCardHUD from "./IDCardHUD";
 import ReceivedIDHUD from "./ReceivedIDHUD";
 import InventoryHUD from "./InventoryHUD";
 import RPBuildings from "./RPBuildings";
+import RPHouses from "./RPHouses";
+import HouseBuyModal from "./HouseBuyModal";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import HUD from "./HUD";
@@ -200,6 +203,18 @@ interface GameSceneProps {
   playerInventory: PlayerInventory | null;
   /** Phase 11C: Emit rp:getInventory — request the player's own inventory. */
   emitGetInventory: () => void;
+  /** Phase 12A: house ownership list (safe payload — no owner UUIDs). */
+  houses: HouseInfo[];
+  /** Phase 12A: pending house teleport target for the local player (snap ref). */
+  houseTeleportRef: React.MutableRefObject<[number, number, number] | null>;
+  /** Phase 12A: Emit rp:getHouses. */
+  emitGetHouses: () => void;
+  /** Phase 12A: Emit rp:buyHouse — server validates funds + proximity + ownership. */
+  emitBuyHouse: (slug: string) => void;
+  /** Phase 12A: Emit rp:enterHouse — owner-only entry (server-gated teleport). */
+  emitEnterHouse: (slug: string) => void;
+  /** Phase 12A: Emit rp:exitHouse — leave the house the player is inside. */
+  emitExitHouse: () => void;
 }
 
 export default function GameScene({
@@ -278,6 +293,12 @@ export default function GameScene({
   dismissReceivedID,
   playerInventory,
   emitGetInventory,
+  houses,
+  houseTeleportRef,
+  emitGetHouses,
+  emitBuyHouse,
+  emitEnterHouse,
+  emitExitHouse,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -375,6 +396,28 @@ export default function GameScene({
   // visible so the keydown guard can block opening other modals over it.
   const receivedIDOpenRef = useRef(receivedID !== null);
   receivedIDOpenRef.current = receivedID !== null;
+
+  // Phase 12A: house purchase confirmation modal.
+  const [showHouseBuy, setShowHouseBuy] = useState(false);
+  const showHouseBuyRef = useRef(showHouseBuy);
+  showHouseBuyRef.current = showHouseBuy;
+  const [houseBuyTarget, setHouseBuyTarget] = useState<HouseInfo | null>(null);
+  // Stable refs read inside the empty-deps keydown handler.
+  const housesRef = useRef(houses);
+  housesRef.current = houses;
+  const emitEnterHouseRef = useRef(emitEnterHouse);
+  emitEnterHouseRef.current = emitEnterHouse;
+  const emitExitHouseRef = useRef(emitExitHouse);
+  emitExitHouseRef.current = emitExitHouse;
+  const pushToastRef = useRef(pushToast);
+  pushToastRef.current = pushToast;
+
+  // Phase 12A: fetch the house ownership list once on mount (server also pushes
+  // it on join; this covers hot-reload / late mounts).
+  useEffect(() => {
+    emitGetHouses();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -564,7 +607,8 @@ export default function GameScene({
         showCityLedgerHUDRef.current ||
         showIDCardRef.current ||
         showInventoryRef.current ||
-        receivedIDOpenRef.current;
+        receivedIDOpenRef.current ||
+        showHouseBuyRef.current;
 
       // Phase 7C: F7 toggles faction admin panel (dev-only).
       // Opens only when no other modal is open; always allowed to close itself.
@@ -614,6 +658,37 @@ export default function GameScene({
           setShowGangHUD(true);
         }
         return;
+      }
+
+      // Phase 12A: E for player housing. Handled first; if the player is at a
+      // house door or inside a house, this consumes E and returns. Otherwise it
+      // falls through to the Mayor/other E interactions below. Houses are far
+      // from City Hall, so the two never overlap.
+      if (e.code === "KeyE" && !anyModalOpen) {
+        const px = playerPosRef.current.x;
+        const pz = playerPosRef.current.z;
+        const insideHouse = RP_HOUSES.find((h) => isInsideHouseFootprint(h, px, pz));
+        if (insideHouse) {
+          emitExitHouseRef.current();
+          return;
+        }
+        const nearDoor = RP_HOUSES.find(
+          (h) => Math.hypot(px - h.door[0], pz - h.door[2]) <= HOUSE_INTERACT_RADIUS,
+        );
+        if (nearDoor) {
+          const info = housesRef.current.find((x) => x.slug === nearDoor.slug);
+          if (info?.ownedByMe) {
+            emitEnterHouseRef.current(nearDoor.slug);
+          } else if (info?.owned) {
+            pushToastRef.current?.("This house is locked.", "yellow", 3000);
+          } else {
+            setHouseBuyTarget(
+              info ?? { slug: nearDoor.slug, label: nearDoor.label, price: nearDoor.price, owned: false, ownedByMe: false },
+            );
+            setShowHouseBuy(true);
+          }
+          return;
+        }
       }
 
       // Phase 8A: E at Government Office — Mayor opens City Announcement panel.
@@ -885,6 +960,24 @@ export default function GameScene({
     return best ? { id: best.id, name: best.name } : null;
   })();
 
+  // Phase 12A: house HUD prompt — inside a house, at a door, or none. On foot only.
+  const housePrompt: string | null = (() => {
+    if (uiState.inVehicle) return null;
+    const px = playerPosRef.current.x;
+    const pz = playerPosRef.current.z;
+    const inside = RP_HOUSES.find((h) => isInsideHouseFootprint(h, px, pz));
+    if (inside) return "E — Exit Home";
+    const nearDoor = RP_HOUSES.find(
+      (h) => Math.hypot(px - h.door[0], pz - h.door[2]) <= HOUSE_INTERACT_RADIUS,
+    );
+    if (!nearDoor) return null;
+    const info = houses.find((x) => x.slug === nearDoor.slug);
+    if (info?.ownedByMe) return "E — Enter Home";
+    if (info?.owned) return "Locked";
+    const price = info?.price ?? nearDoor.price;
+    return `E — Buy ${nearDoor.label} $${price.toLocaleString()}`;
+  })();
+
   // Nearest WANTED player within arrest range (must have wantedStars > 0).
   const nearArrestTarget: { id: string; name: string; dist: number; stars: number } | null = (() => {
     if (!isOfficerOnDuty || uiState.inVehicle) return null;
@@ -1078,6 +1171,9 @@ export default function GameScene({
           {/* Phase 9A Batch C: civic RP buildings (visual-only shells from RP_BUILDINGS). */}
           <RPBuildings />
 
+          {/* Phase 12A: starter player houses (sealed shells + door markers). */}
+          <RPHouses />
+
           {/* RP world markers — station platform, licensing office, checkpoint rings, depot */}
           <RPMarkers
             activeTest={rpProfile?.activeTest ?? null}
@@ -1112,6 +1208,7 @@ export default function GameScene({
             activeGangMission={activeGangMission}
             emitGangMissionCheckpoint={emitGangMissionCheckpoint}
             suppressVehicleLockKey={suppressVehicleLockKey}
+            houseTeleportRef={houseTeleportRef}
           />
 
           <PerfMonitor />
@@ -1346,6 +1443,32 @@ export default function GameScene({
       {/* Phase 11C: read-only personal inventory (O key, anywhere) */}
       {showInventory && (
         <InventoryHUD inventory={playerInventory} onClose={() => setShowInventory(false)} />
+      )}
+
+      {/* Phase 12A: house purchase confirmation modal */}
+      {showHouseBuy && houseBuyTarget && (
+        <HouseBuyModal
+          label={houseBuyTarget.label}
+          price={houseBuyTarget.price}
+          canAfford={(rpProfile?.cash ?? 0) >= houseBuyTarget.price}
+          onConfirm={() => { emitBuyHouse(houseBuyTarget.slug); setShowHouseBuy(false); }}
+          onCancel={() => setShowHouseBuy(false)}
+        />
+      )}
+
+      {/* Phase 12A: house interaction prompt (E — Buy / Enter / Exit, or Locked) */}
+      {housePrompt && !showHouseBuy && !showShop && !showATM && !showIDCard && !showInventory && !receivedID && (
+        <div
+          style={{
+            position: "fixed", bottom: 96, left: "50%", transform: "translateX(-50%)",
+            zIndex: 3500, pointerEvents: "none",
+            background: "rgba(4,10,28,0.9)", border: "1px solid rgba(85,119,238,0.5)",
+            borderRadius: 8, padding: "8px 16px", color: "#dde", fontSize: 14, fontWeight: 700,
+            letterSpacing: 0.3, boxShadow: "0 4px 16px rgba(0,0,0,0.6)",
+          }}
+        >
+          {housePrompt}
+        </div>
       )}
 
       {/* Phase 8B/8D: City Tax Rate panel (Mayor only, near Gov Office, T key) */}

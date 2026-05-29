@@ -927,3 +927,44 @@ export const POLICE_STATION_DOOR:    [number, number, number] = buildingDoorById
 export const ID_SHARE_RADIUS = 4;
 /** Per-sender cooldown (ms) for show/inspect ID, enforced server-side. */
 export const ID_SHARE_COOLDOWN_MS = 2500;
+
+// ── Phase 12A: starter player housing ────────────────────────────────────────
+// Static house definitions — the SERVER-AUTHORITATIVE source of slug, label,
+// price, footprint, exterior door point, and interior teleport target. The
+// client mirrors these in shared/rpTypes.ts for rendering + collision. The DB
+// (rp_houses) persists ONLY ownership. Price is never accepted from the client.
+//
+// Houses are SEALED 8×8 shells (no walk-in gap) on verified-clear city-edge
+// plots, so owner-only access can only be granted by the server teleport.
+export interface RpHouseDef {
+  slug:     string;
+  label:    string;
+  price:    number;
+  x:        number;
+  z:        number;
+  w:        number;
+  d:        number;
+  /** Exterior interaction point + teleport-out target (on open ground at the door). */
+  door:     [number, number, number];
+  /** Interior teleport-in target (inside the sealed shell). */
+  interior: [number, number, number];
+}
+
+export const RP_HOUSES: ReadonlyArray<RpHouseDef> = [
+  { slug: "maple_court",   label: "Maple Court",   price: 25000, x: -92, z: -92, w: 8, d: 8, door: [-92, 1, -86], interior: [-92, 1, -92] },
+  { slug: "lakeside_villa", label: "Lakeside Villa", price: 40000, x: -92, z:  92, w: 8, d: 8, door: [-92, 1,  86], interior: [-92, 1,  92] },
+  { slug: "harbor_flat",   label: "Harbor Flat",   price: 30000, x:  92, z: -92, w: 8, d: 8, door: [ 92, 1, -86], interior: [ 92, 1, -92] },
+];
+
+/** Distance (m) within which a player may buy / enter at a house door. */
+export const HOUSE_INTERACT_RADIUS = 4;
+
+/** Look up a static house def by slug (server-authoritative). */
+export function rpHouseBySlug(slug: string): RpHouseDef | undefined {
+  return RP_HOUSES.find((h) => h.slug === slug);
+}
+
+/** True when (px,pz) is inside a house footprint (used to detect "exit" intent). */
+export function isInsideHouseFootprint(h: RpHouseDef, px: number, pz: number): boolean {
+  return Math.abs(px - h.x) <= h.w / 2 && Math.abs(pz - h.z) <= h.d / 2;
+}

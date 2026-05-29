@@ -40,6 +40,7 @@ import {
   handlePoliceInspectID,
 } from "./rpIdentityService";
 import { handleGetInventory } from "./rpInventoryService";
+import { handleGetHouses, handleBuyHouse, handleEnterHouse, handleExitHouse } from "./rpHouseService";
 import {
   issueFine,
   respondFine,
@@ -335,6 +336,31 @@ export function setupRpHandlers(
     handleGetInventory(socket, ctx).catch((err) => {
       // Phase 11C: no socket ids in logs (consistent with 11B hardening).
       logger.error({ err }, "[rp] handleGetInventory threw");
+    });
+  });
+
+  // ── rp:getHouses / rp:buyHouse / rp:enterHouse / rp:exitHouse (Phase 12A) ──
+  // Server-authoritative housing. Client sends only a house slug (validated
+  // against static defs); price/ownership/teleport are all server-derived.
+  socket.on("rp:getHouses", () => {
+    handleGetHouses(socket, ctx).catch((err) => {
+      logger.error({ err }, "[rp] handleGetHouses threw");
+    });
+  });
+  socket.on("rp:buyHouse", (data: { slug?: unknown } | null | undefined) => {
+    handleBuyHouse(socket, ctx, data?.slug).catch((err) => {
+      logger.error({ err }, "[rp] handleBuyHouse threw");
+      socket.emit("rp:toast", { msg: "Server error — purchase failed. Try again.", color: "red", duration: 4000 });
+    });
+  });
+  socket.on("rp:enterHouse", (data: { slug?: unknown } | null | undefined) => {
+    handleEnterHouse(socket, ctx, data?.slug).catch((err) => {
+      logger.error({ err }, "[rp] handleEnterHouse threw");
+    });
+  });
+  socket.on("rp:exitHouse", () => {
+    handleExitHouse(socket, ctx).catch((err) => {
+      logger.error({ err }, "[rp] handleExitHouse threw");
     });
   });
 

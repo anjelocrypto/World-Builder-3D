@@ -17,6 +17,7 @@ import {
   validateRpMarkers,
   validateRpMarkerVehicleClearance,
   validateRpBuildings,
+  validateRpHouses,
   validateVehicleSpawnOBB,
   canDriveVehicle,
   safeStationSpawn,
@@ -29,6 +30,7 @@ import { loadAndSpawnOwnedVehicles } from "../rp/rpVehicleService";
 import { cleanupPendingGangRequest, cleanupGangMission } from "../rp/rpFactionService";
 import { clearIdShareForPlayer } from "../rp/rpIdentityService";
 import { clearInventoryFetchForPlayer, ensureStarterInventoryForPlayer } from "../rp/rpInventoryService";
+import { ensureHousesSeeded, handleGetHouses } from "../rp/rpHouseService";
 
 // Clamp a horizontal world coordinate so a hacked client cannot push a
 // player or vehicle outside the playable map. The margin keeps the
@@ -142,6 +144,8 @@ export function setupGameServer(httpServer: HttpServer) {
     // Phase 9A Batch B: footprint-aware checks for RP buildings (road overlap,
     // building-to-building clearance, parked-car clearance, entrance reachability).
     validateRpBuildings(Array.from(vehicles.values()));
+    // Phase 12A: starter player houses — footprint/door/interior geometry.
+    validateRpHouses(Array.from(vehicles.values()));
 
     // OBB check: all four corners of the test-vehicle body must clear every
     // road carriageway. Static building obstacles are not available server-side
@@ -250,6 +254,8 @@ export function setupGameServer(httpServer: HttpServer) {
             // Phase 3: load + spawn owned vehicles; emits rp:profileUpdate with
             // ownedVehicles array and vehicleAdded for each vehicle.
             await loadAndSpawnOwnedVehicles(socket.id, ctx);
+            // Phase 12A: send the player's house ownership list (safe payload).
+            await handleGetHouses(socket, ctx);
           })
           .catch((err) => {
             logger.error({ err, socketId: socket.id }, "[rp] upsertPlayer failed");
@@ -596,6 +602,11 @@ export function setupGameServer(httpServer: HttpServer) {
         logger.info({ socketId: socket.id, username: player.username }, "Player left");
       }
     });
+  });
+
+  // Phase 12A: seed house ownership rows idempotently (non-fatal on failure).
+  ensureHousesSeeded().catch((err) => {
+    logger.error({ err }, "[rp] ensureHousesSeeded threw");
   });
 
   logger.info("Game server (Socket.io) initialized");

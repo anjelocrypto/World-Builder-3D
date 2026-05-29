@@ -56,6 +56,7 @@ import {
   playerHitsAnyBuilding,
   playerHitsAnyObstacle,
   playerHitsAnyRpWall,
+  playerHitsAnyHouse,
   vehicleHitsAnyBuilding,
   vehicleHitsAnyObstacle,
   npcPositionAt,
@@ -247,6 +248,13 @@ interface LocalPlayerProps {
    * vehicle lock authority is unchanged.
    */
   suppressVehicleLockKey?: boolean;
+  /**
+   * Phase 12A: pending server-authorised teleport target [x,y,z] (house enter/
+   * exit). When set, the player snaps there on the next frame and the ref is
+   * cleared. GameScene fills this on rp:houseTeleport. Reusing the same
+   * pos.current.set primitive as the vehicle-exit reposition.
+   */
+  houseTeleportRef?: React.MutableRefObject<[number, number, number] | null>;
 }
 
 export default function LocalPlayer({
@@ -274,6 +282,7 @@ export default function LocalPlayer({
   activeGangMission,
   emitGangMissionCheckpoint,
   suppressVehicleLockKey,
+  houseTeleportRef,
 }: LocalPlayerProps) {
   const { camera, gl } = useThree();
   const [, getKeys] = useKeyboardControls<Controls>();
@@ -468,6 +477,29 @@ export default function LocalPlayer({
     const dt = Math.min(delta, 0.05);
     const keys = getKeys();
     const now = Date.now();
+
+    // Phase 12A: apply a pending server-authorised house teleport (enter/exit).
+    // Snap the local avatar (client-authoritative position) to the target the
+    // server validated, mirroring the vehicle-exit reposition. Detach from any
+    // vehicle first so the player always teleports on foot. Cleared after use.
+    const tp = houseTeleportRef?.current;
+    if (tp) {
+      if (inVehicle.current && drivingVehicleId.current) {
+        const vId = drivingVehicleId.current;
+        onVehicleUpdate(vId, { driverId: null, speed: 0 });
+        emitVehicleUpdate({
+          id: vId, driverId: null, speed: 0,
+          x: vehiclePos.current.x, y: vehiclePos.current.y, z: vehiclePos.current.z,
+        });
+        inVehicle.current = false;
+        drivingVehicleId.current = null;
+        vehicleSpeed.current = 0;
+      }
+      pos.current.set(tp[0], tp[1], tp[2]);
+      vel.current.set(0, 0, 0);
+      playerPosRef.current.copy(pos.current);
+      if (houseTeleportRef) houseTeleportRef.current = null;
+    }
 
     // Cooldowns
     if (interactCooldown.current > 0) interactCooldown.current -= dt;
@@ -1096,6 +1128,7 @@ export default function LocalPlayer({
       playerHitsAnyBuilding(nx, pos.current.z) ||
       playerHitsAnyObstacle(nx, pos.current.z) ||
       playerHitsAnyRpWall(nx, pos.current.z) ||
+      playerHitsAnyHouse(nx, pos.current.z) ||
       obstacles.some((o) =>
         circleVsObb({ x: nx, z: pos.current.z, r: PLAYER_BODY_RADIUS }, o),
       )
@@ -1108,6 +1141,7 @@ export default function LocalPlayer({
       playerHitsAnyBuilding(nx, nz) ||
       playerHitsAnyObstacle(nx, nz) ||
       playerHitsAnyRpWall(nx, nz) ||
+      playerHitsAnyHouse(nx, nz) ||
       obstacles.some((o) =>
         circleVsObb({ x: nx, z: nz, r: PLAYER_BODY_RADIUS }, o),
       )

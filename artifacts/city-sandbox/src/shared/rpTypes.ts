@@ -937,3 +937,70 @@ export const TAXI_DEPOT_DOOR:        [number, number, number] = buildingDoorById
 export const DELIVERY_HUB_DOOR:      [number, number, number] = buildingDoorById("delivery_hub");
 export const LICENSING_OFFICE_DOOR:  [number, number, number] = buildingDoorById("licensing_office");
 export const POLICE_STATION_DOOR:    [number, number, number] = buildingDoorById("police_station");
+
+// ── Phase 12A: starter player housing (MIRROR of api-server cityData.ts) ──────
+//
+// Static house definitions. The SERVER owns the authoritative copy (price,
+// footprint, door, interior) in artifacts/api-server/src/socket/cityData.ts;
+// this mirror is for rendering + client-side collision + proximity prompts.
+// The DB persists ownership only. Price is never sent from the client.
+//
+// Houses are SEALED 8×8 shells (4 solid walls, NO walk-in gap) so the only way
+// inside is the server-gated owner teleport. Ownership is delivered separately
+// via rp:houses (see HouseInfo) and never includes owner UUIDs.
+export interface RpHouseDef {
+  slug:     string;
+  label:    string;
+  price:    number;
+  x:        number;
+  z:        number;
+  w:        number;
+  d:        number;
+  door:     [number, number, number];
+  interior: [number, number, number];
+}
+
+export const RP_HOUSES: ReadonlyArray<RpHouseDef> = [
+  { slug: "maple_court",    label: "Maple Court",    price: 25000, x: -92, z: -92, w: 8, d: 8, door: [-92, 1, -86], interior: [-92, 1, -92] },
+  { slug: "lakeside_villa", label: "Lakeside Villa", price: 40000, x: -92, z:  92, w: 8, d: 8, door: [-92, 1,  86], interior: [-92, 1,  92] },
+  { slug: "harbor_flat",    label: "Harbor Flat",    price: 30000, x:  92, z: -92, w: 8, d: 8, door: [ 92, 1, -86], interior: [ 92, 1, -92] },
+];
+
+/** Distance (m) within which a player may buy / enter at a house door. */
+export const HOUSE_INTERACT_RADIUS = 4;
+
+/**
+ * Per-house client payload from rp:houses. Ownership flags only — NEVER the
+ * owner's DB UUID. `owned` = someone owns it; `ownedByMe` = the local player.
+ */
+export interface HouseInfo {
+  slug:      string;
+  label:     string;
+  price:     number;
+  owned:     boolean;
+  ownedByMe: boolean;
+}
+
+/**
+ * The 4 solid wall AABBs for a SEALED house shell (no doorway gap). Mirrors the
+ * RPHouses render. Players cannot walk in; entry is only via server teleport.
+ */
+export function rpHouseWallBoxes(h: RpHouseDef): RpWallBox[] {
+  const hw = h.w / 2;
+  const hd = h.d / 2;
+  const t = RP_WALL_THICKNESS;
+  return [
+    { x: h.x, z: h.z - hd, w: h.w, d: t }, // -z wall
+    { x: h.x, z: h.z + hd, w: h.w, d: t }, // +z wall
+    { x: h.x - hw, z: h.z, w: t, d: h.d }, // -x wall
+    { x: h.x + hw, z: h.z, w: t, d: h.d }, // +x wall
+  ];
+}
+
+/** Flattened solid wall collider boxes for all houses (client collision). */
+export const RP_HOUSE_WALL_BOXES: ReadonlyArray<RpWallBox> = RP_HOUSES.flatMap((h) => rpHouseWallBoxes(h));
+
+/** True when (px,pz) is inside a house footprint (client uses to show the Exit prompt). */
+export function isInsideHouseFootprint(h: RpHouseDef, px: number, pz: number): boolean {
+  return Math.abs(px - h.x) <= h.w / 2 && Math.abs(pz - h.z) <= h.d / 2;
+}
