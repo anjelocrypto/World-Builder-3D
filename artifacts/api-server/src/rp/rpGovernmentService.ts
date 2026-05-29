@@ -133,6 +133,17 @@ interface ActiveProjectEntry {
 /** Map of projectId → running project. */
 const activeCityProjects = new Map<string, ActiveProjectEntry>();
 
+/**
+ * Phase 8F P1: Pending reservation set — prevents duplicate funding when two
+ * concurrent rp:cityProjectFund requests for the same project pass the
+ * activeCityProjects.has() check before either one commits.
+ *
+ * Lifecycle:
+ *   add(projectId)    — immediately before db.transaction()
+ *   delete(projectId) — always in finally{} (success or failure)
+ */
+const pendingCityProjectFunds = new Set<string>();
+
 /** Remove expired projects. Call before any read or payout bonus check. */
 function pruneExpiredProjects(): void {
   const nowMs = Date.now();
@@ -696,11 +707,24 @@ export async function handleCityProjectFund(
     return;
   }
 
-  // ── Check not already active ──────────────────────────────────────────────
+  // ── Check not already active (includes pending reservation) ─────────────
+  // pruneExpiredProjects() first so a just-expired project doesn't block.
+  // pendingCityProjectFunds guards the async gap between this check and the
+  // DB commit: two concurrent requests for the same project both pass
+  // activeCityProjects.has() if neither has committed yet, so we reject the
+  // second one immediately with the reservation set.
   pruneExpiredProjects();
   if (activeCityProjects.has(projectId)) {
     socket.emit("rp:toast", {
       msg:      `${def.label} is already active.`,
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+  if (pendingCityProjectFunds.has(projectId)) {
+    socket.emit("rp:toast", {
+      msg:      `${def.label} funding is already in progress.`,
       color:    "yellow",
       duration: 3000,
     });
@@ -717,7 +741,10 @@ export async function handleCityProjectFund(
     return;
   }
 
-  // ── DB-first: spend city budget ───────────────────────────────────────────
+  // ── Reserve + DB-first: spend city budget ─────────────────────────────────
+  // pendingCityProjectFunds.add BEFORE the transaction; always deleted in
+  // finally{} so it is never left dangling even on DB failure.
+  pendingCityProjectFunds.add(projectId);
   let newBudget = 0;
   try {
     await db.transaction(async (tx) => {
@@ -735,6 +762,9 @@ export async function handleCityProjectFund(
     logger.error({ err, socketId: socket.id }, "[rpGov] handleCityProjectFund: DB failed");
     socket.emit("rp:toast", { msg: "Project funding failed — try again.", color: "red", duration: 4000 });
     return;
+  } finally {
+    // Always release the reservation — success or failure.
+    pendingCityProjectFunds.delete(projectId);
   }
 
   // ── DB committed — activate project in memory ─────────────────────────────
