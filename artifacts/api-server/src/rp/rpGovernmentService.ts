@@ -93,6 +93,21 @@ let cityBudget: number = 0;
 // importing Drizzle internals.
 type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
+// ── parseStrictNonNegInt ──────────────────────────────────────────────────────
+
+/**
+ * Parses a string as a non-negative safe integer.
+ * Accepts ONLY strings that match /^[0-9]+$/ AND whose numeric value is a
+ * safe integer, so "100abc", "1.5", "-1", "", and values > MAX_SAFE_INTEGER
+ * all return null instead of silently coercing to a wrong number.
+ */
+function parseStrictNonNegInt(s: string): number | null {
+  if (!/^[0-9]+$/.test(s)) return null;
+  const n = Number(s);
+  if (!Number.isSafeInteger(n) || n < 0) return null;
+  return n;
+}
+
 // ── loadCityConfigFromDb ───────────────────────────────────────────────────────
 
 /**
@@ -133,8 +148,8 @@ export async function loadCityConfigFromDb(): Promise<void> {
     if (!budgetRow) {
       logger.warn("[rpGov] rp_city_config has no 'city_budget' row — using 0. Run seed:rp.");
     } else {
-      const parsed = parseInt(budgetRow.value, 10);
-      if (!Number.isSafeInteger(parsed) || parsed < 0) {
+      const parsed = parseStrictNonNegInt(budgetRow.value);
+      if (parsed === null) {
         logger.warn({ storedValue: budgetRow.value }, "[rpGov] 'city_budget' value is invalid — using 0.");
       } else {
         cityBudget = parsed;
@@ -155,17 +170,23 @@ export async function loadCityConfigFromDb(): Promise<void> {
  * Must be called inside a db.transaction() callback so it commits atomically
  * with the job payout wallet update, transaction log, and player update.
  *
- * Uses SELECT FOR UPDATE on the city_budget row to prevent concurrent increments
- * from racing and losing revenue.
+ * Seven-step procedure (P1 fix):
+ *   1. SELECT city_budget FOR UPDATE.
+ *   2. If missing: INSERT city_budget value "0" ON CONFLICT DO NOTHING.
+ *   3. SELECT city_budget FOR UPDATE again (row guaranteed to exist).
+ *   4. Strict-parse stored value — THROWS on invalid so the enclosing job
+ *      payout transaction rolls back and the checkpoint remains retryable.
+ *   5. Compute newBudget; verify Number.isSafeInteger and >= 0.
+ *   6. UPDATE city_budget to newBudget.
+ *   7. Return newBudget.
  *
- * Returns the new budget integer so the caller can update in-memory state after
- * the outer transaction commits (via setCityBudgetInMemory).
+ * Step 2 uses ON CONFLICT DO NOTHING (not DoUpdate) so concurrent first-time
+ * inserts each write "0" but only one wins — the winner then does the additive
+ * locked update in steps 1–7, so no revenue is lost.
  *
  * Security:
  *   - taxAmount is always server-computed (from applyCityTax); never client-provided.
  *   - updated_by is set to null (automatic revenue, not a player action).
- *   - If the row is missing (seed not yet run), inserts it with taxAmount as the
- *     starting value using onConflictDoUpdate so concurrent inserts are safe.
  */
 export async function addTaxRevenueTx(
   tx:        DbTransaction,
@@ -173,39 +194,60 @@ export async function addTaxRevenueTx(
 ): Promise<number> {
   // Guard: taxAmount must be a positive safe integer.
   if (!Number.isSafeInteger(taxAmount) || taxAmount <= 0) {
-    return cityBudget; // return current in-memory value unchanged
+    return cityBudget;
   }
 
-  // Lock the row for this transaction to prevent lost updates under concurrency.
-  const existing = await tx
+  // ── Step 1: SELECT FOR UPDATE ─────────────────────────────────────────────
+  let rows = await tx
     .select()
     .from(rpCityConfig)
     .where(eq(rpCityConfig.key, "city_budget"))
     .for("update");
 
-  const currentStored = existing[0]
-    ? Math.max(0, parseInt(existing[0].value, 10) || 0)
-    : 0;
-
-  const newBudget    = currentStored + taxAmount;
-  const newValueStr  = newBudget.toString();
-
-  if (existing[0]) {
-    await tx
-      .update(rpCityConfig)
-      .set({ value: newValueStr, updatedAt: new Date(), updatedBy: null })
-      .where(eq(rpCityConfig.key, "city_budget"));
-  } else {
-    // Row missing — insert safely; onConflictDoUpdate handles the race case.
+  // ── Step 2: If missing, INSERT "0" ON CONFLICT DO NOTHING ─────────────────
+  if (!rows[0]) {
     await tx
       .insert(rpCityConfig)
-      .values({ key: "city_budget", value: newValueStr, updatedBy: null })
-      .onConflictDoUpdate({
-        target: rpCityConfig.key,
-        set:    { value: newValueStr, updatedAt: new Date(), updatedBy: null },
-      });
+      .values({ key: "city_budget", value: "0", updatedBy: null })
+      .onConflictDoNothing();
+
+    // ── Step 3: SELECT FOR UPDATE again — row now exists ────────────────────
+    rows = await tx
+      .select()
+      .from(rpCityConfig)
+      .where(eq(rpCityConfig.key, "city_budget"))
+      .for("update");
   }
 
+  const row = rows[0];
+  if (!row) {
+    // Unreachable in practice, but throws so the enclosing tx rolls back.
+    throw new Error("[rpGov] addTaxRevenueTx: city_budget row missing after insert");
+  }
+
+  // ── Step 4: Strict-parse — THROW on invalid to roll back payout tx ────────
+  const currentStored = parseStrictNonNegInt(row.value);
+  if (currentStored === null) {
+    throw new Error(
+      `[rpGov] addTaxRevenueTx: stored city_budget '${row.value}' is not a valid non-negative integer — rolling back job payout`,
+    );
+  }
+
+  // ── Step 5: Compute and verify new budget ─────────────────────────────────
+  const newBudget = currentStored + taxAmount;
+  if (!Number.isSafeInteger(newBudget) || newBudget < 0) {
+    throw new Error(
+      `[rpGov] addTaxRevenueTx: newBudget=${newBudget} is not a safe non-negative integer`,
+    );
+  }
+
+  // ── Step 6: UPDATE city_budget ────────────────────────────────────────────
+  await tx
+    .update(rpCityConfig)
+    .set({ value: newBudget.toString(), updatedAt: new Date(), updatedBy: null })
+    .where(eq(rpCityConfig.key, "city_budget"));
+
+  // ── Step 7: Return newBudget ──────────────────────────────────────────────
   return newBudget;
 }
 
