@@ -2,8 +2,9 @@
 
 **Originally an audit-only report.** All findings below are computed (seeded building generator
 replicated exactly; distances/overlaps calculated in code), not eyeballed. **Status:** Batch A
-(§8), the post-audit house relocation (§9–§10), and Batch B full-map validators (§11) are now
-implemented and verified; Batches C–F remain pending approval.
+(§8), the post-audit house relocation (§9–§10), Batch B full-map validators (§11), and Batch C
+parked-car / NPC + traffic validators (§12) are implemented and verified; Batches D–F remain
+optional polish, pending approval.
 
 ---
 
@@ -204,7 +205,7 @@ overlap. No action.
 
 ---
 
-## 6. Fix Plan (Batch A & B implemented; C–F pending approval)
+## 6. Fix Plan (Batch A–C implemented; D–F pending approval)
 
 - **Batch A — P0/P1 hard geometry. ✅ IMPLEMENTED (§8).** Filtered `GENERATED_BUILDINGS` against
   RP-building footprints (+1 m). Client-only; no RP coords moved. Seed replay → 0 overlaps.
@@ -233,10 +234,10 @@ overlap. No action.
 
 ## 7. Stop
 
-Audit complete. The only P1 is §5.1 (procedural towers clipping 5 RP buildings). **Batch A is
-implemented (§8), the post-audit house relocation is implemented (§9–§10), and Batch B
-(full-map validator upgrades) is implemented (§11 — the source of truth). Batches C–F remain
-pending your approval.**
+Audit complete. The only P1 was §5.1 (procedural towers clipping 5 RP buildings). **Batch A is
+implemented (§8), the post-audit house relocation (§9–§10), Batch B full-map validators (§11),
+and Batch C parked-car / NPC + traffic validators (§12) are all implemented and verified.
+Batches D–F remain optional polish, pending your approval.**
 
 ---
 
@@ -362,7 +363,8 @@ correctly reports 0. No object was moved.
 | Spawns | `validateRpMarkers`/`safeStationSpawn` | YES | off-road + obstacle + bounds + vs buildings | legacy plaza `SPAWN_POINTS` on grid (P3, §5.4) — unmoved |
 | ATMs / job & checkpoint markers | `validateRpMarkers`/`…VehicleClearance` | — | on/off-road per role, obstacle, 8 m car clearance | — |
 | Gang turf / tag points | `validateRpMarkers` + `validateRpHouses` | — | off-road; house turf-radius clearance | — |
-| NPC traffic routes | — | YES | waypoint bounds + on-road metric (`trafficWaypointsOnRoad`) | per-waypoint hard-fail not enforced (metric only) |
+| Ambient traffic routes | — | YES (Batch C, §12) | every waypoint AND segment midpoint hard-asserted on-road (grid + regional, 3 m apex tol) | diagonal-segment road test is conservative (over-safe) |
+| NPC pedestrian routes | — | YES (Batch C, §12) | segment-sampled (~3 m, body radius): in-bounds + never enters a building or static obstacle | not asserted off-carriageway (loops hug sidewalk by design); vs homestead fences deferred |
 | Bridge / rail / station / skybridges | — | YES | rail loop closed, pillars clear of all roads, station clear of roads+buildings, train path clear, skybridge clearance | render-only massifs/decks have no collision (by design) |
 | Old race system | grep-confirmed removed | — | n/a | none |
 
@@ -372,8 +374,9 @@ correctly reports 0. No object was moved.
 - **Static-obstacle-vs-road footprints**: warehouses/cabins/gas-stop are hand-placed *beside*
   regional roads by design; a footprint-vs-road check would flag intentional roadside placement.
   Left as-is to avoid false positives.
-- **NPC route per-waypoint hard-fail**: the dev block reports an on-road metric; promoting it to
-  a hard assertion is Batch C/D.
+- *(Resolved in Batch C, §12)* Ambient-traffic waypoints + segment midpoints are now hard-asserted
+  on-road, and NPC pedestrian routes are segment-sampled against buildings/obstacles — this is no
+  longer metric-only.
 
 ### Verification
 - tsc ×4 pass.
