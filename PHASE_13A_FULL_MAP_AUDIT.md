@@ -217,9 +217,9 @@ overlap. No action.
   proposed a `validateGeneratedBuildings()` and wiring `STATIC_OBSTACLES` into the server marker
   validators — implemented instead in the client dev block, where that geometry actually lives, to
   respect the api-server → city-sandbox import boundary.)*
-- **Batch C — parked cars / NPC traffic polish.** On-road/on-pad assertions for rural cars (§5.6);
-  intentional-roadside tagging for city kerbside cars (§5.7); a traffic/NPC-route validator that
-  samples waypoints + segment midpoints against roads, buildings, obstacles, fences, houses.
+- **Batch C — parked cars / NPC traffic polish. ✅ IMPLEMENTED (§12).** On-road/on-pad assertions
+  for rural cars (§5.6); intentional-roadside tag set for city kerbside cars (§5.7); ambient-traffic
+  waypoint + segment-midpoint on-road assertion; NPC-route in-bounds + not-in-building/obstacle.
 - **Batch D — residential / homestead polish.** Retire or relocate the on-road legacy plaza spawns
   (§5.4); programmatic check that each homestead's driveway reaches the inner-ring road and no fence
   blocks its own gate; verify cluster spacing reads intentional.
@@ -381,3 +381,39 @@ correctly reports 0. No object was moved.
   BUILDINGS↔regional 0, houses↔(buildings/regional/obstacles/cars) 0, cars↔houses 0.
 - api-server build, `BASE_PATH=/ PORT=5173 pnpm build` (Vite), and tsx `rpValidators` run on the
   Mac; the client dev validator runs at Vite dev module-load (console-warns, non-fatal).
+
+---
+
+## 12. Batch C — parked cars / NPC + ambient traffic polish (validator-only)
+
+**No map bug found.** Every new assertion was pre-flighted against current data and reads 0.
+(One pre-flight false alarm — 3 "off-road" points on the bridge route — was traced to my local
+road list omitting `spine-south`/`bridge`; the real validator iterates all `REGIONAL_ROADS`, so
+it's clean. No coordinate changed.)
+
+All Batch C checks live in the client dev block (`if (isViteDev)`), since cars, traffic routes,
+NPC routes, regional roads, and village pads are all client geometry (the api-server already
+validates parked cars vs RP buildings/houses/markers from its own constants).
+
+Added:
+- **Rural parked cars (car-14…27):** each must sit on a regional-road carriageway (edge allowed,
+  2.5 m slack) or a `VILLAGE_PARKING_PADS` pad. All 14 pass (worst margin +1.3 m, car-14).
+- **City kerbside cars (§5.7):** a validator-local `INTENTIONAL_ROADSIDE_CARS` set tags car-4,
+  -5, -6, -7, -12, -13 (parallel-parked at a carriageway edge by design). Every city car must be
+  off the grid carriageway OR in that set — otherwise it's flagged as a stray. No data mutation.
+- **Ambient traffic (9 routes):** every waypoint AND every segment midpoint must lie on a road
+  carriageway (grid bounded or any regional polyline, 3 m turn-apex tolerance). Upgrades the prior
+  on-road metric to a hard assertion. All sampled points pass.
+- **NPC pedestrian loops (12):** asserted in-bounds and never routing through a building or static
+  obstacle. (Deliberately NOT asserted off-carriageway — the loops hug the sidewalk at block_half
+  + 3 m by design, ~2 m off the carriageway.) All pass.
+
+**Coverage delta:** "Parked cars" and "NPC traffic routes" rows in §11 move from PARTIAL/metric
+to fully asserted (placement + on-road). Still uncovered (deferred): NPC routes vs fences
+(low value — loops are city-core, far from homestead fences), and static-obstacle-vs-road
+footprints (hand-placed roadside by design; §11).
+
+**Verification:** tsc ×4 pass; pre-flight script clean (14/14 rural cars on road/pad, 14/14 city
+cars off-road-or-tagged, traffic 0 off-road with full road set, NPC 0 in-building). api-server
+build, `BASE_PATH=/ PORT=5173 pnpm build`, and tsx `rpValidators` run on the Mac; the client dev
+validator runs at Vite dev module-load (non-fatal warnings).

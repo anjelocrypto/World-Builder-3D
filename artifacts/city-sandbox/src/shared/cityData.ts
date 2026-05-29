@@ -2425,6 +2425,86 @@ if (isViteDev) {
   }
   void buildingsOnRegionalRoad;
 
+  // ---- Phase 13A (Batch C): parked cars / NPC + ambient traffic polish --
+  // "On a road" = inside the bounded central grid carriageway OR within a
+  // regional road carriageway (polyline distance). Used for rural parked cars
+  // and ambient-traffic waypoints.
+  const onAnyRoadC = (x: number, z: number, tol: number): boolean => {
+    for (const rx of ROADS.ns)
+      if (Math.abs(x - rx) < ROAD_HALF + tol && Math.abs(z) < CITY_HALF + tol) return true;
+    for (const rz of ROADS.ew)
+      if (Math.abs(z - rz) < ROAD_HALF + tol && Math.abs(x) < CITY_HALF + tol) return true;
+    for (const r of REGIONAL_ROADS)
+      if (distancePointToPolyline(x, z, r.points) < r.width / 2 + tol) return true;
+    return false;
+  };
+
+  // City cars that intentionally parallel-park at a carriageway edge. Tagged
+  // here (validator-local, no data mutation) so the on-road assertion below
+  // distinguishes them from a stray car. Mirrors §5.7 of the audit.
+  const INTENTIONAL_ROADSIDE_CARS = new Set([
+    "car-4", "car-5", "car-6", "car-7", "car-12", "car-13",
+  ]);
+  const onVillagePad = (x: number, z: number): boolean =>
+    VILLAGE_PARKING_PADS.some((p) => Math.hypot(x - p.x, z - p.z) < 4);
+
+  for (const v of INITIAL_VEHICLES) {
+    const isCity = Math.abs(v.x) <= CITY_HALF && Math.abs(v.z) <= CITY_HALF;
+    if (isCity) {
+      const onGrid =
+        ROADS.ns.some((rx) => Math.abs(v.x - rx) < ROAD_HALF && Math.abs(v.z) < CITY_HALF) ||
+        ROADS.ew.some((rz) => Math.abs(v.z - rz) < ROAD_HALF && Math.abs(v.x) < CITY_HALF);
+      if (onGrid && !INTENTIONAL_ROADSIDE_CARS.has(v.id)) {
+        issues.push(`parked car ${v.id} sits on a city carriageway but is not tagged intentional-roadside`);
+      }
+    } else {
+      // Rural car — must sit on a regional road (edge ok) or a village pad.
+      if (!onAnyRoadC(v.x, v.z, 2.5) && !onVillagePad(v.x, v.z)) {
+        issues.push(`rural parked car ${v.id} (${v.x}, ${v.z}) is not on a regional road or parking pad`);
+      }
+    }
+  }
+
+  // Ambient traffic — every waypoint AND every segment midpoint must lie on a
+  // road carriageway (turn apexes allowed a small tolerance). Upgrades the
+  // existing on-road METRIC to a hard assertion.
+  const TRAFFIC_ROAD_TOL = 3;
+  for (const route of TRAFFIC_ROUTES) {
+    const wps = route.waypoints;
+    for (let i = 0; i < wps.length; i++) {
+      if (!onAnyRoadC(wps[i][0], wps[i][1], TRAFFIC_ROAD_TOL)) {
+        issues.push(`traffic route ${route.id} waypoint (${wps[i][0]}, ${wps[i][1]}) is off-road`);
+      }
+      if (i < wps.length - 1) {
+        const mx = (wps[i][0] + wps[i + 1][0]) / 2;
+        const mz = (wps[i][1] + wps[i + 1][1]) / 2;
+        if (!onAnyRoadC(mx, mz, TRAFFIC_ROAD_TOL)) {
+          issues.push(`traffic route ${route.id} segment midpoint (${mx.toFixed(0)}, ${mz.toFixed(0)}) is off-road`);
+        }
+      }
+    }
+  }
+
+  // NPC pedestrian loops hug the sidewalk by design (block_half + 3), so they
+  // are NOT asserted off-carriageway. They must, however, stay in bounds and
+  // never route through a building or a static obstacle.
+  for (const route of NPC_ROUTES) {
+    for (const [x, z] of route.waypoints) {
+      if (!inBounds(x, z, 0)) {
+        issues.push(`NPC route ${route.id} waypoint (${x}, ${z}) is outside WORLD bounds`);
+      }
+      for (const b of BUILDINGS) {
+        if (Math.abs(x - b.x) < b.w / 2 && Math.abs(z - b.z) < b.d / 2) {
+          issues.push(`NPC route ${route.id} waypoint (${x}, ${z}) is inside a building`);
+          break;
+        }
+      }
+      if (overlapsObstacle(x, z, 0.35)) {
+        issues.push(`NPC route ${route.id} waypoint (${x}, ${z}) is inside a static obstacle`);
+      }
+    }
+  }
+
   // ---- Forest / mountain instance bounds ---------------------------------
   for (const t of FOREST_TREES) {
     if (!inBounds(t.x, t.z, 0)) {
