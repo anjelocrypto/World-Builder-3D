@@ -1,6 +1,6 @@
 # Phase 9A — Center-City RP Location & Building Audit
 
-**Status:** Audit + plan. No code changed yet.
+**Status:** Audit complete. **Batch A is implemented and committed** (commit `98e655c`) — it moved Government Office, City Worker Depot, car-2, and car-3 only. Batches B–E are still pending.
 **Method:** Coordinates read directly from `artifacts/api-server/src/socket/cityData.ts`; distances and footprint/road checks computed programmatically against the road grid in `rpValidators.ts` (N-S carriageways at x ∈ {−45, 0, 45}, E-W at z ∈ {−45, 0, 45}, each 20 m wide, half-width 10).
 
 ---
@@ -57,37 +57,46 @@ ATMs (5): `atm-central (18,−30)`, `atm-station (132,−58)`, `atm-police (−8
 
 ## 3b. VERIFIED Batch A layout (computed, all checks pass)
 
-My initial §4 deltas (below) were eyeballed and **failed computed verification** — they clipped roads and crowded cars. The numbers below are the result of a joint solver (road-clearance ≥1.5 m, building-to-building gap ≥6 m, parked-car clearance ≥2 m from footprint) and are what I actually implement in Batch A. You approved moving a few parked cars; the solver needs exactly **4**.
+My initial §4 deltas (below) were eyeballed and **failed computed verification** — they clipped roads and crowded cars. The numbers here are from a joint solver (road-clearance ≥1.5 m, building-to-building gap ≥6 m, parked-car clearance ≥2 m from footprint). During implementation the scope was deliberately narrowed (see §3c) to only the moves with **no route or payout coupling**, so the **actually committed** Batch A is smaller than the solver's full candidate set.
 
-### Buildings (old → new)
+### Buildings — ACTUALLY COMMITTED in Batch A (commit `98e655c`)
 
-| Building | Old (x,z) | New (x,z) | W×D | Disp | Road edge | Min bldg gap | Economy |
+Only two buildings were relocated; three kept their coordinates (no move). No other civic building moved.
+
+| Building | Old (x,z) | New (x,z) | W×D (planned) | Disp | Road edge | Economy | Status |
 |---|---|---|---|---|---|---|---|
-| GOVERNMENT_OFFICE | (−22,−32) | (−22,−22) | 18×12 | 10 m | 3.0 m | 27 m | none |
-| LICENSING_OFFICE | (14,−30) | (22,−22) | 16×12 | 11 m | 4.0 m | 27 m | none |
-| TAXI_DEPOT | (−30,−15) | (−22,24) | 14×11 | 40 m | 5.0 m | 30 m | none (proximity gate only) |
-| CITY_WORKER_DEPOT | (30,28) | (24,24) | 16×12 | 7 m | 3.0 m | 31 m | none |
-| MEDIC_CENTER | (−68,28) | (−68,28) **no move** | 18×10 | 0 | 2.0 m | 30 m | **payout origin — unchanged ∴ no payout change** |
-| MECHANIC_GARAGE | (−68,−28) | (−68,−28) **no move** | 18×10 | 0 | 2.0 m | 28 m | none |
-| DEALERSHIP | (68,−72) | (68,−72) **no move** | 22×16 | 0 | 2.0 m | 36 m | none |
-| TEST_VEHICLE_SPAWN | (13,−30) | (22,−15) | — | — | off-road | (follows DMV) | none |
+| GOVERNMENT_OFFICE | (−22,−32) | **(−22,−22)** | 18×12 | 10 m | 3.0 m | none (proximity gate) | ✅ moved |
+| CITY_WORKER_DEPOT | (30,28) | **(24,24)** | 16×12 | 7 m | 3.0 m | none (clock-in gate) | ✅ moved |
+| MEDIC_CENTER | (−68,28) | (−68,28) **no move** | 18×10 | 0 | 2.0 m | payout origin — unchanged | ⏸ no move |
+| MECHANIC_GARAGE | (−68,−28) | (−68,−28) **no move** | 18×10 | 0 | 2.0 m | none | ⏸ no move |
+| DEALERSHIP | (68,−72) | (68,−72) **no move** | 22×16 | 0 | 2.0 m | none | ⏸ no move |
 
-**TAXI_DEPOT moves 40 m** — its origin shares the NW inner pocket with City Hall, and each 25×25 inner pocket fits only one building, so the taxi yard relocates to the empty SW inner pocket. Taxi fare is computed from pickup→dropoff distance, **not** from the depot, so this does not change payouts. Verified: no other valid spot exists closer while keeping ≥6 m from City Hall.
+### Parked cars — ACTUALLY COMMITTED in Batch A — 2 moved, both off-road
 
-**DELIVERY_HUB and MEDIC_CENTER are payout origins.** Per your rule, I am **not moving either in Batch A**: Medic stays at (−68,28) with a shallower 18×10 footprint (its 7 m road clearance allows depth ≤10). Delivery Hub is **deferred** — it can't host a building near (58,−28) without either clipping the x=45 road or moving its payout origin, so it stays a marker this batch and I'll bring it to you with a payout-delta analysis in a later batch.
+Only the two cars sitting inside the two relocated footprints were moved. car-0 and car-1 were **not** moved (their nearby buildings — Licensing/Taxi — were deferred).
 
-**POLICE_STATION is deferred too.** At (−68,14) it's boxed between Medic (z=28) and Mechanic (z=−28) on the same west wall; a 20-wide station can't gain road clearance there without overlapping them. It needs a dedicated relocation (likely its own block), which I'll plan separately rather than force now.
-
-### Parked cars (old → new) — 4 moved, all off-road
-
-| Car | Old (x,z) | New (x,z) | Move | Bldg clear | Car clear |
+| Car | Old (x,z) | New (x,z) | Move | Reason | Status |
 |---|---|---|---|---|---|
-| car-0 | (22,−22) | (22,−31) | 9 m | 3.0 m | 13.6 m |
-| car-1 | (−22,22) | (−22,15) | 7 m | 3.5 m | 23.9 m |
-| car-2 | (22,22) | (22,15) | 7 m | 3.0 m | 23.9 m |
-| car-3 | (−22,−22) | (−22,−31) | 9 m | 3.0 m | 13.6 m |
+| car-2 | (22,22) | **(22,15)** | 7 m | clear new City Worker depot footprint | ✅ moved |
+| car-3 | (−22,−22) | **(−22,−31)** | 9 m | clear new City Hall footprint | ✅ moved |
 
-These four are the plaza-corner decorative cars sitting exactly where the four inner civic pockets are; none is a job vehicle or route point. Mirrored in server `INITIAL_VEHICLES` + client `INITIAL_VEHICLES`.
+Both are plaza-corner decorative cars (not job vehicles or route points). Mirrored in server `INITIAL_VEHICLES` + client `INITIAL_VEHICLES`. Verified post-move: both off-road, ≥6 m from other cars, and every off-road RP marker still clears all parked cars by ≥8 m (Taxi Depot's nearest-car clearance actually improved from 10.6 m → 17.9 m because car-3 moved away).
+
+---
+
+## 3c. Deferred / rejected solver candidates (NOT implemented)
+
+The joint solver also proposed moving the locations below, but they were **dropped from Batch A** because each conflicts with the "don't move route checkpoints / flag payout math" rules. They remain as-is in the code; revisit in a later, separately-reviewed batch.
+
+| Candidate | Solver proposed | Why deferred (NOT committed) |
+|---|---|---|
+| LICENSING_OFFICE | (14,−30) → (22,−22) | License-test checkpoint **CP3 finish** sits at the current door (14,−26). Moving the office would orphan a checkpoint, which the brief says not to move yet. |
+| TEST_VEHICLE_SPAWN | (13,−30) → (22,−15) | Only moves *with* the licensing office; since the office is deferred, the spawn stays put. |
+| TAXI_DEPOT (building) | (−30,−15) → (−22,24) | A real taxi-yard footprint forces a ~40 m relocation (its origin shares City Hall's NW pocket). Too large a move to be "safe" this batch; the **coordinate is unchanged**. |
+| DELIVERY_HUB | (58,−28) → (66,−26) | Payout origin. Can't host a building without clipping the x=45 road or moving the origin (which changes delivery pay). Needs a payout-delta analysis first. |
+| POLICE_STATION | (−68,14) → (−68,21) | Boxed between Medic (z=28) and Mechanic (z=−28) on the west wall; a 20-wide station can't gain clearance without overlapping them. Needs its own block. |
+| car-0 | (22,−22) → (22,−31) | Only needed if Licensing moves; Licensing deferred, so car-0 **unchanged**. |
+| car-1 | (−22,22) → (−22,15) | Only needed if the Taxi building moves; deferred, so car-1 **unchanged**. |
 
 ---
 
