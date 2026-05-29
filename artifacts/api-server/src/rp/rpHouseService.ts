@@ -47,17 +47,42 @@ interface HouseInfoPayload {
 
 /**
  * Seed the rp_houses ownership rows (one per static house) idempotently.
- * Safe to call on every boot; ON CONFLICT DO NOTHING prevents duplicates.
- * Never throws — a seed failure must not crash startup.
+ * Memoised: the insert runs at most once per process on success, and every
+ * house handler awaits this before reading/writing rp_houses, so a player can
+ * never list/buy/enter before the seed rows exist (avoids the "missing row
+ * looks unowned, then buy returns already_owned" race on a fresh DB). On
+ * failure the promise is reset so a later call retries; never throws.
  */
-export async function ensureHousesSeeded(): Promise<void> {
-  try {
-    await db
-      .insert(rpHouses)
-      .values(RP_HOUSES.map((h) => ({ slug: h.slug })))
-      .onConflictDoNothing();
-  } catch (err) {
-    logger.error({ err }, "[rpHouse] seed failed");
+let housesSeededPromise: Promise<void> | null = null;
+export function ensureHousesSeeded(): Promise<void> {
+  if (!housesSeededPromise) {
+    housesSeededPromise = (async () => {
+      try {
+        await db
+          .insert(rpHouses)
+          .values(RP_HOUSES.map((h) => ({ slug: h.slug })))
+          .onConflictDoNothing();
+      } catch (err) {
+        logger.error({ err }, "[rpHouse] seed failed");
+        housesSeededPromise = null; // allow a later retry
+      }
+    })();
+  }
+  return housesSeededPromise;
+}
+
+/**
+ * Emit a personalized rp:houses payload to every connected RP player. Used
+ * after an ownership change so other clients' "Buy/Locked" prompts update
+ * immediately. `ownedByMe` is per-player, so each socket gets its own payload
+ * (never a shared broadcast). No owner UUIDs or socket ids leave the server.
+ */
+async function refreshHousesForAll(ctx: LicenseContext): Promise<void> {
+  for (const [sid, e] of ctx.rpCache.entries()) {
+    const sock = ctx.io.sockets.sockets.get(sid);
+    if (!sock) continue;
+    const houses = await buildHousePayload(e.playerId);
+    sock.emit("rp:houses", { houses });
   }
 }
 
@@ -89,6 +114,7 @@ async function buildHousePayload(playerId: string): Promise<HouseInfoPayload[]> 
 export async function handleGetHouses(socket: Socket, ctx: LicenseContext): Promise<void> {
   const entry = ctx.rpCache.get(socket.id);
   if (!entry) return;
+  await ensureHousesSeeded();
   const houses = await buildHousePayload(entry.playerId);
   socket.emit("rp:houses", { houses });
 }
@@ -116,10 +142,16 @@ export async function handleBuyHouse(socket: Socket, ctx: LicenseContext, rawSlu
 
   const player = ctx.players.get(socket.id);
   if (!player) return;
+  if (player.isInVehicle) {
+    socket.emit("rp:toast", { msg: "Exit your vehicle first.", color: "yellow", duration: 3000 });
+    return;
+  }
   if (dist2d(player.x, player.z, house.door[0], house.door[2]) > HOUSE_INTERACT_RADIUS) {
     socket.emit("rp:toast", { msg: "Stand at the front door to buy this house.", color: "yellow", duration: 3000 });
     return;
   }
+
+  await ensureHousesSeeded();
 
   // Optimistic cash check (server re-validates inside the transaction).
   if (entry.cash < house.price) {
@@ -184,12 +216,13 @@ export async function handleBuyHouse(socket: Socket, ctx: LicenseContext, rawSlu
     return;
   }
 
-  // Committed — sync cache + client.
+  // Committed — sync cache + wallet for the buyer.
   entry.cash = newCash;
   socket.emit("rp:profileUpdate", { cash: newCash });
-  const houses = await buildHousePayload(entry.playerId);
-  socket.emit("rp:houses", { houses });
   socket.emit("rp:toast", { msg: `🏠 You bought ${house.label}! Press E at the door to enter.`, color: "green", duration: 6000 });
+  // Refresh ownership for ALL connected players so other clients' prompts flip
+  // from "Buy" to "Locked" immediately (each gets a personalized payload).
+  await refreshHousesForAll(ctx);
   logger.info("[rpHouse] house purchased");
 }
 
@@ -231,11 +264,16 @@ export async function handleEnterHouse(socket: Socket, ctx: LicenseContext, rawS
 
   const player = ctx.players.get(socket.id);
   if (!player) return;
+  if (player.isInVehicle) {
+    socket.emit("rp:toast", { msg: "Exit your vehicle first.", color: "yellow", duration: 3000 });
+    return;
+  }
   if (dist2d(player.x, player.z, house.door[0], house.door[2]) > HOUSE_INTERACT_RADIUS) {
     socket.emit("rp:toast", { msg: "Stand at the front door to enter.", color: "yellow", duration: 3000 });
     return;
   }
 
+  await ensureHousesSeeded();
   const ownerId = await houseOwner(house.slug);
   if (ownerId !== entry.playerId) {
     socket.emit("rp:toast", { msg: "This house is locked.", color: "yellow", duration: 3000 });

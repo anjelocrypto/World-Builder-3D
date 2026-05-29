@@ -39,6 +39,7 @@ import {
   POLICE_BOOKING_DESK_POS,
   GROVE_STREET_HANGOUT_POS,
   GROVE_STREET_TURF_CENTER,
+  GROVE_STREET_TURF_RADIUS,
   GROVE_TAG_POINTS,
   GANG_TERRITORIES,
   GOVERNMENT_OFFICE_POS,
@@ -345,6 +346,37 @@ export function validateRpHouses(
     // 6. interior teleport target lands inside the shell
     if (!insideFootprint(h.interior[0], h.interior[2], h) || !isInsideHouseFootprint(h, h.interior[0], h.interior[2])) {
       throw new Error(`[rp] house "${h.slug}" interior target is not inside its shell`);
+    }
+
+    // 7. clearance from spawns / job-route + police markers / ATMs / gang points.
+    //    edgeDist = footprint-edge → point distance (0 if the point is inside).
+    const edgeDist = (px: number, pz: number) =>
+      Math.hypot(Math.max(Math.abs(px - h.x) - h.w / 2, 0), Math.max(Math.abs(pz - h.z) - h.d / 2, 0));
+    const MARKER_CLEARANCE = 4;
+    const xz = (p: readonly [number, number, number]): [number, number] => [p[0], p[2]];
+    const markerXZ: Array<[number, number]> = [
+      xz(STATION_SPAWN),
+      xz(POLICE_BOOKING_DESK_POS),
+      xz(POLICE_RELEASE_POS),
+      xz(POLICE_JAIL_CELL),
+      xz(GROVE_STREET_HANGOUT_POS),
+      ...CITY_WORKER_CHECKPOINTS.map(xz),
+      ...TAXI_PICKUPS.map(xz), ...TAXI_DROPOFFS.map(xz),
+      ...DELIVERY_PICKUPS.map(xz), ...DELIVERY_DROPOFFS.map(xz),
+      ...MECHANIC_TARGETS.map(xz),
+      ...MEDIC_PATIENT_CALLS.map(xz),
+      ...POLICE_PATROL_POINTS.map(xz),
+      ...ATM_LOCATIONS.map((a) => xz(a.pos)),
+      ...GROVE_TAG_POINTS.map(xz),
+    ];
+    for (const [mx, mz] of markerXZ) {
+      if (edgeDist(mx, mz) < MARKER_CLEARANCE) {
+        throw new Error(`[rp] house "${h.slug}" footprint is within ${MARKER_CLEARANCE} m of a spawn/checkpoint/marker at [${mx}, ${mz}]`);
+      }
+    }
+    // Gang turf is a circle — the footprint must stay fully outside it.
+    if (edgeDist(GROVE_STREET_TURF_CENTER[0], GROVE_STREET_TURF_CENTER[2]) < GROVE_STREET_TURF_RADIUS) {
+      throw new Error(`[rp] house "${h.slug}" footprint overlaps the Grove Street turf radius (${GROVE_STREET_TURF_RADIUS} m)`);
     }
 
     console.info(`[rp] house OK: ${h.slug} (${h.w}x${h.d} @ [${h.x}, ${h.z}], door [${dx}, ${dz}])`);

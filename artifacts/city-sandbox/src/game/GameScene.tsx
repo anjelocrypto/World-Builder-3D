@@ -411,6 +411,9 @@ export default function GameScene({
   emitExitHouseRef.current = emitExitHouse;
   const pushToastRef = useRef(pushToast);
   pushToastRef.current = pushToast;
+  // Phase 12A: track vehicle state for the on-foot house gate (server also enforces).
+  const inVehicleRef = useRef(false);
+  inVehicleRef.current = uiState.inVehicle;
 
   // Phase 12A: fetch the house ownership list once on mount (server also pushes
   // it on join; this covers hot-reload / late mounts).
@@ -664,7 +667,7 @@ export default function GameScene({
       // house door or inside a house, this consumes E and returns. Otherwise it
       // falls through to the Mayor/other E interactions below. Houses are far
       // from City Hall, so the two never overlap.
-      if (e.code === "KeyE" && !anyModalOpen) {
+      if (e.code === "KeyE" && !anyModalOpen && !inVehicleRef.current) {
         const px = playerPosRef.current.x;
         const pz = playerPosRef.current.z;
         const insideHouse = RP_HOUSES.find((h) => isInsideHouseFootprint(h, px, pz));
