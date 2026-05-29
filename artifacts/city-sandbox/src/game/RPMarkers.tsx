@@ -502,32 +502,9 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
               />
             </mesh>
 
-            {/* Sign post */}
-            <mesh position={[0, 2, -0.3]}>
-              <boxGeometry args={[0.12, 4, 0.12]} />
-              <meshStandardMaterial color="#1a1a1a" roughness={0.7} metalness={0.6} />
-            </mesh>
-
-            {/* Sign board */}
-            <mesh position={[0, 3.7, -0.3]}>
-              <boxGeometry args={[4.6, 0.85, 0.1]} />
-              <meshStandardMaterial
-                ref={dealerSignRef}
-                color="#0a1400"
-                emissive="#44bb00"
-                emissiveIntensity={0.8}
-                roughness={0.3}
-                metalness={0.2}
-              />
-            </mesh>
-
-            {/* Sign text strip */}
-            <mesh position={[0, 4.0, -0.24]}>
-              <boxGeometry args={[4.2, 0.1, 0.01]} />
-              <meshStandardMaterial color="#ffffff" emissive="#aaffaa" emissiveIntensity={2} />
-            </mesh>
-
-            <pointLight position={[0, 4.5, 0]} color="#66cc22" intensity={2.5} distance={16} decay={2} />
+            {/* Phase 9A Batch D: signpost/board removed — the RPBuildings dealership
+                shell now provides identity. Subtle accent light kept. */}
+            <pointLight position={[0, 2.5, 0]} color="#66cc22" intensity={1.0} distance={12} decay={2} />
           </group>
         );
       })()}
@@ -552,32 +529,9 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
               />
             </mesh>
 
-            {/* Sign post */}
-            <mesh position={[0, 1.8, -0.3]}>
-              <boxGeometry args={[0.12, 3.6, 0.12]} />
-              <meshStandardMaterial color="#3a2a00" roughness={0.7} metalness={0.5} />
-            </mesh>
-
-            {/* Sign board */}
-            <mesh position={[0, 3.3, -0.3]}>
-              <boxGeometry args={[4.4, 0.8, 0.1]} />
-              <meshStandardMaterial
-                ref={depotSignRef}
-                color="#1a0d00"
-                emissive="#ff6600"
-                emissiveIntensity={0.7}
-                roughness={0.3}
-                metalness={0.2}
-              />
-            </mesh>
-
-            {/* Sign text strip */}
-            <mesh position={[0, 3.6, -0.24]}>
-              <boxGeometry args={[4.0, 0.1, 0.01]} />
-              <meshStandardMaterial color="#ffffff" emissive="#ffcc88" emissiveIntensity={2} />
-            </mesh>
-
-            <pointLight position={[0, 4, 0]} color="#ff8833" intensity={2.5} distance={14} decay={2} />
+            {/* Phase 9A Batch D: signpost/board removed — the RPBuildings Public Works
+                depot shell now provides identity. Subtle accent light kept. */}
+            <pointLight position={[0, 2.5, 0]} color="#ff8833" intensity={1.0} distance={12} decay={2} />
           </group>
         );
       })()}
@@ -702,32 +656,9 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
               />
             </mesh>
 
-            {/* Sign post */}
-            <mesh position={[0, 1.8, -0.3]}>
-              <boxGeometry args={[0.12, 3.6, 0.12]} />
-              <meshStandardMaterial color="#222233" roughness={0.6} metalness={0.7} />
-            </mesh>
-
-            {/* Sign board */}
-            <mesh position={[0, 3.3, -0.3]}>
-              <boxGeometry args={[4.6, 0.8, 0.1]} />
-              <meshStandardMaterial
-                ref={mechanicGarageSignRef}
-                color="#0a0a14"
-                emissive="#8899bb"
-                emissiveIntensity={0.7}
-                roughness={0.3}
-                metalness={0.4}
-              />
-            </mesh>
-
-            {/* Sign text strip */}
-            <mesh position={[0, 3.6, -0.24]}>
-              <boxGeometry args={[4.2, 0.1, 0.01]} />
-              <meshStandardMaterial color="#ffffff" emissive="#ccddff" emissiveIntensity={2} />
-            </mesh>
-
-            <pointLight position={[0, 4, 0]} color="#8899bb" intensity={2.5} distance={14} decay={2} />
+            {/* Phase 9A Batch D: signpost/board removed — the RPBuildings mechanic
+                garage shell now provides identity. Subtle accent light kept. */}
+            <pointLight position={[0, 2.5, 0]} color="#8899bb" intensity={1.0} distance={12} decay={2} />
           </group>
         );
       })()}
@@ -983,32 +914,9 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
               />
             </mesh>
 
-            {/* Sign post */}
-            <mesh position={[0, 1.8, -0.3]}>
-              <boxGeometry args={[0.12, 3.6, 0.12]} />
-              <meshStandardMaterial color="#220000" roughness={0.6} metalness={0.5} />
-            </mesh>
-
-            {/* Sign board */}
-            <mesh position={[0, 3.3, -0.3]}>
-              <boxGeometry args={[4.8, 0.8, 0.1]} />
-              <meshStandardMaterial
-                ref={medicCenterSignRef}
-                color="#1a0000"
-                emissive="#ff2244"
-                emissiveIntensity={0.7}
-                roughness={0.3}
-                metalness={0.2}
-              />
-            </mesh>
-
-            {/* Sign text strip — white cross bar */}
-            <mesh position={[0, 3.6, -0.24]}>
-              <boxGeometry args={[4.4, 0.1, 0.01]} />
-              <meshStandardMaterial color="#ffffff" emissive="#ffaaaa" emissiveIntensity={2} />
-            </mesh>
-
-            <pointLight position={[0, 4, 0]} color="#ff2244" intensity={2.5} distance={14} decay={2} />
+            {/* Phase 9A Batch D: signpost/board removed — the RPBuildings medical
+                center shell now provides identity. Subtle accent light kept. */}
+            <pointLight position={[0, 2.5, 0]} color="#ff2244" intensity={1.0} distance={12} decay={2} />
           </group>
         );
       })()}
@@ -1605,36 +1513,13 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
               />
             </mesh>
 
-            {/* Sign post */}
-            <mesh position={[0, 1.8, -0.3]}>
-              <boxGeometry args={[0.12, 3.6, 0.12]} />
-              <meshStandardMaterial color="#1a1a2a" roughness={0.7} metalness={0.6} />
-            </mesh>
-
-            {/* Sign board — civic blue */}
-            <mesh position={[0, 3.3, -0.3]}>
-              <boxGeometry args={[4.2, 0.8, 0.1]} />
-              <meshStandardMaterial
-                ref={govOfficeSignRef}
-                color="#0a0e22"
-                emissive="#2244aa"
-                emissiveIntensity={0.8}
-                roughness={0.3}
-                metalness={0.3}
-              />
-            </mesh>
-
-            {/* Gold accent strip */}
-            <mesh position={[0, 3.6, -0.24]}>
-              <boxGeometry args={[3.8, 0.1, 0.01]} />
-              <meshStandardMaterial color="#ccaa33" emissive="#ddbb44" emissiveIntensity={1.8} />
-            </mesh>
-
+            {/* Phase 9A Batch D: signpost/board/accent removed — the RPBuildings
+                City Hall shell now provides identity. Subtle accent light kept. */}
             <pointLight
-              position={[0, 4, 0]}
+              position={[0, 2.5, 0]}
               color="#4466dd"
-              intensity={2.0}
-              distance={14}
+              intensity={1.0}
+              distance={12}
               decay={2}
             />
           </group>

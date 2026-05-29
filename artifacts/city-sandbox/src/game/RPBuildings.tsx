@@ -17,27 +17,28 @@
  * the entrance. Kept deliberately simple/low-poly for performance.
  */
 
+import { Text } from "@react-three/drei";
 import type { RpBuildingDef, RpBuildingFacing } from "../shared/rpTypes";
 import { RP_BUILDINGS } from "../shared/rpTypes";
 
 // ── Per-building visual identity (color only — geometry comes from the table) ──
 
 interface BuildingStyle {
-  wall:   string;
-  roof:   string;
-  sign:   string;   // fascia band + emissive accent
-  emoji:  string;   // small rooftop placard glyph (rendered as a sign label)
+  wall:      string;
+  roof:      string;
+  sign:      string;   // fascia band + emissive accent
+  signText:  string;   // readable label rendered on the fascia
 }
 
 const STYLES: Record<string, BuildingStyle> = {
-  government_office: { wall: "#c9c4b4", roof: "#8a8576", sign: "#5577ee", emoji: "CITY HALL" },
-  city_worker_depot: { wall: "#b6893f", roof: "#6e5526", sign: "#e0a93b", emoji: "PUBLIC WORKS" },
-  medic_center:      { wall: "#e8e8ee", roof: "#c2c6cf", sign: "#e2554e", emoji: "MEDICAL" },
-  mechanic_garage:   { wall: "#7d8893", roof: "#525a63", sign: "#e08a2b", emoji: "MECHANIC" },
-  dealership:        { wall: "#d8dde4", roof: "#9aa3ad", sign: "#3aa0d8", emoji: "AUTOS" },
+  government_office: { wall: "#c9c4b4", roof: "#8a8576", sign: "#5577ee", signText: "CITY HALL" },
+  city_worker_depot: { wall: "#b6893f", roof: "#6e5526", sign: "#e0a93b", signText: "PUBLIC WORKS" },
+  medic_center:      { wall: "#e8e8ee", roof: "#c2c6cf", sign: "#e2554e", signText: "MEDICAL CENTER" },
+  mechanic_garage:   { wall: "#7d8893", roof: "#525a63", sign: "#e08a2b", signText: "MECHANIC" },
+  dealership:        { wall: "#d8dde4", roof: "#9aa3ad", sign: "#3aa0d8", signText: "AUTO SALES" },
 };
 
-const DEFAULT_STYLE: BuildingStyle = { wall: "#bcc0c6", roof: "#80858c", sign: "#5577ee", emoji: "" };
+const DEFAULT_STYLE: BuildingStyle = { wall: "#bcc0c6", roof: "#80858c", sign: "#5577ee", signText: "" };
 
 const WALL_HEIGHT     = 6;     // m — civic single-storey shell
 const WALL_THICKNESS  = 0.5;   // m
@@ -118,6 +119,18 @@ function RPBuildingMesh({ b }: { b: RpBuildingDef }) {
     return { px: frontX, py: y, pz: 0, w: 0.3, h: SIGN_HEIGHT, d: len };
   })();
 
+  // Readable text label on the fascia, rotated so it faces outward from the
+  // entrance wall and sits a hair in front of the sign band.
+  const label = (() => {
+    const y = fascia.py;
+    switch (b.facing) {
+      case "south": return { pos: [0, y, halfD + 0.3] as const,  ry: 0 };
+      case "north": return { pos: [0, y, -halfD - 0.3] as const, ry: Math.PI };
+      case "east":  return { pos: [halfW + 0.3, y, 0] as const,  ry: Math.PI / 2 };
+      case "west":  return { pos: [-halfW - 0.3, y, 0] as const, ry: -Math.PI / 2 };
+    }
+  })();
+
   // Window strip: a thin emissive band along the two side walls.
   const sideWindows = (() => {
     const y = WALL_HEIGHT * 0.58;
@@ -162,6 +175,23 @@ function RPBuildingMesh({ b }: { b: RpBuildingDef }) {
         <boxGeometry args={[fascia.w, fascia.h, fascia.d]} />
         <meshStandardMaterial color={s.sign} emissive={s.sign} emissiveIntensity={0.6} roughness={0.4} />
       </mesh>
+
+      {/* Readable building label on the fascia (Batch D). Faces outward. */}
+      {s.signText && (
+        <Text
+          position={label.pos}
+          rotation={[0, label.ry, 0]}
+          fontSize={0.7}
+          color="#ffffff"
+          anchorX="center"
+          anchorY="middle"
+          outlineWidth={0.04}
+          outlineColor="#000000"
+          maxWidth={Math.max(fascia.w, fascia.d) - 0.5}
+        >
+          {s.signText}
+        </Text>
+      )}
 
       {/* Side window strips (emissive) */}
       {sideWindows.out.map((w, i) => (
