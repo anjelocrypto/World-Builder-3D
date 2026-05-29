@@ -832,6 +832,40 @@ export const RP_BUILDING_WALL_BOXES: ReadonlyArray<RpWallBox> = RP_BUILDINGS
   .filter((b) => RP_INTERIOR_BUILDING_IDS.includes(b.id))
   .flatMap((b) => rpBuildingWallBoxes(b));
 
+// ── Phase 10E: interior interaction-DISPLAY anchors (CLIENT-ONLY / VISUAL) ─────
+//
+// Where the interaction RING + HUD prompt should *read* from — a reception desk
+// a few metres inside the door. This is a UX/display anchor ONLY: the server
+// proximity gates and their radii are UNCHANGED (still keyed to the *_DOOR
+// constants), and the door-centred radius already reaches these anchors, so a
+// player standing at the desk still triggers. Derived from the building + door
+// so it can't drift from the footprint.
+
+/** A point `inset` metres from the building door, straight inward toward centre. */
+export function rpBuildingInteriorAnchor(
+  b: RpBuildingDef,
+  inset = 4,
+): [number, number, number] {
+  const [dx, dz] = rpBuildingDoor(b);
+  // unit vector from door toward building centre
+  const vx = b.x - dx;
+  const vz = b.z - dz;
+  const len = Math.hypot(vx, vz) || 1;
+  return [dx + (vx / len) * inset, 0, dz + (vz / len) * inset];
+}
+
+function interiorAnchorById(id: string, inset = 4): [number, number, number] {
+  const b = RP_BUILDINGS.find((x) => x.id === id);
+  if (!b) throw new Error(`[rpTypes] no RP_BUILDINGS entry for interior anchor "${id}"`);
+  return rpBuildingInteriorAnchor(b, inset);
+}
+
+/** Interior display anchors for the civic reception desks (visual rings + prompts only). */
+export const GOVERNMENT_OFFICE_DESK: [number, number, number] = interiorAnchorById("government_office", 4);
+export const LICENSING_OFFICE_DESK:  [number, number, number] = interiorAnchorById("licensing_office", 3);
+export const MEDIC_CENTER_DESK:      [number, number, number] = interiorAnchorById("medic_center", 4);
+export const POLICE_STATION_DESK:    [number, number, number] = interiorAnchorById("police_station", 5);
+
 // ── Phase 9A Batch E: building door / interact points ─────────────────────────
 // Mirror of the *_DOOR constants in artifacts/api-server/src/socket/cityData.ts.
 // Visual interaction rings + the player-facing proximity source for these 5

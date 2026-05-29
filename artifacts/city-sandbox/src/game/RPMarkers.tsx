@@ -17,7 +17,10 @@ import * as THREE from "three";
 import type { ActiveTest, ActiveJob, ActiveGangMission, GangTerritoryStatus } from "../shared/rpTypes";
 import {
   STATION_MARKER_POS,
-  LICENSING_OFFICE_DOOR,
+  GOVERNMENT_OFFICE_DESK,
+  LICENSING_OFFICE_DESK,
+  MEDIC_CENTER_DESK,
+  POLICE_STATION_DESK,
   DEALERSHIP_DOOR,
   LICENSE_TEST_CHECKPOINTS,
   CITY_WORKER_DEPOT_DOOR,
@@ -25,9 +28,7 @@ import {
   TAXI_DEPOT_DOOR,
   DELIVERY_HUB_DOOR,
   MECHANIC_GARAGE_DOOR,
-  MEDIC_CENTER_DOOR,
   MEDIC_ER_BAY,
-  POLICE_STATION_DOOR,
   ATM_LOCATIONS,
   POLICE_JAIL_CELL,
   POLICE_RELEASE_POS,
@@ -36,7 +37,6 @@ import {
   GROVE_STREET_TURF_CENTER,
   GROVE_STREET_TURF_RADIUS,
   GROVE_TAG_POINTS,
-  GOVERNMENT_OFFICE_DOOR,
   GOVERNMENT_OFFICE_RADIUS,
 } from "../shared/rpTypes";
 
@@ -434,7 +434,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
 
       {/* ════ Licensing Office marker ════════════════════════════════════════ */}
       {(() => {
-        const [ox, , oz] = LICENSING_OFFICE_DOOR;
+        const [ox, , oz] = LICENSING_OFFICE_DESK;
         return (
           <group position={[ox, 0, oz]}>
             {/* Ground ring — 5–6 m radius */}
@@ -829,7 +829,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
 
       {/* ════ Medical Center marker ═══════════════════════════════════════════════ */}
       {(() => {
-        const [mcx, , mcz] = MEDIC_CENTER_DOOR;
+        const [mcx, , mcz] = MEDIC_CENTER_DESK;
         return (
           <group position={[mcx, 0, mcz]}>
             {/* Ground ring — 5–6 m radius, red/white medical */}
@@ -926,7 +926,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
 
       {/* ════ Police Station marker ═══════════════════════════════════════════════ */}
       {(() => {
-        const [psx, , psz] = POLICE_STATION_DOOR;
+        const [psx, , psz] = POLICE_STATION_DESK;
         return (
           <group position={[psx, 0, psz]}>
             {/* Ground ring — 5–6 m radius, navy/blue */}
@@ -1404,7 +1404,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
       {/* ════ Phase 8A: Government Office (City Hall) marker ════════════════════
           Restrained civic blue/gold — authority without hostility. */}
       {(() => {
-        const [gx, , gz] = GOVERNMENT_OFFICE_DOOR;
+        const [gx, , gz] = GOVERNMENT_OFFICE_DESK;
         const innerR = GOVERNMENT_OFFICE_RADIUS - 1;
         const outerR = GOVERNMENT_OFFICE_RADIUS;
         return (
