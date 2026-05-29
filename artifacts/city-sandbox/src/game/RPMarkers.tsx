@@ -1126,9 +1126,9 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
 
       {/* ════ Phase 6D: Jail Cell confinement ring ══════════════════════════════ */}
       <group position={[POLICE_JAIL_CELL[0], POLICE_JAIL_CELL[1], POLICE_JAIL_CELL[2]]}>
-        {/* Ground ring — matches POLICE_JAIL_RADIUS (8 m) */}
+        {/* Ground ring — matches POLICE_JAIL_RADIUS (6 m, Phase 10C) */}
         <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
-          <ringGeometry args={[7.5, 8.5, 48]} />
+          <ringGeometry args={[5.5, 6, 48]} />
           <meshStandardMaterial
             ref={jailCellRingRef}
             color="#200000"
@@ -1141,8 +1141,8 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
           />
         </mesh>
 
-        {/* Corner bar pillars — four corners of the cell perimeter */}
-        {([[-5, -5], [5, -5], [5, 5], [-5, 5]] as const).map(([px, pz], i) => (
+        {/* Corner bar pillars — four corners of the cell perimeter (inside radius 6) */}
+        {([[-4.2, -4.2], [4.2, -4.2], [4.2, 4.2], [-4.2, 4.2]] as const).map(([px, pz], i) => (
           <mesh key={i} position={[px, 2, pz]}>
             <cylinderGeometry args={[0.08, 0.08, 4, 6]} />
             <meshStandardMaterial

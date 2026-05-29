@@ -34,6 +34,7 @@ import {
   POLICE_PATROL_POINTS,
   ATM_LOCATIONS,
   POLICE_JAIL_CELL,
+  POLICE_JAIL_RADIUS,
   POLICE_RELEASE_POS,
   POLICE_BOOKING_DESK_POS,
   GROVE_STREET_HANGOUT_POS,
@@ -232,6 +233,39 @@ export function validateRpBuildings(
     }
 
     console.info(`[rp] building OK: ${b.id} (${b.w}x${b.d} @ [${b.x}, ${b.z}], door [${doorX}, ${doorZ}])`);
+  }
+
+  // Phase 10C — the jail confinement circle must fit inside the (now solid)
+  // police station walls and must not reach the open front doorway, or the
+  // server clamp would fight client wall collision (jitter/stuck) and jailed
+  // players could slip out. Computed from POLICE_JAIL_CELL + POLICE_JAIL_RADIUS
+  // vs. the police_station interior bounds.
+  const police = RP_BUILDINGS.find((b) => b.id === "police_station");
+  if (police) {
+    const WALL_T = 0.5;
+    const PLAYER_BUFFER = 0.55; // body radius 0.45 + small margin
+    const [jcx, , jcz] = POLICE_JAIL_CELL;
+    // Inner wall-face distances from the jail cell (cell is at the station centre).
+    const innerHalfW = police.w / 2 - WALL_T / 2 - Math.abs(jcx - police.x);
+    const innerHalfD = police.d / 2 - WALL_T / 2 - Math.abs(jcz - police.z);
+    const maxRadius = Math.min(innerHalfW, innerHalfD) - PLAYER_BUFFER;
+    if (POLICE_JAIL_RADIUS > maxRadius) {
+      throw new Error(
+        `[rp] POLICE_JAIL_RADIUS=${POLICE_JAIL_RADIUS} exceeds the safe interior radius ` +
+        `${maxRadius.toFixed(2)} m — the jail confinement circle would cross the station walls`,
+      );
+    }
+    // The confinement circle (toward the door) must stop short of the doorway
+    // threshold so a jailed player can't reach the open door before release.
+    const [pdx, pdz] = rpBuildingDoor(police);
+    const doorDist = Math.hypot(pdx - jcx, pdz - jcz);
+    if (POLICE_JAIL_RADIUS + PLAYER_BUFFER >= doorDist) {
+      throw new Error(
+        `[rp] POLICE_JAIL_RADIUS=${POLICE_JAIL_RADIUS} reaches the station doorway ` +
+        `(${doorDist.toFixed(2)} m away) — a jailed player could escape before release`,
+      );
+    }
+    console.info(`[rp] jail confinement OK: radius ${POLICE_JAIL_RADIUS} fits interior + clears door`);
   }
 }
 

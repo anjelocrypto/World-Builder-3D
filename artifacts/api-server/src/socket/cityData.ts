@@ -557,7 +557,8 @@ export const LICENSE_TEST_CHECKPOINTS: [number, number, number][] = [
  * Phase 9B-4: cluster relocated (0,+50) → (−68,64) (same xz as POLICE_STATION).
  *   x=−68: |−68−(−45)| = 23 > ROAD_HALF(10) ✅
  *   z=64:  |64−45|     = 19 > ROAD_HALF(10) ✅
- * The POLICE_JAIL_RADIUS=8 confinement zone around this point stays off-road.
+ * The POLICE_JAIL_RADIUS confinement zone around this point stays off-road and
+ * (Phase 10C) fits inside the solid station walls.
  */
 export const POLICE_JAIL_CELL: [number, number, number] = [-68, 1, 64];
 
@@ -567,8 +568,12 @@ export const POLICE_JAIL_CELL: [number, number, number] = [-68, 1, 64];
  */
 export const POLICE_RELEASE_POS: [number, number, number] = [-68, 1, 72];
 
-/** Radius (m) of the jail confinement zone centred on POLICE_JAIL_CELL. */
-export const POLICE_JAIL_RADIUS = 8;
+/** Radius (m) of the jail confinement zone centred on POLICE_JAIL_CELL.
+ *  Phase 10C: reduced 8 → 6 so the confinement circle fits inside the solid
+ *  police station walls (interior depth half 6.5 m) and cannot reach the open
+ *  front doorway. This prevents the server clamp from fighting client wall
+ *  collision (jitter/stuck) and stops jailed players slipping out the door. */
+export const POLICE_JAIL_RADIUS = 6;
 
 /** Officer must be within this distance (m) of the target to arrest. */
 export const POLICE_ARREST_RADIUS = 4;

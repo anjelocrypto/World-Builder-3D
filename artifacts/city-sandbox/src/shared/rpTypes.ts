@@ -817,13 +817,14 @@ export function rpBuildingWallBoxes(b: RpBuildingDef): RpWallBox[] {
  * Phase 10A: City Hall + DMV (gate-only, no teleports).
  * Phase 10B: + Medical Center (gate-only; payout origin is a distance reference,
  *   not a standing point, so solid walls don't affect pay; no confinement clamp).
- * Police Station collision deferred to 10C — its jail-confinement radius (8 m)
- *   exceeds the station interior depth (6.5 m), which would fight wall collision.
+ * Phase 10C: + Police Station, after reducing POLICE_JAIL_RADIUS 8 → 6 so the
+ *   jail confinement circle fits inside the solid walls and can't reach the door.
  */
 export const RP_INTERIOR_BUILDING_IDS: ReadonlyArray<string> = [
   "government_office",
   "licensing_office",
   "medic_center",
+  "police_station",
 ];
 
 /** Flattened per-wall collider boxes for the interior-enabled buildings. */
