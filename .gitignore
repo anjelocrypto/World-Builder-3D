@@ -50,4 +50,9 @@ Thumbs.db
 # Replit
 .cache/
 .local/
+
+# Environment files — never commit (contain DATABASE_URL etc.)
+.env
+**/.env
 lib/db/.env
+artifacts/api-server/.env
