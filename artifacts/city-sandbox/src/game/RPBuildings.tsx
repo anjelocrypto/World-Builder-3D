@@ -45,6 +45,62 @@ const STYLES: Record<string, BuildingStyle> = {
 
 const DEFAULT_STYLE: BuildingStyle = { wall: "#bcc0c6", roof: "#80858c", sign: "#5577ee", signText: "" };
 
+// ── Phase 10D: visual-only interior props ─────────────────────────────────────
+//
+// Data-driven, VISUAL-ONLY interior furnishings for the walk-in civic buildings.
+// Coordinates are in a CANONICAL local frame where +Z points toward the door
+// (back wall at −depthHalf, door at +depthHalf); the renderer rotates this frame
+// to match each building's `facing`. Props sit against the back/side walls, clear
+// of the door corridor, interaction rings, and (Police) the jail circle — all
+// verified in PHASE_10D_INTERIOR_POLISH_AUDIT.md. No collision, no interaction:
+// these meshes never enter playerHitsAnyRpWall or any gate, so they cannot trap
+// or slow the player.
+
+interface InteriorProp {
+  /** cross-axis position (local X) */ x: number;
+  /** door-axis position (local Z; − = back wall, + = toward door) */ z: number;
+  w: number;   // size along cross-axis
+  d: number;   // size along door-axis
+  h: number;   // height
+  y?: number;  // base height (default sits on floor)
+  color: string;
+  emissive?: string;
+}
+
+const INTERIOR_PROPS: Record<string, InteriorProp[]> = {
+  government_office: [
+    { x: 0,    z: -4.0, w: 8,   d: 1.2, h: 1.1, color: "#6b5e3a" },                 // service counter
+    { x: -7.5, z: -1,   w: 0.3, d: 3,   h: 2.0, y: 1.0, color: "#2b2f3a", emissive: "#3355cc" }, // notice board
+    { x: 5,    z: -4.2, w: 3,   d: 1.2, h: 1.0, color: "#5b4f33" },                 // mayor desk
+  ],
+  licensing_office: [
+    { x: 0,    z: -2.5, w: 5,   d: 1.0, h: 1.1, color: "#5a6470" },                 // service counter
+    { x: -2.5, z: 1.0,  w: 0.2, d: 2.0, h: 0.9, color: "#8b94a0" },                 // queue rail
+    { x: 2.5,  z: -2.6, w: 2,   d: 1.0, h: 1.0, color: "#4f5864" },                 // test-start desk
+  ],
+  medic_center: [
+    { x: 0,    z: -7.5, w: 6,   d: 1.2, h: 1.1, color: "#d7dde2" },                 // intake counter
+    { x: -3,   z: -3,   w: 1.0, d: 2.2, h: 0.6, color: "#eef2f5" },                 // treatment bed
+    { x: -4.0, z: 0,    w: 0.1, d: 14,  h: 0.4, y: 2.4, color: "#e2554e", emissive: "#e2554e" }, // red wall stripe
+  ],
+  police_station: [
+    { x: 6,    z: -5.5, w: 5,   d: 1.2, h: 1.1, color: "#3a4654" },                 // booking counter
+    { x: -9.0, z: -2,   w: 0.3, d: 3,   h: 2.0, y: 1.0, color: "#22303f", emissive: "#2f6fd0" }, // notice board
+  ],
+};
+
+/** Rotation (rad) that maps the canonical +Z-toward-door frame onto a facing.
+ *  Matches the fascia-label convention: rotation.y=θ maps local +Z to world
+ *  (sinθ, cosθ) on (x,z). south(+Z)=0, north(−Z)=π, east(+X)=π/2, west(−X)=−π/2. */
+function interiorPropRotation(f: RpBuildingFacing): number {
+  switch (f) {
+    case "south": return 0;
+    case "north": return Math.PI;
+    case "east":  return Math.PI / 2;
+    case "west":  return -Math.PI / 2;
+  }
+}
+
 const WALL_HEIGHT     = 6;     // m — civic single-storey shell
 const WALL_THICKNESS  = 0.5;   // m
 const ROOF_THICKNESS  = 0.4;   // m
@@ -173,6 +229,24 @@ function RPBuildingMesh({ b }: { b: RpBuildingDef }) {
           <planeGeometry args={[floorW, floorD]} />
           <meshStandardMaterial color={s.floor} roughness={0.9} metalness={0.04} />
         </mesh>
+      )}
+
+      {/* Phase 10D: visual-only interior props (rotated from canonical +Z-door frame) */}
+      {hasInterior && INTERIOR_PROPS[b.id] && (
+        <group rotation={[0, interiorPropRotation(b.facing), 0]}>
+          {INTERIOR_PROPS[b.id].map((p, i) => (
+            <mesh key={`prop${i}`} position={[p.x, (p.y ?? 0) + p.h / 2, p.z]} castShadow receiveShadow>
+              <boxGeometry args={[p.w, p.h, p.d]} />
+              <meshStandardMaterial
+                color={p.color}
+                emissive={p.emissive ?? "#000000"}
+                emissiveIntensity={p.emissive ? 0.5 : 0}
+                roughness={0.8}
+                metalness={0.05}
+              />
+            </mesh>
+          ))}
+        </group>
       )}
 
       {/* Door lintel (header above the opening) */}
