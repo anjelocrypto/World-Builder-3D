@@ -24,6 +24,7 @@ import CityBudgetHUD, { type GrantablePlayer } from "./CityBudgetHUD";
 import CityProjectsHUD from "./CityProjectsHUD";
 import CityDashboardHUD from "./CityDashboardHUD";
 import CityLedgerHUD from "./CityLedgerHUD";
+import IDCardHUD from "./IDCardHUD";
 import RPBuildings from "./RPBuildings";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
@@ -339,6 +340,10 @@ export default function GameScene({
   const [showCityLedgerHUD, setShowCityLedgerHUD] = useState(false);
   const showCityLedgerHUDRef = useRef(showCityLedgerHUD);
   showCityLedgerHUDRef.current = showCityLedgerHUD;
+  // Phase 11A: ID/wallet card HUD visibility (C key, anywhere).
+  const [showIDCard, setShowIDCard] = useState(false);
+  const showIDCardRef = useRef(showIDCard);
+  showIDCardRef.current = showIDCard;
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -495,6 +500,7 @@ export default function GameScene({
         e.code !== "KeyP" &&  // Phase 8F: P at Gov Office for Mayor city project
         e.code !== "KeyD" &&  // Phase 8H: D at Gov Office for Mayor city dashboard
         e.code !== "KeyL" &&  // Phase 8I: L at Gov Office for Mayor city ledger
+        e.code !== "KeyC" &&  // Phase 11A: C opens the ID/wallet card (anywhere)
         e.code !== "F7"
       ) return;
       // Ignore key-repeat (held key firing continuously).
@@ -519,7 +525,8 @@ export default function GameScene({
         showCityBudgetHUDRef.current  ||
         showCityProjectsHUDRef.current ||
         showCityDashboardHUDRef.current ||
-        showCityLedgerHUDRef.current;
+        showCityLedgerHUDRef.current ||
+        showIDCardRef.current;
 
       // Phase 7C: F7 toggles faction admin panel (dev-only).
       // Opens only when no other modal is open; always allowed to close itself.
@@ -532,6 +539,17 @@ export default function GameScene({
             // Open — only when no other modal is blocking.
             setShowFactionAdmin(true);
           }
+        }
+        return;
+      }
+
+      // Phase 11A: C toggles the local ID/wallet card.
+      // Close is always allowed; open only when no other modal is blocking.
+      if (e.code === "KeyC") {
+        if (showIDCardRef.current) {
+          setShowIDCard(false);
+        } else if (!anyModalOpen) {
+          setShowIDCard(true);
         }
         return;
       }
@@ -1217,6 +1235,15 @@ export default function GameScene({
           ledger={cityLedger}
           onRequest={emitGetCityLedger}
           onClose={() => setShowCityLedgerHUD(false)}
+        />
+      )}
+
+      {/* Phase 11A: local ID / wallet card (C key, anywhere) */}
+      {showIDCard && (
+        <IDCardHUD
+          username={username}
+          profile={rpProfile}
+          onClose={() => setShowIDCard(false)}
         />
       )}
 
