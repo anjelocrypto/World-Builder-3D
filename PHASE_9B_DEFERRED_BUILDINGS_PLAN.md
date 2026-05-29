@@ -7,10 +7,10 @@ Extend `RP_BUILDINGS` only after each location's coordinate/coupling decision is
 
 ## Batch ordering (risk-ascending)
 
-### 9B-1 — Taxi Depot building (lowest risk)
-- **Coupling:** proximity gate only (clock-in/out). Taxi fare is pickup→dropoff distance, **not** depot-based, so payouts are unaffected.
-- **Catch:** the audit found the only collision-free taxi footprint forces a ~40 m relocation (origin shares City Hall's NW pocket). Must move `TAXI_DEPOT` + its gate + ring + the taxi clock-in/out checks, and confirm the new spot stays near enough to the on-road `TAXI_PICKUPS` to feel coherent (pickups are NOT moved).
-- **Steps:** solve a verified footprint+door spot → move `TAXI_DEPOT` (mirror server/client) → add to `RP_BUILDINGS` + `TAXI_DEPOT_DOOR` → redirect gate/ring/prompt → validators + tsc.
+### 9B-1 — Taxi Depot building ✅ COMPLETE (commit bc6fc20)
+- **Coupling:** proximity gate only (clock-in/out). Taxi fare is pickup→dropoff distance, **not** depot-based, so payouts are unaffected — verified unchanged.
+- **Outcome:** `TAXI_DEPOT` moved (−30,−15) → **(−28,16)**, 31 m. The old origin's pocket is occupied by the City Hall footprint, and no taxi footprint fits there without overlapping it; the only all-clearances-pass spot is the SW-north pocket. Built as a compact **10×8** yard, facing south, door at **(−28,21.5)**. Road edge 2.0 m; nearest car 8.5 m; nearest building 26 m; nearest taxi pickup (P3) 14.6 m.
+- **Shipped:** moved `TAXI_DEPOT` (server/client mirror); added `taxi_depot` to `RP_BUILDINGS` + `TAXI_DEPOT_DOOR`; redirected both clock-in/out gates, client prompt, and visual ring to the door; reduced the old signpost to a subtle marker (Batch-D style); added the TAXI DEPOT building style. Pickups/dropoffs/fare math untouched. All tsc + API/Vite builds + RP validators pass.
 
 ### 9B-2 — Delivery Hub building (payout-origin analysis required)
 - **Coupling:** `DELIVERY_HUB` is a **payout origin** (`calcDeliveryPay(DELIVERY_HUB, …)`). Moving it changes delivery pay for every route.

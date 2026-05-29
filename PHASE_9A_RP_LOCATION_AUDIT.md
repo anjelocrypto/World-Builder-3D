@@ -92,7 +92,7 @@ The joint solver also proposed moving the locations below, but they were **dropp
 |---|---|---|
 | LICENSING_OFFICE | (14,−30) → (22,−22) | License-test checkpoint **CP3 finish** sits at the current door (14,−26). Moving the office would orphan a checkpoint, which the brief says not to move yet. |
 | TEST_VEHICLE_SPAWN | (13,−30) → (22,−15) | Only moves *with* the licensing office; since the office is deferred, the spawn stays put. |
-| TAXI_DEPOT (building) | (−30,−15) → (−22,24) | A real taxi-yard footprint forces a ~40 m relocation (its origin shares City Hall's NW pocket). Too large a move to be "safe" this batch; the **coordinate is unchanged**. |
+| TAXI_DEPOT (building) | (−30,−15) → (−22,24) | A real taxi-yard footprint forces a relocation (its origin shares City Hall's NW pocket). Deferred from 9A. **✅ Completed in Phase 9B-1** (commit bc6fc20): relocated to **(−28,16)** as a 10×8 yard; fare math unchanged. |
 | DELIVERY_HUB | (58,−28) → (66,−26) | Payout origin. Can't host a building without clipping the x=45 road or moving the origin (which changes delivery pay). Needs a payout-delta analysis first. |
 | POLICE_STATION | (−68,14) → (−68,21) | Boxed between Medic (z=28) and Mechanic (z=−28) on the west wall; a 20-wide station can't gain clearance without overlapping them. Needs its own block. |
 | car-0 | (22,−22) → (22,−31) | Only needed if Licensing moves; Licensing deferred, so car-0 **unchanged**. |
