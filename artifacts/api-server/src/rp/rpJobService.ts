@@ -96,7 +96,7 @@ import {
   MEDIC_PAY_PER_M,
   MEDIC_ROUTE_COOLDOWN_MS,
   // Police Patrol
-  POLICE_STATION,
+  POLICE_STATION_DOOR,
   POLICE_STATION_RADIUS,
   POLICE_PATROL_POINTS,
   POLICE_PATROL_ACCEPT_RADIUS,
@@ -333,8 +333,9 @@ export async function toggleDuty(
       const dz = player.z - MEDIC_CENTER_DOOR[2];
       atDepot = dx * dx + dz * dz <= MEDIC_CENTER_RADIUS * MEDIC_CENTER_RADIUS;
     } else if (activeState.job === "police_patrol") {
-      const dx = player.x - POLICE_STATION[0];
-      const dz = player.z - POLICE_STATION[2];
+      // Phase 9B-4b: gate at the station door (building centre is now walled).
+      const dx = player.x - POLICE_STATION_DOOR[0];
+      const dz = player.z - POLICE_STATION_DOOR[2];
       atDepot = dx * dx + dz * dz <= POLICE_STATION_RADIUS * POLICE_STATION_RADIUS;
     }
 
@@ -1842,9 +1843,9 @@ async function clockInPolicePatrol(
     return;
   }
 
-  // Must be at Police Station
-  const dx = player.x - POLICE_STATION[0];
-  const dz = player.z - POLICE_STATION[2];
+  // Must be at Police Station — Phase 9B-4b: gate at the station door.
+  const dx = player.x - POLICE_STATION_DOOR[0];
+  const dz = player.z - POLICE_STATION_DOOR[2];
   if (dx * dx + dz * dz > POLICE_STATION_RADIUS * POLICE_STATION_RADIUS) {
     socket.emit("rp:toast", {
       msg:      "You must be at the Police Station to clock in.",

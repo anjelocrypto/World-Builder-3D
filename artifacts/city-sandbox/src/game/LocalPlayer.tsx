@@ -23,7 +23,7 @@ import {
   MEDIC_CENTER_DOOR,
   MEDIC_CENTER_RADIUS,
   MEDIC_SERVICE_RADIUS,
-  POLICE_STATION,
+  POLICE_STATION_DOOR,
   POLICE_STATION_RADIUS,
   POLICE_PATROL_ACCEPT_RADIUS,
   ATM_LOCATIONS,
@@ -870,7 +870,8 @@ export default function LocalPlayer({
     nearMedicCenterRef.current = nearMedicCenter;
 
     // Phase 5E: Police Station proximity (also writes to ref for E key handler)
-    const [psX, , psZ] = POLICE_STATION;
+    // Phase 9B-4b: measured to the station door (matches server gate).
+    const [psX, , psZ] = POLICE_STATION_DOOR;
     const psdx = curPos.x - psX;
     const psdz = curPos.z - psZ;
     const nearPoliceStation =

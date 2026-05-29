@@ -870,7 +870,7 @@ export const RP_BUILDINGS: ReadonlyArray<RpBuildingDef> = [
   // Phase 9B-3: Licensing Office (DMV / auto school). South door at (17,−23.5)
   // coincides with the license-test finish CP3 — drive back to the door to finish.
   { id: "licensing_office",  x: LICENSING_OFFICE_POS[0],  z: LICENSING_OFFICE_POS[2],  w: 10, d:  8, facing: "south", label: "Licensing Office" },
-  // Phase 9B-4: Police Station — own SW precinct block. South door at (−68,71.5).
+  // Phase 9B-4: Police Station — own SW precinct block. South door at (−68,72.5).
   { id: "police_station",    x: POLICE_STATION[0],        z: POLICE_STATION[2],        w: 20, d: 14, facing: "south", label: "Police Station" },
 ];
 

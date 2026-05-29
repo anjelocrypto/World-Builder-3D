@@ -27,7 +27,7 @@ import {
   MECHANIC_GARAGE_DOOR,
   MEDIC_CENTER_DOOR,
   MEDIC_ER_BAY,
-  POLICE_STATION,
+  POLICE_STATION_DOOR,
   ATM_LOCATIONS,
   POLICE_JAIL_CELL,
   POLICE_RELEASE_POS,
@@ -926,7 +926,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
 
       {/* ════ Police Station marker ═══════════════════════════════════════════════ */}
       {(() => {
-        const [psx, , psz] = POLICE_STATION;
+        const [psx, , psz] = POLICE_STATION_DOOR;
         return (
           <group position={[psx, 0, psz]}>
             {/* Ground ring — 5–6 m radius, navy/blue */}
@@ -944,32 +944,10 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
               />
             </mesh>
 
-            {/* Sign post */}
-            <mesh position={[0, 1.8, -0.3]}>
-              <boxGeometry args={[0.12, 3.6, 0.12]} />
-              <meshStandardMaterial color="#111122" roughness={0.6} metalness={0.6} />
-            </mesh>
-
-            {/* Sign board */}
-            <mesh position={[0, 3.3, -0.3]}>
-              <boxGeometry args={[4.8, 0.8, 0.1]} />
-              <meshStandardMaterial
-                ref={policeStationSignRef}
-                color="#00091a"
-                emissive="#2255cc"
-                emissiveIntensity={0.7}
-                roughness={0.3}
-                metalness={0.3}
-              />
-            </mesh>
-
-            {/* Sign text strip — white/light blue */}
-            <mesh position={[0, 3.6, -0.24]}>
-              <boxGeometry args={[4.4, 0.1, 0.01]} />
-              <meshStandardMaterial color="#ffffff" emissive="#aabbff" emissiveIntensity={2} />
-            </mesh>
-
-            <pointLight position={[0, 4, 0]} color="#2255cc" intensity={2.5} distance={14} decay={2} />
+            {/* Phase 9B-4b: signpost/board removed — the RPBuildings police station
+                shell now provides identity (consistent with Batch D). Subtle
+                accent light kept. */}
+            <pointLight position={[0, 2.5, 0]} color="#2255cc" intensity={1.0} distance={12} decay={2} />
           </group>
         );
       })()}
