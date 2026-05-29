@@ -22,6 +22,10 @@ import type {
   PeriCityHomestead,
 } from "./types";
 import { distancePointToPolyline } from "./roadGeom";
+// Phase 13A: RP civic building footprints, used only to keep procedural towers
+// out of the civic shells (see GENERATED_BUILDINGS filter below). rpTypes is a
+// pure leaf module (no imports), so this does not create an import cycle.
+import { RP_BUILDINGS } from "./rpTypes";
 
 // =============================================================
 // WORLD BOUNDS
@@ -270,10 +274,33 @@ function genBuilding(
 // the block grid (in the 80..94 ring between the outermost blocks at 80
 // and the inner-city-ring carriageway at 94..106), so they do not
 // overlap any random building.
-const GENERATED_BUILDINGS: Building[] = blockDefs.flatMap(
-  ({ cx, cz, bw, bd, count, district }) =>
-    Array.from({ length: count }, () => genBuilding(cx, cz, bw, bd, district))
-);
+// Phase 13A: keep procedural towers out of the hand-placed RP civic buildings.
+// Five RP buildings (dealership, police_station, medic_center, mechanic_garage,
+// delivery_hub) sit inside the corner/edge blocks, and genBuilding has no
+// awareness of them, so without this filter the deterministic seed=42 layout
+// spawns 21 towers that clip the civic shells. We drop any generated building
+// whose footprint overlaps an RP footprint + a 1 m margin so the towers never
+// visually touch the shells. Filtering happens AFTER generation, so the seeded
+// rng sequence and every surviving building's position are unchanged
+// (deterministic). RP buildings, houses, roads, cars are not moved.
+const RP_KEEPOUT_MARGIN = 1;
+function overlapsRpBuilding(b: Building): boolean {
+  for (const rp of RP_BUILDINGS) {
+    if (
+      Math.abs(b.x - rp.x) < (b.w + rp.w) / 2 + RP_KEEPOUT_MARGIN &&
+      Math.abs(b.z - rp.z) < (b.d + rp.d) / 2 + RP_KEEPOUT_MARGIN
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+const GENERATED_BUILDINGS: Building[] = blockDefs
+  .flatMap(({ cx, cz, bw, bd, count, district }) =>
+    Array.from({ length: count }, () => genBuilding(cx, cz, bw, bd, district)),
+  )
+  .filter((b) => !overlapsRpBuilding(b));
 
 // =============================================================
 // HAND-PLACED HIGHRISES + LANDMARKS

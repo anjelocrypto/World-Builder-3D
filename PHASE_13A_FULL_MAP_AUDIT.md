@@ -17,14 +17,14 @@ homestead belt, an elevated rail loop with a station, and a forest village with 
 network. The *hand-placed* RP systems (buildings, houses, jobs, ATMs, gang turf, spawns) are
 tightly validated. It is **not patchy** in layout intent — but it is *patchy in enforcement*:
 the procedural building generator is invisible to every validator, and a deterministic replay
-(seed = 42) shows **22 procedural towers physically clipping 5 of the 9 RP civic buildings.**
+(seed = 42) shows **21 procedural towers physically clipping 5 of the 9 RP civic buildings.**
 That is the single structural bug; the rest are cosmetic (towers merging) or coverage gaps.
 
 ### Top 10 issues (ranked)
 
 | # | Sev | Issue |
 |---|-----|-------|
-| 1 | **P1** | 22 procedural buildings overlap 5 RP civic buildings (dealership ×6, police_station ×6, medic_center ×3, mechanic_garage ×3, delivery_hub ×3). Towers clip the civic shells. (§5.1) |
+| 1 | **P1** | 21 procedural buildings overlap 5 RP civic buildings (dealership ×6, police_station ×6, medic_center ×3, mechanic_garage ×3, delivery_hub ×3). Towers clip the civic shells. (§5.1) |
 | 2 | **P2** | Procedural `GENERATED_BUILDINGS` (52) are unvalidated against everything — RP buildings, houses, cars, roads. (§4 matrix) |
 | 3 | **P2** | `validateRpMarkers` / `validateVehicleSpawnOBB` / `safeStationSpawn` accept an `obstacles` arg but are invoked with `[]` — STATIC_OBSTACLES never enforced against markers/spawns. (§5.3) |
 | 4 | **P2** | No validator for trees/flora (~600), NPC/traffic routes (9 loops), STATIC_OBSTACLES footprints, bridge, or rail. (§4) |
@@ -97,7 +97,7 @@ DISTRICTS dimension ranges verified against source) to recover the exact 52 proc
 footprints; AABB-overlap and edge-distance math for the rest.
 
 - **Procedural building vs city grid roads:** 0 on-road ✓ (the 5 m block padding holds).
-- **Procedural building vs RP buildings:** **22 overlaps across 5 RP buildings** ✗ (§5.1). The 4 inner-ring RP buildings are clear.
+- **Procedural building vs RP buildings:** **21 overlaps across 5 RP buildings** ✗ (§5.1). The 4 inner-ring RP buildings are clear.
 - **Procedural building vs RP houses:** 0 ✓.
 - **Procedural building vs city parked cars:** 0 ✓.
 - **Procedural building vs each other:** **92 overlapping pairs** (merged towers, cosmetic) (§5.2).
@@ -228,6 +228,35 @@ overlap. No action.
 
 ## 7. Stop
 
-Audit complete. No coordinates, data, or code changed; no validators added; nothing moved. The
-only P1 is §5.1 (procedural towers clipping 5 RP buildings) — recommend **Batch A** first, then
-**Batch B**. Awaiting your review and batch selection before implementing.
+Audit complete. The only P1 is §5.1 (procedural towers clipping 5 RP buildings). **Batch A is
+now implemented (below); Batch B+ remain pending your approval.**
+
+---
+
+## 8. Batch A — Implemented (procedural keep-out around RP civic footprints)
+
+**Change:** `artifacts/city-sandbox/src/shared/cityData.ts` — after `GENERATED_BUILDINGS` are
+created, `.filter()` out any whose footprint overlaps an `RP_BUILDINGS` footprint + 1 m margin
+(`overlapsRpBuilding`). `RP_BUILDINGS` is imported from `rpTypes.ts` (a pure leaf module → no
+import cycle). Filtering runs **after** generation, so the seeded rng sequence and every
+surviving building's position are unchanged (deterministic). No RP building, house, road, car,
+checkpoint, marker, highrise, landmark, or gameplay coordinate was moved. Server/economy/police/
+faction/housing untouched.
+
+**Computed before/after (seed = 42 replay + filter):**
+
+| Check | Before | After |
+|-------|--------|-------|
+| Generated buildings | 52 | 31 (dropped 21) |
+| Generated ↔ RP buildings overlaps | **21** | **0** ✓ |
+| Generated ↔ RP houses overlaps | 0 | 0 ✓ |
+| Generated ↔ parked cars overlaps | 0 | 0 ✓ |
+| Generated ↔ roads overlaps | 0 | 0 ✓ |
+
+Highrises (8) and landmarks (5) were left unchanged — the audit confirms they sit in the empty
+80–94 ring and do not overlap any RP footprint, so the filter (applied only to
+`GENERATED_BUILDINGS`) is sufficient.
+
+**Verification:** tsc ×4 pass. api-server build, Vite build, and tsx RP validators run on the
+Mac (no server/validator code changed in Batch A). Batch B (new `validateGeneratedBuildings`,
+wiring real `STATIC_OBSTACLES`, bounded road segments) is **not** implemented — awaiting approval.
