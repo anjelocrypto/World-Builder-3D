@@ -23,9 +23,9 @@ Extend `RP_BUILDINGS` only after each location's coordinate/coupling decision is
 - **Outcome:** office (14,−30) → **(17,−29)** as a 10×8 DMV, facing **south**, door at **(17,−23.5)**. CP3 re-derived to **(17,−23.5)** (coincides with the door — drive-up finish). `TEST_VEHICLE_SPAWN` (13,−30) → **(11,−30)**, OBB-verified clear of all carriageways. Start gate + ring + prompt redirected to the door; signpost reduced; "DMV / AUTO SCHOOL" signage added. Updated the 5 hardcoded validator/OBB literals. **Test fee, license-grant logic, socket events unchanged.** Road edge 2.0 m; nearest car 8.6 m; nearest building 25 m.
 
 ### 9B-4 — Police Station relocation (structural)
-- **Coupling:** boxed between Medic (z=28) and Mechanic (z=−28) on the west wall; also anchors `POLICE_JAIL_CELL`, `POLICE_RELEASE_POS`, `POLICE_BOOKING_DESK_POS` (all offset from the station), and `STATION_SPAWN`/jail teleport targets in `rpPoliceService` + `gameServer`.
-- **Decision needed:** give the station its own block (likely outside the −68 west strip). Every dependent point (jail/booking/release/spawn) must move as a rigid group and stay off-road + mutually consistent.
-- **Catch:** highest blast radius — touches police arrest/booking/release flow and spawn. Treat as its own mini-phase with a full police-flow regression check.
+- **Coupling:** boxed between Medic (z=28) and Mechanic (z=−28) on the west wall; anchors `POLICE_JAIL_CELL`, `POLICE_RELEASE_POS`, `POLICE_BOOKING_DESK_POS` (all offset from the station) plus the jail/release teleport targets in `rpPoliceService` + the jail-confinement clamp in `gameServer`. **NOT** related to `STATION_SPAWN`/`STATION_MARKER_POS` — those are the far-east transit / player-spawn platform (128/132,−65) and are **out of scope** for the police cluster.
+- **Decision needed:** give the station its own block (likely outside the −68 west strip). Every dependent point (jail/booking/release) must move as a rigid group and stay off-road + mutually consistent.
+- **Catch:** highest blast radius — touches the police arrest/booking/jail/release flow. Treat as its own mini-phase with a full police-flow regression check.
 - **Steps:** pick a block → translate the whole police cluster as a unit → footprint + all-point validation → add to `RP_BUILDINGS` + door → redirect gates/rings → validators + tsc + manual arrest→book→jail→release run.
 
 ## Verification (every batch)
