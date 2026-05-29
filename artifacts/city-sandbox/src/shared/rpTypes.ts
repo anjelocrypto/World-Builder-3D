@@ -120,6 +120,26 @@ export const ID_SHARE_RADIUS = 4;
 /** Per-sender cooldown (ms) for show/inspect, enforced server-side. */
 export const ID_SHARE_COOLDOWN_MS = 2500;
 
+// ── Phase 11C: personal inventory (read-only) ───────────────────────────────
+// Server-derived. Mirror of the api-server rp:inventory payload. NEVER contains
+// playerId (DB UUID), DB row ids, socket ids, coordinates, cash, or bank.
+export interface InventoryItem {
+  /** Stable item identifier (catalog key). */
+  slug:        string;
+  /** Display name, derived server-side from the static item catalog. */
+  name:        string;
+  /** Display category, e.g. "Personal", "Consumable", "Misc". */
+  category:    string;
+  /** Short description (may be empty). */
+  description: string;
+  /** Non-negative stack count. */
+  quantity:    number;
+}
+
+export interface PlayerInventory {
+  items: InventoryItem[];
+}
+
 export interface RpToast {
   id:        number;   // client-assigned monotonic id for keying
   msg:       string;

@@ -15,6 +15,13 @@
       "when": 1780015222487,
       "tag": "0001_faithful_harry_osborn",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1780079398959,
+      "tag": "0002_careless_beyonder",
+      "breakpoints": true
     }
   ]
 }

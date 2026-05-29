@@ -26,7 +26,7 @@ import {
   integer,
   bigserial,
 } from "drizzle-orm/pg-core";
-import { index, check } from "drizzle-orm/pg-core";
+import { index, uniqueIndex, check } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
 
 // ── 1. rp_factions ────────────────────────────────────────────────────────────
@@ -195,3 +195,35 @@ export const rpCityConfig = pgTable("rp_city_config", {
   updatedBy: uuid("updated_by")
                .references(() => rpPlayers.id, { onDelete: "set null" }),
 });
+
+// ── 10. rp_inventory_items ──────────────────────────────────────────────────
+// Phase 11C: server-authoritative personal inventory foundation (read-only this
+// phase — no item use, transfer, drop, trade, shop, or economy mutation).
+//
+// Each row is ONE stack of a single item type for a single player. Display
+// strings (name/category/description) are NOT stored here — they are derived
+// server-side from a static item catalog keyed by item_slug, so the DB only
+// holds the slug + quantity. The optional metadata column is reserved for
+// future server-controlled structured data; it is never set from the client.
+//
+// The UNIQUE(player_id, item_slug) index enforces one stack per item type per
+// player, which also makes any future seeding duplication-safe (ON CONFLICT).
+// quantity is constrained non-negative; per-item stack limits are enforced in
+// server code against the catalog when mutations are added in a later phase.
+export const rpInventoryItems = pgTable(
+  "rp_inventory_items",
+  {
+    id:        uuid("id").primaryKey().defaultRandom(),
+    playerId:  uuid("player_id").notNull()
+                 .references(() => rpPlayers.id, { onDelete: "cascade" }),
+    itemSlug:  text("item_slug").notNull(),
+    quantity:  integer("quantity").notNull().default(1),
+    metadata:  text("metadata"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("uq_rp_inventory_player_item").on(t.playerId, t.itemSlug),
+    check("rp_inventory_quantity_nonneg", sql`${t.quantity} >= 0`),
+  ],
+);

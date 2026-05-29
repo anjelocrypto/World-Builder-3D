@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard, CityLedger, ReceivedIDCard } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard, CityLedger, ReceivedIDCard, PlayerInventory } from "../shared/rpTypes";
 import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS, GOVERNMENT_OFFICE_DOOR, GOVERNMENT_OFFICE_RADIUS, MAYOR_MIN_RANK, ID_SHARE_RADIUS } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
@@ -26,6 +26,7 @@ import CityDashboardHUD from "./CityDashboardHUD";
 import CityLedgerHUD from "./CityLedgerHUD";
 import IDCardHUD from "./IDCardHUD";
 import ReceivedIDHUD from "./ReceivedIDHUD";
+import InventoryHUD from "./InventoryHUD";
 import RPBuildings from "./RPBuildings";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
@@ -195,6 +196,10 @@ interface GameSceneProps {
   emitPoliceInspectID: (targetId: string) => void;
   /** Phase 11B: Dismiss the received-ID panel. */
   dismissReceivedID: () => void;
+  /** Phase 11C: The local player's own inventory (read-only, from useRpSocket). */
+  playerInventory: PlayerInventory | null;
+  /** Phase 11C: Emit rp:getInventory — request the player's own inventory. */
+  emitGetInventory: () => void;
 }
 
 export default function GameScene({
@@ -271,6 +276,8 @@ export default function GameScene({
   emitShowID,
   emitPoliceInspectID,
   dismissReceivedID,
+  playerInventory,
+  emitGetInventory,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -357,6 +364,13 @@ export default function GameScene({
   const [showIDCard, setShowIDCard] = useState(false);
   const showIDCardRef = useRef(showIDCard);
   showIDCardRef.current = showIDCard;
+  // Phase 11C: inventory HUD visibility (O key, anywhere).
+  const [showInventory, setShowInventory] = useState(false);
+  const showInventoryRef = useRef(showInventory);
+  showInventoryRef.current = showInventory;
+  // Phase 11C: stable ref for the inventory fetch emitter (used in keydown handler).
+  const emitGetInventoryRef = useRef(emitGetInventory);
+  emitGetInventoryRef.current = emitGetInventory;
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -518,6 +532,7 @@ export default function GameScene({
         e.code !== "KeyL" &&  // Phase 8I: L at Gov Office for Mayor city ledger
         e.code !== "KeyC" &&  // Phase 11A: C opens the ID/wallet card (anywhere)
         e.code !== "KeyV" &&  // Phase 11B: V = on-duty officer inspects nearest ID
+        e.code !== "KeyO" &&  // Phase 11C: O opens the inventory (anywhere)
         e.code !== "F7"
       ) return;
       // Ignore key-repeat (held key firing continuously).
@@ -543,7 +558,8 @@ export default function GameScene({
         showCityProjectsHUDRef.current ||
         showCityDashboardHUDRef.current ||
         showCityLedgerHUDRef.current ||
-        showIDCardRef.current;
+        showIDCardRef.current ||
+        showInventoryRef.current;
 
       // Phase 7C: F7 toggles faction admin panel (dev-only).
       // Opens only when no other modal is open; always allowed to close itself.
@@ -567,6 +583,18 @@ export default function GameScene({
           setShowIDCard(false);
         } else if (!anyModalOpen) {
           setShowIDCard(true);
+        }
+        return;
+      }
+
+      // Phase 11C: O toggles the inventory panel. Close is always allowed; open
+      // only when no other modal is blocking, and fetches a fresh snapshot.
+      if (e.code === "KeyO") {
+        if (showInventoryRef.current) {
+          setShowInventory(false);
+        } else if (!anyModalOpen) {
+          emitGetInventoryRef.current();
+          setShowInventory(true);
         }
         return;
       }
@@ -1308,6 +1336,11 @@ export default function GameScene({
       {/* Phase 11B: an ID shown to you, or a police inspection result */}
       {receivedID && (
         <ReceivedIDHUD card={receivedID} onClose={dismissReceivedID} />
+      )}
+
+      {/* Phase 11C: read-only personal inventory (O key, anywhere) */}
+      {showInventory && (
+        <InventoryHUD inventory={playerInventory} onClose={() => setShowInventory(false)} />
       )}
 
       {/* Phase 8B/8D: City Tax Rate panel (Mayor only, near Gov Office, T key) */}

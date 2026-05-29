@@ -89,6 +89,8 @@ export default function Game({ username }: GameProps) {
     emitShowID,
     emitPoliceInspectID,
     dismissReceivedID,
+    playerInventory,
+    emitGetInventory,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -193,6 +195,8 @@ export default function Game({ username }: GameProps) {
       emitShowID={emitShowID}
       emitPoliceInspectID={emitPoliceInspectID}
       dismissReceivedID={dismissReceivedID}
+      playerInventory={playerInventory}
+      emitGetInventory={emitGetInventory}
     />
   );
 }

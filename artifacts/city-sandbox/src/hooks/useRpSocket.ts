@@ -15,7 +15,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard, CityLedger, ReceivedIDCard } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard, CityLedger, ReceivedIDCard, PlayerInventory } from "../shared/rpTypes";
 import { canDriveVehicleClient, GROVE_TAG_COOLDOWN_MS, CITY_TAX_DEFAULT } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
@@ -143,6 +143,8 @@ export function useRpSocket(socket: Socket | null) {
 
   /** Phase 11B: an ID card received from a nearby player or police inspection. */
   const [receivedID, setReceivedID] = useState<ReceivedIDCard | null>(null);
+  // Phase 11C: the local player's own inventory (read-only), fetched on demand.
+  const [playerInventory, setPlayerInventory] = useState<PlayerInventory | null>(null);
 
   useEffect(() => {
     if (!socket) return;
@@ -368,6 +370,11 @@ export function useRpSocket(socket: Socket | null) {
     const onIDShown    = (data: ReceivedIDCard) => { if (data && typeof data.name === "string") setReceivedID(data); };
     const onIDInspected = (data: ReceivedIDCard) => { if (data && typeof data.name === "string") setReceivedID(data); };
 
+    // Phase 11C: rp:inventory — the local player's own inventory snapshot.
+    const onInventory = (data: PlayerInventory) => {
+      setPlayerInventory(data && Array.isArray(data.items) ? data : { items: [] });
+    };
+
     // Phase 7A: rp:factionChat — a faction member sent a message.
     const onFactionChat = (data: {
       fromId:       string;
@@ -417,6 +424,7 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:cityLedger",           onCityLedger);
     socket.on("rp:idShown",              onIDShown);
     socket.on("rp:idInspected",          onIDInspected);
+    socket.on("rp:inventory",            onInventory);
 
     return () => {
       socket.off("rp:profile",              onProfile);
@@ -451,6 +459,7 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:cityLedger",           onCityLedger);
       socket.off("rp:idShown",              onIDShown);
       socket.off("rp:idInspected",          onIDInspected);
+      socket.off("rp:inventory",            onInventory);
     };
   }, [socket]);
 
@@ -588,6 +597,9 @@ export function useRpSocket(socket: Socket | null) {
 
   /** Phase 11B: dismiss the received-ID panel. */
   const dismissReceivedID = useCallback(() => setReceivedID(null), []);
+
+  /** Phase 11C: request the local player's own inventory (server-authoritative). */
+  const emitGetInventory = useCallback(() => { socket?.emit("rp:getInventory"); }, [socket]);
 
   /** Phase 6C: emit rp:cuff — officer cuffs a nearby wanted player. */
   const emitCuff = useCallback(
@@ -802,5 +814,8 @@ export function useRpSocket(socket: Socket | null) {
     emitShowID,
     emitPoliceInspectID,
     dismissReceivedID,
+    /** Phase 11C: read-only personal inventory. */
+    playerInventory,
+    emitGetInventory,
   };
 }

@@ -39,6 +39,7 @@ import {
   handleShowID,
   handlePoliceInspectID,
 } from "./rpIdentityService";
+import { handleGetInventory } from "./rpInventoryService";
 import {
   issueFine,
   respondFine,
@@ -324,6 +325,16 @@ export function setupRpHandlers(
     } catch (err) {
       logger.error({ err, socketId: socket.id }, "[rp] handlePoliceInspectID threw");
     }
+  });
+
+  // ── rp:getInventory (Phase 11C) ───────────────────────────────────────────
+  // Player requests THEIR OWN inventory. Server derives identity from the
+  // socket's cache entry (client sends nothing); emits rp:inventory to the
+  // requesting socket only. Read-only — no mutation. No playerId/ids in payload.
+  socket.on("rp:getInventory", () => {
+    handleGetInventory(socket, ctx).catch((err) => {
+      logger.error({ err, socketId: socket.id }, "[rp] handleGetInventory threw");
+    });
   });
 
   // ── rp:cuff ───────────────────────────────────────────────────────────────
