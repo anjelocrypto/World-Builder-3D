@@ -243,6 +243,13 @@ interface LocalPlayerProps {
    * current tag point. Server validates independently.
    */
   emitGangMissionCheckpoint?: (idx: number) => void;
+  /**
+   * Phase 8I: When true, suppress the KeyL vehicle lock/unlock toggle so the
+   * Mayor's City Ledger panel (also bound to L near City Hall) doesn't also
+   * toggle a nearby owned vehicle's lock on the same keypress. UI-only — server
+   * vehicle lock authority is unchanged.
+   */
+  suppressVehicleLockKey?: boolean;
 }
 
 export default function LocalPlayer({
@@ -269,6 +276,7 @@ export default function LocalPlayer({
   onOpenATM,
   activeGangMission,
   emitGangMissionCheckpoint,
+  suppressVehicleLockKey,
 }: LocalPlayerProps) {
   const { camera, gl } = useThree();
   const [, getKeys] = useKeyboardControls<Controls>();
@@ -390,6 +398,11 @@ export default function LocalPlayer({
   // Phase 7G: gang mission tag-point checkpoint retry (walking only, 1s throttle)
   const gangMissionCpRetryRef = useRef<{ nextCp: number; lastAttemptAt: number } | null>(null);
 
+  // Phase 8I: mirror suppressVehicleLockKey into a ref so the useFrame loop
+  // reads the latest value (the loop closes over props captured at mount).
+  const suppressVehicleLockKeyRef = useRef(!!suppressVehicleLockKey);
+  suppressVehicleLockKeyRef.current = !!suppressVehicleLockKey;
+
   const uiCache = useRef({
     health: 100,
     speed: 0,
@@ -482,12 +495,17 @@ export default function LocalPlayer({
     prevAttackHeavyKey.current = wantHeavy;
 
     // KeyL — lock / unlock nearest owned vehicle (rising-edge, outside vehicle only).
+    // Phase 8I: when suppressVehicleLockKey is set (Mayor at City Hall, where L
+    // opens the City Ledger), skip the lock toggle so a single L press doesn't
+    // also flip a nearby owned vehicle's lock. Lock/unlock works normally
+    // everywhere else. Server lock authority is unchanged either way.
     const wantLock = keys.lockVehicle;
     if (
       wantLock &&
       !prevLockVehicleKey.current &&
       !inVehicle.current &&
-      interactCooldown.current <= 0
+      interactCooldown.current <= 0 &&
+      !suppressVehicleLockKeyRef.current
     ) {
       const ownedVId = nearOwnedVehicleIdRef.current;
       if (ownedVId) {

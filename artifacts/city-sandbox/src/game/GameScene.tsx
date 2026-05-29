@@ -905,6 +905,16 @@ export default function GameScene({
     rpProfile?.factionType === "government" &&
     (rpProfile?.factionRank ?? 0) >= MAYOR_MIN_RANK;
 
+  // Phase 8I: Suppress LocalPlayer's KeyL vehicle lock toggle when L is acting
+  // as the City Ledger key — i.e. the ledger is open, or the Mayor is standing
+  // at City Hall where pressing L opens it. UI-only; server lock authority is
+  // unchanged. Lock/unlock still works for everyone else everywhere else.
+  const isMayorNow =
+    rpProfile?.factionType === "government" &&
+    (rpProfile?.factionRank ?? 0) >= MAYOR_MIN_RANK;
+  const suppressVehicleLockKey =
+    showCityLedgerHUD || (isMayorNow && nearGovernmentOffice);
+
   return (
     <div
       ref={wrapperRef}
@@ -1004,6 +1014,7 @@ export default function GameScene({
             emitJobCheckpoint={emitJobCheckpoint}
             activeGangMission={activeGangMission}
             emitGangMissionCheckpoint={emitGangMissionCheckpoint}
+            suppressVehicleLockKey={suppressVehicleLockKey}
           />
 
           <PerfMonitor />

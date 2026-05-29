@@ -881,9 +881,11 @@ async function buildCityLedgerPayload(): Promise<{ entries: CityLedgerEntry[] }>
 
   // ── DB rows: job_pay (tax inflow) + government_grant (outflow) ─────────────
   try {
+    // Note: we deliberately do NOT select rpTransactionLog.id — the internal DB
+    // row id must never leave the server. Client entry ids are generated below
+    // from timestamp + kind + index, which is sufficient for React keys.
     const rows = await db
       .select({
-        id:        rpTransactionLog.id,
         kind:      rpTransactionLog.kind,
         cashDelta: rpTransactionLog.cashDelta,
         note:      rpTransactionLog.note,
@@ -903,7 +905,7 @@ async function buildCityLedgerPayload(): Promise<{ entries: CityLedgerEntry[] }>
         if (tax === null || tax <= 0) continue;
         const project = parseNoteProject(row.note);
         entries.push({
-          id:        `tx-${row.id}`,
+          id:        `tx-${createdAt}-job_pay-${entries.length}`,
           type:      "tax_revenue",
           amount:    tax,
           label:     "Tax revenue",
@@ -914,7 +916,7 @@ async function buildCityLedgerPayload(): Promise<{ entries: CityLedgerEntry[] }>
         // government_grant — budget outflow equal to the credited cashDelta.
         const amount = Number.isSafeInteger(row.cashDelta) ? row.cashDelta : 0;
         entries.push({
-          id:        `tx-${row.id}`,
+          id:        `tx-${createdAt}-government_grant-${entries.length}`,
           type:      "government_grant",
           amount,
           label:     "City grant",
