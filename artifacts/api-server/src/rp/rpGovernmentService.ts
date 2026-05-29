@@ -14,7 +14,7 @@
  *   - Requester must be in the government faction (factionType "government"
  *     OR factionSlug "government") with factionRank >= MAYOR_MIN_RANK (4).
  *   - Not jailed.  Not cuffed.
- *   - Server position must be within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_POS.
+ *   - Server position must be within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_DOOR.
  *     A malicious client can emit from any location; the server enforces proximity.
  *   - Per-action cooldowns keyed by DB playerId; NOT consumed on validation failures.
  *
@@ -494,7 +494,7 @@ export async function spendCityBudgetTx(
  * Authority checks (all server-side):
  *   1. Mayor (government faction + rank >= MAYOR_MIN_RANK).
  *   2. Not jailed.  Not cuffed.
- *   3. Within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_POS (server position).
+ *   3. Within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_DOOR (server position).
  *   4. Payload: targetSocketId (string), amount (integer CITY_GRANT_MIN–MAX), note (optional ≤120 chars).
  *   5. Target exists in rpCache + players map; target not jailed.
  *   6. No self-grants.
@@ -783,7 +783,7 @@ function buildCityDashboardPayload(ctx: LicenseContext): CityDashboardPayload {
  *   1. Mayor (government faction + rank >= MAYOR_MIN_RANK) via isMayor().
  *   2. Not jailed.
  *   3. Not cuffed.
- *   4. Within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_POS (server position).
+ *   4. Within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_DOOR (server position).
  *
  * Read-only: no DB writes, no budget/cooldown/project mutation. Emits
  * rp:cityDashboard with an aggregate-only payload back to the requesting socket.
@@ -952,7 +952,7 @@ async function buildCityLedgerPayload(): Promise<{ entries: CityLedgerEntry[] }>
  * Authority checks (identical to other Mayor actions):
  *   1. Mayor (government faction + rank >= MAYOR_MIN_RANK) via isMayor().
  *   2. Not jailed.  3. Not cuffed.
- *   4. Within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_POS.
+ *   4. Within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_DOOR.
  *
  * Read-only: a single SELECT (limit 50) plus in-memory events. No writes.
  * Emits rp:cityLedger with an aggregate, privacy-safe payload.
@@ -1003,7 +1003,7 @@ export async function handleGetCityLedger(socket: Socket, ctx: LicenseContext): 
  * Authority checks (all server-side):
  *   1. Mayor (government faction + rank >= MAYOR_MIN_RANK).
  *   2. Not jailed.  Not cuffed.
- *   3. Within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_POS.
+ *   3. Within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_DOOR.
  *   4. projectId must match a known CITY_PROJECT_DEFS entry.
  *   5. Project must not already be active (after pruning expired).
  *   6. Sufficient city budget (soft in-memory check + hard DB check).
@@ -1376,7 +1376,7 @@ export function handleGetCityConfig(socket: Socket): void {
  *   2. isMayor(entry) — government faction + rank >= MAYOR_MIN_RANK.
  *   3. Not jailed.
  *   4. Not cuffed.
- *   5. Within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_POS (server position).
+ *   5. Within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_DOOR (server position).
  *   6. Payload rate is finite number, within [CITY_TAX_MIN, CITY_TAX_MAX].
  *   7. Per-mayor cooldown (MAYOR_SET_TAX_COOLDOWN_MS), keyed by DB playerId.
  *      Cooldown is NOT consumed on validation / proximity failures.
