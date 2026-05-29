@@ -45,7 +45,7 @@ import type { RpCacheEntry, JobState } from "./rpCache";
 import { rpJobState } from "./rpCache";
 import {
   // City Worker
-  CITY_WORKER_DEPOT,
+  CITY_WORKER_DEPOT_DOOR,
   CITY_WORKER_DEPOT_RADIUS,
   CITY_WORKER_CHECKPOINTS,
   JOB_CITY_WORKER_PAY,
@@ -75,7 +75,7 @@ import {
   DELIVERY_MIN_STAGE_INTERVAL_MS,
   DELIVERY_ROUTE_COOLDOWN_MS,
   // Mechanic
-  MECHANIC_GARAGE,
+  MECHANIC_GARAGE_DOOR,
   MECHANIC_GARAGE_RADIUS,
   MECHANIC_TARGETS,
   MECHANIC_SERVICE_RADIUS,
@@ -84,6 +84,7 @@ import {
   MECHANIC_ROUTE_COOLDOWN_MS,
   // Medic
   MEDIC_CENTER,
+  MEDIC_CENTER_DOOR,
   MEDIC_CENTER_RADIUS,
   MEDIC_PATIENT_CALLS,
   MEDIC_ER_BAY,
@@ -306,8 +307,9 @@ export async function toggleDuty(
     // Audit fix 2: player must be at the correct depot to clock out.
     let atDepot = false;
     if (activeState.job === "city_worker") {
-      const dx = player.x - CITY_WORKER_DEPOT[0];
-      const dz = player.z - CITY_WORKER_DEPOT[2];
+      // Phase 9A Batch E: gate at the depot door (building centre is now walled).
+      const dx = player.x - CITY_WORKER_DEPOT_DOOR[0];
+      const dz = player.z - CITY_WORKER_DEPOT_DOOR[2];
       atDepot = dx * dx + dz * dz <= CITY_WORKER_DEPOT_RADIUS * CITY_WORKER_DEPOT_RADIUS;
     } else if (activeState.job === "taxi_driver") {
       const dx = player.x - TAXI_DEPOT[0];
@@ -318,12 +320,14 @@ export async function toggleDuty(
       const dz = player.z - DELIVERY_HUB[2];
       atDepot = dx * dx + dz * dz <= DELIVERY_HUB_RADIUS * DELIVERY_HUB_RADIUS;
     } else if (activeState.job === "mechanic") {
-      const dx = player.x - MECHANIC_GARAGE[0];
-      const dz = player.z - MECHANIC_GARAGE[2];
+      // Phase 9A Batch E: gate at the garage door.
+      const dx = player.x - MECHANIC_GARAGE_DOOR[0];
+      const dz = player.z - MECHANIC_GARAGE_DOOR[2];
       atDepot = dx * dx + dz * dz <= MECHANIC_GARAGE_RADIUS * MECHANIC_GARAGE_RADIUS;
     } else if (activeState.job === "medic") {
-      const dx = player.x - MEDIC_CENTER[0];
-      const dz = player.z - MEDIC_CENTER[2];
+      // Phase 9A Batch E: gate at the medical centre door (payout origin unchanged).
+      const dx = player.x - MEDIC_CENTER_DOOR[0];
+      const dz = player.z - MEDIC_CENTER_DOOR[2];
       atDepot = dx * dx + dz * dz <= MEDIC_CENTER_RADIUS * MEDIC_CENTER_RADIUS;
     } else if (activeState.job === "police_patrol") {
       const dx = player.x - POLICE_STATION[0];
@@ -394,8 +398,8 @@ async function clockInCityWorker(
   entry:  RpCacheEntry,
   player: PlayerState,
 ): Promise<void> {
-  // Depot proximity check
-  const distToDepot = dist2d(player.x, player.z, CITY_WORKER_DEPOT[0], CITY_WORKER_DEPOT[2]);
+  // Depot proximity check — Phase 9A Batch E: gate at the depot door.
+  const distToDepot = dist2d(player.x, player.z, CITY_WORKER_DEPOT_DOOR[0], CITY_WORKER_DEPOT_DOOR[2]);
   if (distToDepot > CITY_WORKER_DEPOT_RADIUS) {
     socket.emit("rp:toast", {
       msg:      "You must be at the City Worker Depot to clock in.",
@@ -1187,9 +1191,9 @@ async function clockInMechanic(
     return;
   }
 
-  // Must be at Mechanic Garage
-  const dx = player.x - MECHANIC_GARAGE[0];
-  const dz = player.z - MECHANIC_GARAGE[2];
+  // Must be at Mechanic Garage — Phase 9A Batch E: gate at the garage door.
+  const dx = player.x - MECHANIC_GARAGE_DOOR[0];
+  const dz = player.z - MECHANIC_GARAGE_DOOR[2];
   if (dx * dx + dz * dz > MECHANIC_GARAGE_RADIUS * MECHANIC_GARAGE_RADIUS) {
     socket.emit("rp:toast", {
       msg:      "You must be at the Mechanic Garage to clock in.",
@@ -1506,9 +1510,9 @@ async function clockInMedic(
     return;
   }
 
-  // Must be at Medical Center
-  const dx = player.x - MEDIC_CENTER[0];
-  const dz = player.z - MEDIC_CENTER[2];
+  // Must be at Medical Center — Phase 9A Batch E: gate at the door (payout origin unchanged).
+  const dx = player.x - MEDIC_CENTER_DOOR[0];
+  const dz = player.z - MEDIC_CENTER_DOOR[2];
   if (dx * dx + dz * dz > MEDIC_CENTER_RADIUS * MEDIC_CENTER_RADIUS) {
     socket.emit("rp:toast", {
       msg:      "You must be at the Medical Center to clock in.",

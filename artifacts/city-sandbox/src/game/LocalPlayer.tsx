@@ -6,8 +6,8 @@ import type { VehicleState } from "../shared/types";
 import type { ActiveTest, ActiveJob, ActiveGangMission } from "../shared/rpTypes";
 import {
   LICENSING_OFFICE_POS,
-  DEALERSHIP_POS,
-  CITY_WORKER_DEPOT,
+  DEALERSHIP_DOOR,
+  CITY_WORKER_DEPOT_DOOR,
   CITY_WORKER_DEPOT_RADIUS,
   CITY_WORKER_CHECKPOINTS,
   JOB_CP_ACCEPT_RADIUS,
@@ -17,10 +17,10 @@ import {
   DELIVERY_HUB,
   DELIVERY_HUB_RADIUS,
   DELIVERY_CP_ACCEPT_RADIUS,
-  MECHANIC_GARAGE,
+  MECHANIC_GARAGE_DOOR,
   MECHANIC_GARAGE_RADIUS,
   MECHANIC_SERVICE_RADIUS,
-  MEDIC_CENTER,
+  MEDIC_CENTER_DOOR,
   MEDIC_CENTER_RADIUS,
   MEDIC_SERVICE_RADIUS,
   POLICE_STATION,
@@ -811,7 +811,8 @@ export default function LocalPlayer({
       !inVehicle.current && odx * odx + odz * odz < 6 * 6;
 
     // Phase 3: dealership proximity (also writes to ref for E key handler)
-    const [dlrX, , dlrZ] = DEALERSHIP_POS;
+    // Phase 9A Batch E: measured to the dealership door (matches server gate).
+    const [dlrX, , dlrZ] = DEALERSHIP_DOOR;
     const ddx = curPos.x - dlrX;
     const ddz = curPos.z - dlrZ;
     const nearDealership =
@@ -819,7 +820,8 @@ export default function LocalPlayer({
     nearDealershipRef.current = nearDealership;
 
     // Phase 4: depot proximity (also writes to ref for E key handler)
-    const [depX, , depZ] = CITY_WORKER_DEPOT;
+    // Phase 9A Batch E: measured to the depot door (matches server gate).
+    const [depX, , depZ] = CITY_WORKER_DEPOT_DOOR;
     const depdx = curPos.x - depX;
     const depdz = curPos.z - depZ;
     const nearDepot =
@@ -846,7 +848,8 @@ export default function LocalPlayer({
     nearDeliveryHubRef.current = nearDeliveryHub;
 
     // Phase 5C: Mechanic Garage proximity (also writes to ref for E key handler)
-    const [mgX, , mgZ] = MECHANIC_GARAGE;
+    // Phase 9A Batch E: measured to the garage door (matches server gate).
+    const [mgX, , mgZ] = MECHANIC_GARAGE_DOOR;
     const mgdx = curPos.x - mgX;
     const mgdz = curPos.z - mgZ;
     const nearMechanicGarage =
@@ -855,7 +858,8 @@ export default function LocalPlayer({
     nearMechanicGarageRef.current = nearMechanicGarage;
 
     // Phase 5D: Medical Center proximity (also writes to ref for E key handler)
-    const [mcX, , mcZ] = MEDIC_CENTER;
+    // Phase 9A Batch E: measured to the door (matches server gate; payout origin unchanged).
+    const [mcX, , mcZ] = MEDIC_CENTER_DOOR;
     const mcdx = curPos.x - mcX;
     const mcdz = curPos.z - mcZ;
     const nearMedicCenter =

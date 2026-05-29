@@ -858,3 +858,31 @@ export function rpBuildingDoor(b: RpBuildingDef): [number, number] {
     case "west":  return [b.x - b.w / 2 - o, b.z];
   }
 }
+
+// ── Phase 9A Batch E: building door / interact points ─────────────────────────
+//
+// Derived once from RP_BUILDINGS via rpBuildingDoor(). These are where the
+// player actually walks up to interact, now that the building centre is inside
+// solid walls (Batch C). Visual interaction rings AND server proximity gates
+// for these 5 buildings are centred here instead of on the building centre.
+//
+// IMPORTANT: these replace the proximity GATE origin only. Payout-distance
+// origins (e.g. calcMedicPay measures from MEDIC_CENTER) and route checkpoints
+// are unchanged — they still use the *_POS constants. Radius VALUES are
+// unchanged; only the centre of each interaction zone moves to the door.
+//
+// MUST stay in sync with the matching *_DOOR constants in
+// city-sandbox/src/shared/rpTypes.ts.
+
+function buildingDoorById(id: string): [number, number, number] {
+  const b = RP_BUILDINGS.find((x) => x.id === id);
+  if (!b) throw new Error(`[cityData] no RP_BUILDINGS entry for door "${id}"`);
+  const [dx, dz] = rpBuildingDoor(b);
+  return [dx, 0, dz];
+}
+
+export const GOVERNMENT_OFFICE_DOOR: [number, number, number] = buildingDoorById("government_office");
+export const CITY_WORKER_DEPOT_DOOR: [number, number, number] = buildingDoorById("city_worker_depot");
+export const MEDIC_CENTER_DOOR:      [number, number, number] = buildingDoorById("medic_center");
+export const MECHANIC_GARAGE_DOOR:   [number, number, number] = buildingDoorById("mechanic_garage");
+export const DEALERSHIP_DOOR:        [number, number, number] = buildingDoorById("dealership");

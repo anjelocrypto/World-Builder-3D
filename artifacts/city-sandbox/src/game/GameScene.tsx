@@ -6,7 +6,7 @@ import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
 import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard, CityLedger } from "../shared/rpTypes";
-import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS, GOVERNMENT_OFFICE_POS, GOVERNMENT_OFFICE_RADIUS, MAYOR_MIN_RANK } from "../shared/rpTypes";
+import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS, GOVERNMENT_OFFICE_DOOR, GOVERNMENT_OFFICE_RADIUS, MAYOR_MIN_RANK } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
 import LicenseTestHUD from "./LicenseTestHUD";
@@ -894,9 +894,11 @@ export default function GameScene({
   isGangMemberRef.current     = rpProfile?.factionType === "gang";
 
   // Phase 8A: Government Office proximity + Mayor status refs.
+  // Phase 9A Batch E: proximity is measured to the City Hall door so it matches
+  // the server gate (rpGovernmentService now checks GOVERNMENT_OFFICE_DOOR).
   const nearGovernmentOffice = (() => {
     const pos = playerPosRef.current;
-    const [gx, , gz] = GOVERNMENT_OFFICE_POS;
+    const [gx, , gz] = GOVERNMENT_OFFICE_DOOR;
     const dx = pos.x - gx;
     const dz = pos.z - gz;
     return Math.sqrt(dx * dx + dz * dz) <= GOVERNMENT_OFFICE_RADIUS;

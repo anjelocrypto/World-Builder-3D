@@ -31,7 +31,7 @@ import { logger } from "../lib/logger";
 import type { RpCacheEntry, OwnedVehicleSummary } from "./rpCache";
 import { RpError } from "./rpWalletService";
 import {
-  DEALERSHIP_POS,
+  DEALERSHIP_DOOR,
   DEALERSHIP_INTERACT_RADIUS,
   DEALERSHIP_DELIVERY_PAD,
   DELIVERY_SLOT_OFFSETS,
@@ -220,7 +220,7 @@ export async function buyVehicle(
     logger.warn({ socketId: socket.id }, "[rp] buyVehicle: player not in map");
     return;
   }
-  const distToDealer = dist2d(player.x, player.z, DEALERSHIP_POS[0], DEALERSHIP_POS[2]);
+  const distToDealer = dist2d(player.x, player.z, DEALERSHIP_DOOR[0], DEALERSHIP_DOOR[2]);
   if (distToDealer > DEALERSHIP_INTERACT_RADIUS) {
     socket.emit("rp:toast", {
       msg:      "You need to be closer to the Dealership.",

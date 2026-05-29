@@ -44,7 +44,7 @@ import type { LicenseContext } from "./rpLicenseService";
 import {
   MAYOR_ANNOUNCE_MAX_CHARS,
   MAYOR_ANNOUNCE_COOLDOWN_MS,
-  GOVERNMENT_OFFICE_POS,
+  GOVERNMENT_OFFICE_DOOR,
   GOVERNMENT_OFFICE_RADIUS,
   CITY_TAX_MIN,
   CITY_TAX_MAX,
@@ -538,7 +538,7 @@ export async function handleCityGrant(
   const playerState = ctx.players.get(socket.id);
   if (!playerState) return;
 
-  const [gx, , gz] = GOVERNMENT_OFFICE_POS;
+  const [gx, , gz] = GOVERNMENT_OFFICE_DOOR;
   const dxg = playerState.x - gx;
   const dzg = playerState.z - gz;
   if (Math.sqrt(dxg * dxg + dzg * dzg) > GOVERNMENT_OFFICE_RADIUS) {
@@ -814,7 +814,7 @@ export function handleGetCityDashboard(socket: Socket, ctx: LicenseContext): voi
   const playerState = ctx.players.get(socket.id);
   if (!playerState) return;
 
-  const [gx, , gz] = GOVERNMENT_OFFICE_POS;
+  const [gx, , gz] = GOVERNMENT_OFFICE_DOOR;
   const dxg = playerState.x - gx;
   const dzg = playerState.z - gz;
   if (Math.sqrt(dxg * dxg + dzg * dzg) > GOVERNMENT_OFFICE_RADIUS) {
@@ -983,7 +983,7 @@ export async function handleGetCityLedger(socket: Socket, ctx: LicenseContext): 
   const playerState = ctx.players.get(socket.id);
   if (!playerState) return;
 
-  const [gx, , gz] = GOVERNMENT_OFFICE_POS;
+  const [gx, , gz] = GOVERNMENT_OFFICE_DOOR;
   const dxg = playerState.x - gx;
   const dzg = playerState.z - gz;
   if (Math.sqrt(dxg * dxg + dzg * dzg) > GOVERNMENT_OFFICE_RADIUS) {
@@ -1043,7 +1043,7 @@ export async function handleCityProjectFund(
   const playerState = ctx.players.get(socket.id);
   if (!playerState) return;
 
-  const [gx, , gz] = GOVERNMENT_OFFICE_POS;
+  const [gx, , gz] = GOVERNMENT_OFFICE_DOOR;
   const dxg = playerState.x - gx;
   const dzg = playerState.z - gz;
   if (Math.sqrt(dxg * dxg + dzg * dzg) > GOVERNMENT_OFFICE_RADIUS) {
@@ -1288,7 +1288,7 @@ export function handleCityAnnounce(
   const playerState = ctx.players.get(socket.id);
   if (!playerState) return;
 
-  const [gx, , gz] = GOVERNMENT_OFFICE_POS;
+  const [gx, , gz] = GOVERNMENT_OFFICE_DOOR;
   const dx4 = playerState.x - gx;
   const dz4 = playerState.z - gz;
   if (Math.sqrt(dx4 * dx4 + dz4 * dz4) > GOVERNMENT_OFFICE_RADIUS) {
@@ -1433,7 +1433,7 @@ export async function handleSetTaxRate(
   const playerState = ctx.players.get(socket.id);
   if (!playerState) return;
 
-  const [gx, , gz] = GOVERNMENT_OFFICE_POS;
+  const [gx, , gz] = GOVERNMENT_OFFICE_DOOR;
   const dxg = playerState.x - gx;
   const dzg = playerState.z - gz;
   if (Math.sqrt(dxg * dxg + dzg * dzg) > GOVERNMENT_OFFICE_RADIUS) {
