@@ -210,7 +210,7 @@ export const JOB_CP_ACCEPT_RADIUS    = 8;
  * Taxi Depot — NW inner block, clear of all roads.
  * x=−30: |−30−(−45)|=15>10 (x=−45 NS road), |−30−0|=30>10 (x=0 road);
  * z=−15: |−15−(−45)|=30>10 (z=−45 EW road), |−15−0|=15>10 (z=0 road).
- * Nearest parked car (car-3 at −22,−22): dist≈10.6 m > 8 m.
+ * Nearest parked car (car-3 at −22,−31, relocated in Phase 9A): dist≈17.9 m > 8 m.
  */
 export const TAXI_DEPOT: [number, number, number] = [-30, 0, -15];
 
@@ -798,3 +798,63 @@ export const CITY_PROJECT_DEFS: ReadonlyArray<{
     jobSlugs: ["medic", "mechanic", "police_patrol"],
   },
 ];
+
+// ── Phase 9A Batch B: RP building footprints ──────────────────────────────────
+//
+// Axis-aligned building footprints (X/Z plane) for the civic RP buildings that
+// have a verified, collision-free placement. The startup validator
+// (validateRpBuildings) asserts each footprint clears the road grid, keeps a
+// minimum gap from every other building, sits clear of parked cars, and has a
+// reachable off-road entrance. The client building renderer (later batch) will
+// read the SAME table so geometry and validation never drift.
+//
+// `facing` is the direction the entrance faces; the door/interact point is the
+// front-edge midpoint pushed RP_BUILDING_DOOR_OFFSET metres outside the wall.
+//
+// MUST stay in sync with RP_BUILDINGS in city-sandbox/src/shared/rpTypes.ts.
+// Coordinates here mirror the existing *_POS constants (Batch A) — do not edit
+// one without the other.
+
+export type RpBuildingFacing = "north" | "south" | "east" | "west";
+
+export interface RpBuildingDef {
+  /** Stable id; matches the civic location it represents. */
+  id:     string;
+  /** Footprint centre X (mirrors the matching *_POS constant). */
+  x:      number;
+  /** Footprint centre Z. */
+  z:      number;
+  /** Footprint width along X. */
+  w:      number;
+  /** Footprint depth along Z. */
+  d:      number;
+  /** Direction the entrance faces. */
+  facing: RpBuildingFacing;
+  /** Short display label. */
+  label:  string;
+}
+
+/** Metres the door/interact point sits outside the building's front wall. */
+export const RP_BUILDING_DOOR_OFFSET = 1.5;
+
+/** Minimum metres required between any two RP building footprint edges. */
+export const RP_BUILDING_MIN_GAP = 6;
+
+export const RP_BUILDINGS: ReadonlyArray<RpBuildingDef> = [
+  { id: "government_office", x: GOVERNMENT_OFFICE_POS[0], z: GOVERNMENT_OFFICE_POS[2], w: 18, d: 12, facing: "south", label: "City Hall" },
+  { id: "city_worker_depot", x: CITY_WORKER_DEPOT[0],     z: CITY_WORKER_DEPOT[2],     w: 16, d: 12, facing: "south", label: "Public Works Depot" },
+  { id: "medic_center",      x: MEDIC_CENTER[0],          z: MEDIC_CENTER[2],          w: 18, d: 10, facing: "east",  label: "Medical Center" },
+  { id: "mechanic_garage",   x: MECHANIC_GARAGE[0],       z: MECHANIC_GARAGE[2],       w: 18, d: 10, facing: "east",  label: "Mechanic Garage" },
+  { id: "dealership",        x: DEALERSHIP_POS[0],        z: DEALERSHIP_POS[2],        w: 22, d: 16, facing: "north", label: "Dealership" },
+];
+
+/** Door/interact point for a building: front-edge midpoint pushed outside. */
+export function rpBuildingDoor(b: RpBuildingDef): [number, number] {
+  const o = RP_BUILDING_DOOR_OFFSET;
+  switch (b.facing) {
+    case "north": return [b.x, b.z - b.d / 2 - o];
+    case "south": return [b.x, b.z + b.d / 2 + o];
+    case "east":  return [b.x + b.w / 2 + o, b.z];
+    case "west":  return [b.x - b.w / 2 - o, b.z];
+  }
+}

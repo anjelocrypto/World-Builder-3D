@@ -41,7 +41,11 @@ import {
   GROVE_TAG_POINTS,
   GANG_TERRITORIES,
   GOVERNMENT_OFFICE_POS,
+  RP_BUILDINGS,
+  RP_BUILDING_MIN_GAP,
+  rpBuildingDoor,
 } from "../socket/cityData";
+import type { RpBuildingDef } from "../socket/cityData";
 import type { RpCacheEntry, TestState } from "./rpCache";
 
 // ── Local geometry types ───────────────────────────────────────────────────
@@ -103,6 +107,102 @@ export function isInsideObstacle(
     }
   }
   return false;
+}
+
+// ── Phase 9A Batch B: building footprint checks ────────────────────────────
+
+/**
+ * True if an axis-aligned footprint (centre cx,cz, size w×d) overlaps any road
+ * carriageway, optionally expanded by `margin` metres of required clearance.
+ * Unlike isInCarriageway (a point test), this tests the whole rectangle.
+ */
+export function footprintHitsRoad(
+  cx: number,
+  cz: number,
+  w: number,
+  d: number,
+  margin = 0,
+): boolean {
+  const x0 = cx - w / 2 - margin, x1 = cx + w / 2 + margin;
+  const z0 = cz - d / 2 - margin, z1 = cz + d / 2 + margin;
+  for (const rx of NS_ROADS_X) if (x1 > rx - ROAD_HALF && x0 < rx + ROAD_HALF) return true;
+  for (const rz of EW_ROADS_Z) if (z1 > rz - ROAD_HALF && z0 < rz + ROAD_HALF) return true;
+  return false;
+}
+
+/** Edge-to-edge gap (m) between two AABB footprints; negative = overlap. */
+function footprintGap(a: RpBuildingDef, b: RpBuildingDef): number {
+  return Math.max(
+    Math.abs(a.x - b.x) - (a.w / 2 + b.w / 2),
+    Math.abs(a.z - b.z) - (a.d / 2 + b.d / 2),
+  );
+}
+
+/** Distance from a point to a footprint's nearest edge (0 if inside). */
+function distPointToFootprint(px: number, pz: number, b: RpBuildingDef): number {
+  const dx = Math.max(Math.abs(px - b.x) - b.w / 2, 0);
+  const dz = Math.max(Math.abs(pz - b.z) - b.d / 2, 0);
+  return Math.hypot(dx, dz);
+}
+
+/**
+ * Startup assertion — throws if any RP building footprint:
+ *   1. overlaps a road carriageway (footprintHitsRoad),
+ *   2. comes within RP_BUILDING_MIN_GAP of another building footprint,
+ *   3. has a parked vehicle inside it (vehicleFootprintClearance margin),
+ *   4. has an unreachable entrance (door on a road, or inside any footprint).
+ *
+ * Read-only geometry check; mirrors RP_BUILDINGS, which mirrors the *_POS
+ * constants. Called once at startup before connections are accepted.
+ *
+ * @param vehicles               Parked vehicle positions (server INITIAL_VEHICLES).
+ * @param vehicleFootprintMargin Clearance (m) required between a parked car and
+ *                               any building wall (default 1 m).
+ */
+export function validateRpBuildings(
+  vehicles: VehiclePos[],
+  vehicleFootprintMargin = 1,
+): void {
+  for (let i = 0; i < RP_BUILDINGS.length; i++) {
+    const b = RP_BUILDINGS[i];
+
+    // 1. Footprint vs road carriageway.
+    if (footprintHitsRoad(b.x, b.z, b.w, b.d)) {
+      throw new Error(`[rp] building "${b.id}" footprint overlaps a road carriageway`);
+    }
+
+    // 2. Footprint vs every other building.
+    for (let j = i + 1; j < RP_BUILDINGS.length; j++) {
+      const other = RP_BUILDINGS[j];
+      const gap = footprintGap(b, other);
+      if (gap < RP_BUILDING_MIN_GAP) {
+        throw new Error(
+          `[rp] buildings "${b.id}" and "${other.id}" are only ${gap.toFixed(1)} m apart ` +
+          `(min ${RP_BUILDING_MIN_GAP} m)`,
+        );
+      }
+    }
+
+    // 3. Footprint vs parked cars.
+    for (const v of vehicles) {
+      if (distPointToFootprint(v.x, v.z, b) < vehicleFootprintMargin) {
+        throw new Error(`[rp] building "${b.id}" footprint is within ${vehicleFootprintMargin} m of a parked vehicle`);
+      }
+    }
+
+    // 4. Entrance reachability — door must be off-road and outside all footprints.
+    const [doorX, doorZ] = rpBuildingDoor(b);
+    if (isInCarriageway(doorX, doorZ)) {
+      throw new Error(`[rp] building "${b.id}" entrance [${doorX}, ${doorZ}] is on a road carriageway`);
+    }
+    for (const o of RP_BUILDINGS) {
+      if (distPointToFootprint(doorX, doorZ, o) <= 0) {
+        throw new Error(`[rp] building "${b.id}" entrance [${doorX}, ${doorZ}] is inside building "${o.id}"`);
+      }
+    }
+
+    console.info(`[rp] building OK: ${b.id} (${b.w}x${b.d} @ [${b.x}, ${b.z}], door [${doorX}, ${doorZ}])`);
+  }
 }
 
 /**

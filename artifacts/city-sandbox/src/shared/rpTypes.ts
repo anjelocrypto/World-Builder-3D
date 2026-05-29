@@ -701,3 +701,48 @@ export function canDriveVehicleClient(
   if (rp.activeTest?.vehicleId === vehicleId) return true;
   return false;
 }
+
+// ── Phase 9A Batch B: RP building footprints ──────────────────────────────────
+//
+// Mirror of RP_BUILDINGS in artifacts/api-server/src/socket/cityData.ts. The
+// server validator asserts these footprints clear roads, cars, and each other;
+// the client building renderer (later batch) reads the same table so geometry
+// and validation never drift. Coordinates mirror the existing *_POS constants —
+// do not edit one side without the other.
+
+export type RpBuildingFacing = "north" | "south" | "east" | "west";
+
+export interface RpBuildingDef {
+  id:     string;
+  x:      number;
+  z:      number;
+  w:      number;
+  d:      number;
+  facing: RpBuildingFacing;
+  label:  string;
+}
+
+/** Metres the door/interact point sits outside the building's front wall. */
+export const RP_BUILDING_DOOR_OFFSET = 1.5;
+
+/** Minimum metres required between any two RP building footprint edges. */
+export const RP_BUILDING_MIN_GAP = 6;
+
+export const RP_BUILDINGS: ReadonlyArray<RpBuildingDef> = [
+  { id: "government_office", x: GOVERNMENT_OFFICE_POS[0], z: GOVERNMENT_OFFICE_POS[2], w: 18, d: 12, facing: "south", label: "City Hall" },
+  { id: "city_worker_depot", x: CITY_WORKER_DEPOT[0],     z: CITY_WORKER_DEPOT[2],     w: 16, d: 12, facing: "south", label: "Public Works Depot" },
+  { id: "medic_center",      x: MEDIC_CENTER[0],          z: MEDIC_CENTER[2],          w: 18, d: 10, facing: "east",  label: "Medical Center" },
+  { id: "mechanic_garage",   x: MECHANIC_GARAGE[0],       z: MECHANIC_GARAGE[2],       w: 18, d: 10, facing: "east",  label: "Mechanic Garage" },
+  { id: "dealership",        x: DEALERSHIP_POS[0],        z: DEALERSHIP_POS[2],        w: 22, d: 16, facing: "north", label: "Dealership" },
+];
+
+/** Door/interact point for a building: front-edge midpoint pushed outside. */
+export function rpBuildingDoor(b: RpBuildingDef): [number, number] {
+  const o = RP_BUILDING_DOOR_OFFSET;
+  switch (b.facing) {
+    case "north": return [b.x, b.z - b.d / 2 - o];
+    case "south": return [b.x, b.z + b.d / 2 + o];
+    case "east":  return [b.x + b.w / 2 + o, b.z];
+    case "west":  return [b.x - b.w / 2 - o, b.z];
+  }
+}

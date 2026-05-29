@@ -16,6 +16,7 @@ import { clearFinesForSocket } from "../rp/rpFineService";
 import {
   validateRpMarkers,
   validateRpMarkerVehicleClearance,
+  validateRpBuildings,
   validateVehicleSpawnOBB,
   canDriveVehicle,
   safeStationSpawn,
@@ -136,6 +137,9 @@ export function setupGameServer(httpServer: HttpServer) {
   try {
     validateRpMarkers([]);
     validateRpMarkerVehicleClearance(Array.from(vehicles.values()));
+    // Phase 9A Batch B: footprint-aware checks for RP buildings (road overlap,
+    // building-to-building clearance, parked-car clearance, entrance reachability).
+    validateRpBuildings(Array.from(vehicles.values()));
 
     // OBB check: all four corners of the test-vehicle body must clear every
     // road carriageway. Static building obstacles are not available server-side
