@@ -483,6 +483,11 @@ export interface CityConfig {
   updatedAt:     number;
   /** Display name of the Mayor who last changed the rate; null if never changed. */
   updatedByName: string | null;
+  /**
+   * Phase 8D: Accumulated city budget from job tax revenue.
+   * Server-authoritative; never set by the client.
+   */
+  cityBudget:    number;
 }
 
 // ── Phase 7H: Gang Territory Control types ───────────────────────────────────

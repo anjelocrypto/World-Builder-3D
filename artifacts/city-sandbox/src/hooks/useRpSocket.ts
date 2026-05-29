@@ -129,6 +129,7 @@ export function useRpSocket(socket: Socket | null) {
     taxRate:       CITY_TAX_DEFAULT,
     updatedAt:     0,
     updatedByName: null,
+    cityBudget:    0,         // Phase 8D: accumulated tax revenue
   });
 
   useEffect(() => {
@@ -322,10 +323,15 @@ export function useRpSocket(socket: Socket | null) {
       setCityAnnouncements((prev) => [data, ...prev].slice(0, 5));
     };
 
-    // Phase 8B: rp:cityConfig — server pushes the current tax config on request
+    // Phase 8B/8D: rp:cityConfig — server pushes the current tax config on request
     // or whenever the Mayor changes the rate.
+    // Guard incoming values: reject NaN/Infinity for taxRate, negative for cityBudget.
     const onCityConfig = (data: CityConfig) => {
-      setCityConfig(data);
+      const taxRate = Number.isFinite(data.taxRate) ? data.taxRate : CITY_TAX_DEFAULT;
+      const cityBudget = Number.isSafeInteger(data.cityBudget) && data.cityBudget >= 0
+        ? data.cityBudget
+        : 0;
+      setCityConfig({ ...data, taxRate, cityBudget });
     };
 
     // Phase 7A: rp:factionChat — a faction member sent a message.

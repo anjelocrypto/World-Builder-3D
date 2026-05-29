@@ -2,6 +2,7 @@
  * Phase 8A: Government / Mayor service.
  * Phase 8B: City tax rate — in-memory, server-authoritative.
  * Phase 8C: City tax rate — DB-persisted via rp_city_config.
+ * Phase 8D: City budget — tax revenue from job payouts accumulated in rp_city_config.
  *
  * Handles:
  *   loadCityConfigFromDb()                 — called once at server startup
@@ -62,7 +63,7 @@ import { eq } from "drizzle-orm";
  */
 const announceCooldownMap = new Map<string, number>();
 
-// ── In-memory city config (Phase 8B/8C) ───────────────────────────────────────
+// ── In-memory city config (Phase 8B/8C/8D) ────────────────────────────────────
 // Loaded from DB at startup by loadCityConfigFromDb(); kept in-memory at runtime.
 // handleGetCityConfig reads from here — no DB query per player request.
 
@@ -78,6 +79,20 @@ let taxRateUpdatedByName: string | null = null;
 /** Per-mayor set-tax rate-limit. Keyed by DB playerId. */
 const setTaxCooldownMap = new Map<string, number>();
 
+/**
+ * Phase 8D: Accumulated city budget from job tax revenue.
+ * Loaded from rp_city_config key "city_budget" at startup.
+ * Updated in-memory ONLY after the DB commit inside a job payout transaction.
+ * Never set by client input.
+ */
+let cityBudget: number = 0;
+
+// ── Drizzle transaction type helper ───────────────────────────────────────────
+// Extracts the tx parameter type from db.transaction's callback signature so
+// addTaxRevenueTx can be called inside existing job payout transactions without
+// importing Drizzle internals.
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 // ── loadCityConfigFromDb ───────────────────────────────────────────────────────
 
 /**
@@ -92,37 +107,106 @@ const setTaxCooldownMap = new Map<string, number>();
  */
 export async function loadCityConfigFromDb(): Promise<void> {
   try {
-    const rows = await db
-      .select()
-      .from(rpCityConfig)
-      .where(eq(rpCityConfig.key, "tax_rate"));
+    // Load all city config rows in one query.
+    const rows = await db.select().from(rpCityConfig);
+    const byKey = new Map(rows.map((r) => [r.key, r]));
 
-    const row = rows[0];
-
-    if (!row) {
+    // ── tax_rate ──────────────────────────────────────────────────────────────
+    const taxRateRow = byKey.get("tax_rate");
+    if (!taxRateRow) {
       logger.warn("[rpGov] rp_city_config has no 'tax_rate' row — using default. Run seed:rp.");
-      return;
+    } else {
+      const parsed = Number(taxRateRow.value);
+      if (!Number.isFinite(parsed) || parsed < CITY_TAX_MIN || parsed > CITY_TAX_MAX) {
+        logger.warn({ storedValue: taxRateRow.value }, "[rpGov] 'tax_rate' value is invalid — using default.");
+      } else {
+        cityTaxRate      = parsed;
+        taxRateUpdatedAt = taxRateRow.updatedAt instanceof Date
+          ? taxRateRow.updatedAt.getTime()
+          : Date.now();
+        taxRateUpdatedByName = null; // not stored in config table
+      }
     }
 
-    const parsed = Number(row.value);
-    if (!Number.isFinite(parsed) || parsed < CITY_TAX_MIN || parsed > CITY_TAX_MAX) {
-      logger.warn(
-        { storedValue: row.value },
-        "[rpGov] 'tax_rate' value is invalid — using default.",
-      );
-      return;
+    // ── city_budget (Phase 8D) ────────────────────────────────────────────────
+    const budgetRow = byKey.get("city_budget");
+    if (!budgetRow) {
+      logger.warn("[rpGov] rp_city_config has no 'city_budget' row — using 0. Run seed:rp.");
+    } else {
+      const parsed = parseInt(budgetRow.value, 10);
+      if (!Number.isSafeInteger(parsed) || parsed < 0) {
+        logger.warn({ storedValue: budgetRow.value }, "[rpGov] 'city_budget' value is invalid — using 0.");
+      } else {
+        cityBudget = parsed;
+      }
     }
 
-    cityTaxRate         = parsed;
-    taxRateUpdatedAt    = row.updatedAt instanceof Date ? row.updatedAt.getTime() : Date.now();
-    // updatedByName is not stored in rp_city_config — null until next Mayor change.
-    taxRateUpdatedByName = null;
-
-    logger.info({ taxRate: cityTaxRate }, "[rpGov] city tax rate loaded from DB");
+    logger.info({ taxRate: cityTaxRate, cityBudget }, "[rpGov] city config loaded from DB");
   } catch (err) {
-    logger.error({ err }, "[rpGov] failed to load city config from DB — using default");
-    // Fallback: keep CITY_TAX_DEFAULT; server continues normally.
+    logger.error({ err }, "[rpGov] failed to load city config from DB — using defaults");
+    // Fallback: keep CITY_TAX_DEFAULT and cityBudget 0; server continues normally.
   }
+}
+
+// ── addTaxRevenueTx (Phase 8D) ────────────────────────────────────────────────
+
+/**
+ * Increments the city budget by taxAmount inside an existing DB transaction.
+ * Must be called inside a db.transaction() callback so it commits atomically
+ * with the job payout wallet update, transaction log, and player update.
+ *
+ * Uses SELECT FOR UPDATE on the city_budget row to prevent concurrent increments
+ * from racing and losing revenue.
+ *
+ * Returns the new budget integer so the caller can update in-memory state after
+ * the outer transaction commits (via setCityBudgetInMemory).
+ *
+ * Security:
+ *   - taxAmount is always server-computed (from applyCityTax); never client-provided.
+ *   - updated_by is set to null (automatic revenue, not a player action).
+ *   - If the row is missing (seed not yet run), inserts it with taxAmount as the
+ *     starting value using onConflictDoUpdate so concurrent inserts are safe.
+ */
+export async function addTaxRevenueTx(
+  tx:        DbTransaction,
+  taxAmount: number,
+): Promise<number> {
+  // Guard: taxAmount must be a positive safe integer.
+  if (!Number.isSafeInteger(taxAmount) || taxAmount <= 0) {
+    return cityBudget; // return current in-memory value unchanged
+  }
+
+  // Lock the row for this transaction to prevent lost updates under concurrency.
+  const existing = await tx
+    .select()
+    .from(rpCityConfig)
+    .where(eq(rpCityConfig.key, "city_budget"))
+    .for("update");
+
+  const currentStored = existing[0]
+    ? Math.max(0, parseInt(existing[0].value, 10) || 0)
+    : 0;
+
+  const newBudget    = currentStored + taxAmount;
+  const newValueStr  = newBudget.toString();
+
+  if (existing[0]) {
+    await tx
+      .update(rpCityConfig)
+      .set({ value: newValueStr, updatedAt: new Date(), updatedBy: null })
+      .where(eq(rpCityConfig.key, "city_budget"));
+  } else {
+    // Row missing — insert safely; onConflictDoUpdate handles the race case.
+    await tx
+      .insert(rpCityConfig)
+      .values({ key: "city_budget", value: newValueStr, updatedBy: null })
+      .onConflictDoUpdate({
+        target: rpCityConfig.key,
+        set:    { value: newValueStr, updatedAt: new Date(), updatedBy: null },
+      });
+  }
+
+  return newBudget;
 }
 
 // ── persistCityTaxRate ────────────────────────────────────────────────────────
@@ -165,6 +249,23 @@ export async function persistCityTaxRate(
 /** Returns the current server-authoritative city tax rate. */
 export function getCityTaxRate(): number {
   return cityTaxRate;
+}
+
+// ── getCityBudget / setCityBudgetInMemory (Phase 8D) ──────────────────────────
+
+/** Returns the current in-memory city budget (accumulated tax revenue). */
+export function getCityBudget(): number {
+  return cityBudget;
+}
+
+/**
+ * Updates the in-memory city budget after a DB transaction commits.
+ * Called by rpJobService immediately after db.transaction() resolves
+ * (i.e., after addTaxRevenueTx has committed inside the transaction).
+ * Never called on transaction failure.
+ */
+export function setCityBudgetInMemory(newBudget: number): void {
+  cityBudget = newBudget;
 }
 
 // ── applyCityTax (exported for rpJobService) ───────────────────────────────────
@@ -314,9 +415,10 @@ export function handleCityAnnounce(
  */
 export function handleGetCityConfig(socket: Socket): void {
   socket.emit("rp:cityConfig", {
-    taxRate:         cityTaxRate,
-    updatedAt:       taxRateUpdatedAt > 0 ? taxRateUpdatedAt : Date.now(),
-    updatedByName:   taxRateUpdatedByName,
+    taxRate:       cityTaxRate,
+    updatedAt:     taxRateUpdatedAt > 0 ? taxRateUpdatedAt : Date.now(),
+    updatedByName: taxRateUpdatedByName,
+    cityBudget,    // Phase 8D: include accumulated tax revenue
   });
 }
 
@@ -470,11 +572,12 @@ export async function handleSetTaxRate(
     "[rpGov] city tax rate updated and persisted",
   );
 
-  // Broadcast new config to every connected client.
+  // Broadcast new config to every connected client (Phase 8D: include cityBudget).
   ctx.io.emit("rp:cityConfig", {
     taxRate:       rate,
     updatedAt:     nowMs,
     updatedByName,
+    cityBudget,
   });
 
   socket.emit("rp:toast", {

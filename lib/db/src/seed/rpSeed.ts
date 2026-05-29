@@ -97,12 +97,14 @@ async function main(): Promise<void> {
     },
   ]).onConflictDoNothing();
 
-  // ── City config defaults (Phase 8C) ─────────────────────────────────────────
+  // ── City config defaults (Phase 8C/8D) ──────────────────────────────────────
   // Safe to re-run: onConflictDoNothing() skips rows that already exist.
   // updated_by is intentionally NULL for seed rows (no Mayor UUID at seed time).
   await db.insert(rpCityConfig).values([
     { key: "tax_rate",     value: "0.05" },
     { key: "city_message", value: "Welcome to Nemoverse!" },
+    // Phase 8D: city_budget starts at 0; accumulates job tax revenue at runtime.
+    { key: "city_budget",  value: "0" },
   ]).onConflictDoNothing();
 
   console.log("[rpSeed] done — factions, jobs, and city config seeded.");

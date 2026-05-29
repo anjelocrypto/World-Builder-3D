@@ -1007,6 +1007,7 @@ export default function GameScene({
         showGangHUD={showGangHUD}
         nearGovernmentOffice={nearGovernmentOffice}
         cityTaxRate={cityConfig.taxRate}
+        cityBudget={cityConfig.cityBudget}
       />
 
       {/* Phase 7A: Faction chat panel */}
@@ -1080,10 +1081,11 @@ export default function GameScene({
         />
       )}
 
-      {/* Phase 8B: City Tax Rate panel (Mayor only, near Gov Office, T key) */}
+      {/* Phase 8B/8D: City Tax Rate panel (Mayor only, near Gov Office, T key) */}
       {showCityTaxHUD && (
         <CityTaxHUD
           currentRate={cityConfig.taxRate}
+          cityBudget={cityConfig.cityBudget}
           onApply={emitSetTaxRate}
           onClose={() => setShowCityTaxHUD(false)}
         />

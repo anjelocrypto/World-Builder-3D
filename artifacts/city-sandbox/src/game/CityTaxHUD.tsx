@@ -46,14 +46,15 @@ function snap(rate: number): number {
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface CityTaxHUDProps {
-  currentRate: number;
-  onApply:     (rate: number) => void;
-  onClose:     () => void;
+  currentRate:  number;
+  cityBudget:   number;
+  onApply:      (rate: number) => void;
+  onClose:      () => void;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
-export default function CityTaxHUD({ currentRate, onApply, onClose }: CityTaxHUDProps) {
+export default function CityTaxHUD({ currentRate, cityBudget, onApply, onClose }: CityTaxHUDProps) {
   const [draft, setDraft] = useState<number>(snap(currentRate));
   const sliderRef = useRef<HTMLInputElement>(null);
 
@@ -217,6 +218,34 @@ export default function CityTaxHUD({ currentRate, onApply, onClose }: CityTaxHUD
             >
               {fmtPct(draft)}
             </div>
+          </div>
+        </div>
+
+        {/* ── City Budget (Phase 8D) ─────────────────────────────────── */}
+        <div
+          style={{
+            background:   "rgba(255,255,255,0.03)",
+            border:       "1px solid rgba(204,170,68,0.25)",
+            borderRadius: 6,
+            padding:      "10px 14px",
+            display:      "flex",
+            alignItems:   "center",
+            justifyContent: "space-between",
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 11, color: "#556", marginBottom: 2 }}>City Budget</div>
+            <div style={{ fontSize: 11, color: "#667" }}>Accumulated tax revenue</div>
+          </div>
+          <div
+            style={{
+              fontSize:   20,
+              fontWeight: "bold",
+              color:      GOV_GOLD,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            ${cityBudget.toLocaleString()}
           </div>
         </div>
 

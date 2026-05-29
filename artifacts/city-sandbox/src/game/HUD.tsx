@@ -186,6 +186,11 @@ interface HUDProps {
    * wallet panel. Omitted until rp:cityConfig is first received.
    */
   cityTaxRate?: number;
+  /**
+   * Phase 8D: accumulated city budget from tax revenue. Shown as a compact badge
+   * next to the tax rate. Omitted until rp:cityConfig is first received.
+   */
+  cityBudget?: number;
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -716,6 +721,7 @@ export default function HUD({
   showGangHUD,
   nearGovernmentOffice,
   cityTaxRate,
+  cityBudget,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -1999,6 +2005,23 @@ export default function HUD({
                 G
               </span>
               <span style={{ color: "#2a4a2a" }}>Gang</span>
+            </div>
+          )}
+
+          {/* Phase 8D: City budget badge */}
+          {cityBudget != null && (
+            <div
+              style={{
+                background:    PANEL_BG,
+                border:        "1px solid rgba(204, 170, 68, 0.28)",
+                borderRadius:  PANEL_RADIUS,
+                padding:       "3px 8px",
+                fontSize:      12,
+                color:         "#ccaa44",
+                letterSpacing: 0.5,
+              }}
+            >
+              🏛 ${cityBudget.toLocaleString()}
             </div>
           )}
 

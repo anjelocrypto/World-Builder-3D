@@ -105,7 +105,7 @@ import {
   POLICE_PATROL_ROUTE_COOLDOWN_MS,
 } from "../socket/cityData";
 import { isPolice, isMedic } from "./rpFactionHelpers";
-import { applyCityTax } from "./rpGovernmentService";
+import { applyCityTax, addTaxRevenueTx, setCityBudgetInMemory } from "./rpGovernmentService";
 
 // ── Context ────────────────────────────────────────────────────────────────────
 
@@ -645,7 +645,8 @@ async function handleCityWorkerCheckpoint(
   // Fix 1: DB transaction FIRST; mutate state/entry/emit only after commit.
   const { grossPay: cwGross, taxRate: cwRate, taxAmount: cwTax, netPay: cwNet } =
     applyCityTax(JOB_CITY_WORKER_PAY);
-  let newCash = entry.cash;
+  let newCash   = entry.cash;
+  let newBudget = 0; // Phase 8D: updated inside tx if tax > 0
   try {
     await db.transaction(async (tx) => {
       const [wallet] = await tx
@@ -676,6 +677,9 @@ async function handleCityWorkerCheckpoint(
         .update(rpPlayers)
         .set({ onDuty: false, currentJob: null, lastPaycheckAt: new Date(now) })
         .where(eq(rpPlayers.id, entry.playerId));
+
+      // Phase 8D: accumulate tax revenue into city budget atomically.
+      if (cwTax > 0) newBudget = await addTaxRevenueTx(tx, cwTax);
     });
   } catch (err) {
     // Fix 1: roll back nextCp so the final CP is retryable
@@ -691,6 +695,7 @@ async function handleCityWorkerCheckpoint(
   }
 
   // DB committed — finalise state
+  if (cwTax > 0) setCityBudgetInMemory(newBudget); // Phase 8D
   rpJobState.delete(socket.id);
   entry.cash           = newCash;
   entry.onDuty         = false;
@@ -796,7 +801,8 @@ async function handleTaxiCheckpoint(
   // ── Dropoff reached — pay the driver ──────────────────────────────────────
   const { grossPay: taxiGross, taxRate: taxiRate, taxAmount: taxiTax, netPay: taxiNet } =
     applyCityTax(state.taxiFare);
-  let newCash = entry.cash;
+  let newCash   = entry.cash;
+  let newBudget = 0;
   try {
     await db.transaction(async (tx) => {
       const [wallet] = await tx
@@ -827,6 +833,8 @@ async function handleTaxiCheckpoint(
         .update(rpPlayers)
         .set({ onDuty: false, currentJob: null, lastPaycheckAt: new Date(now) })
         .where(eq(rpPlayers.id, entry.playerId));
+
+      if (taxiTax > 0) newBudget = await addTaxRevenueTx(tx, taxiTax);
     });
   } catch (err) {
     // Roll back so dropoff is retryable
@@ -842,6 +850,7 @@ async function handleTaxiCheckpoint(
   }
 
   // DB committed — finalise state
+  if (taxiTax > 0) setCityBudgetInMemory(newBudget);
   rpJobState.delete(socket.id);
   entry.cash           = newCash;
   entry.onDuty         = false;
@@ -1048,7 +1057,8 @@ async function handleDeliveryCheckpoint(
   // ── Final stop — pay atomically ───────────────────────────────────────────
   const { grossPay: delGross, taxRate: delRate, taxAmount: delTax, netPay: delNet } =
     applyCityTax(state.deliveryPay!);
-  let newCash = entry.cash;
+  let newCash   = entry.cash;
+  let newBudget = 0;
   try {
     await db.transaction(async (tx) => {
       const [wallet] = await tx
@@ -1079,6 +1089,8 @@ async function handleDeliveryCheckpoint(
         .update(rpPlayers)
         .set({ onDuty: false, currentJob: null, lastPaycheckAt: new Date(now) })
         .where(eq(rpPlayers.id, entry.playerId));
+
+      if (delTax > 0) newBudget = await addTaxRevenueTx(tx, delTax);
     });
   } catch (err) {
     // DB failed — roll back so final stop is retryable
@@ -1094,6 +1106,7 @@ async function handleDeliveryCheckpoint(
   }
 
   // DB committed — finalise state
+  if (delTax > 0) setCityBudgetInMemory(newBudget);
   rpJobState.delete(socket.id);
   entry.cash           = newCash;
   entry.onDuty         = false;
@@ -1333,7 +1346,8 @@ async function handleMechanicCheckpoint(
   // ── Timer elapsed — pay atomically ───────────────────────────────────────────
   const { grossPay: mechGross, taxRate: mechRate, taxAmount: mechTax, netPay: mechNet } =
     applyCityTax(state.mechanicPay!);
-  let newCash = entry.cash;
+  let newCash   = entry.cash;
+  let newBudget = 0;
   try {
     await db.transaction(async (tx) => {
       const [wallet] = await tx
@@ -1364,10 +1378,11 @@ async function handleMechanicCheckpoint(
         .update(rpPlayers)
         .set({ onDuty: false, currentJob: null, lastPaycheckAt: new Date(now) })
         .where(eq(rpPlayers.id, entry.playerId));
+
+      if (mechTax > 0) newBudget = await addTaxRevenueTx(tx, mechTax);
     });
   } catch (err) {
     // DB failed — leave state untouched; client retries idx=1 next second
-    // (repairStartedAt is still set and timer is still elapsed, so next retry will succeed)
     logger.error({ err, socketId: socket.id }, "[rp] handleMechanicCheckpoint: payment tx failed");
     socket.emit("rp:toast", {
       msg:      "Payment failed — repair accepted, retrying…",
@@ -1378,6 +1393,7 @@ async function handleMechanicCheckpoint(
   }
 
   // DB committed — finalise state
+  if (mechTax > 0) setCityBudgetInMemory(newBudget);
   rpJobState.delete(socket.id);
   entry.cash           = newCash;
   entry.onDuty         = false;
@@ -1661,7 +1677,8 @@ async function handleMedicCheckpoint(
 
   const { grossPay: medicGross, taxRate: medicRate, taxAmount: medicTax, netPay: medicNet } =
     applyCityTax(state.medicPay!);
-  let newCash = entry.cash;
+  let newCash   = entry.cash;
+  let newBudget = 0;
   try {
     await db.transaction(async (tx) => {
       const [wallet] = await tx
@@ -1692,6 +1709,8 @@ async function handleMedicCheckpoint(
         .update(rpPlayers)
         .set({ onDuty: false, currentJob: null, lastPaycheckAt: new Date(now) })
         .where(eq(rpPlayers.id, entry.playerId));
+
+      if (medicTax > 0) newBudget = await addTaxRevenueTx(tx, medicTax);
     });
   } catch (err) {
     // DB failed — leave state untouched; client retries idx=2 next second
@@ -1705,6 +1724,7 @@ async function handleMedicCheckpoint(
   }
 
   // DB committed — finalise state
+  if (medicTax > 0) setCityBudgetInMemory(newBudget);
   rpJobState.delete(socket.id);
   entry.cash           = newCash;
   entry.onDuty         = false;
@@ -1948,7 +1968,8 @@ async function handlePolicePatrolCheckpoint(
   // ── Final patrol point — pay atomically ──────────────────────────────────
   const { grossPay: patrolGross, taxRate: patrolRate, taxAmount: patrolTax, netPay: patrolNet } =
     applyCityTax(state.policePatrolPay!);
-  let newCash = entry.cash;
+  let newCash   = entry.cash;
+  let newBudget = 0;
   try {
     await db.transaction(async (tx) => {
       const [wallet] = await tx
@@ -1979,6 +2000,8 @@ async function handlePolicePatrolCheckpoint(
         .update(rpPlayers)
         .set({ onDuty: false, currentJob: null, lastPaycheckAt: new Date(now) })
         .where(eq(rpPlayers.id, entry.playerId));
+
+      if (patrolTax > 0) newBudget = await addTaxRevenueTx(tx, patrolTax);
     });
   } catch (err) {
     // DB failed — roll back so final checkpoint is retryable
@@ -1994,6 +2017,7 @@ async function handlePolicePatrolCheckpoint(
   }
 
   // DB committed — finalise state
+  if (patrolTax > 0) setCityBudgetInMemory(newBudget);
   rpJobState.delete(socket.id);
   entry.cash           = newCash;
   entry.onDuty         = false;
