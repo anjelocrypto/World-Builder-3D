@@ -23,7 +23,7 @@ import {
   CITY_WORKER_DEPOT_DOOR,
   CITY_WORKER_CHECKPOINTS,
   TAXI_DEPOT_DOOR,
-  DELIVERY_HUB,
+  DELIVERY_HUB_DOOR,
   MECHANIC_GARAGE_DOOR,
   MEDIC_CENTER_DOOR,
   MEDIC_ER_BAY,
@@ -566,7 +566,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
 
       {/* ════ Delivery Hub marker ══════════════════════════════════════════════ */}
       {(() => {
-        const [dhx, , dhz] = DELIVERY_HUB;
+        const [dhx, , dhz] = DELIVERY_HUB_DOOR;
         return (
           <group position={[dhx, 0, dhz]}>
             {/* Ground ring — 5–6 m radius, brown/cargo */}
@@ -584,32 +584,10 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
               />
             </mesh>
 
-            {/* Sign post */}
-            <mesh position={[0, 1.8, -0.3]}>
-              <boxGeometry args={[0.12, 3.6, 0.12]} />
-              <meshStandardMaterial color="#2a1800" roughness={0.7} metalness={0.5} />
-            </mesh>
-
-            {/* Sign board */}
-            <mesh position={[0, 3.3, -0.3]}>
-              <boxGeometry args={[4.6, 0.8, 0.1]} />
-              <meshStandardMaterial
-                ref={deliveryHubSignRef}
-                color="#1a0e00"
-                emissive="#c8884a"
-                emissiveIntensity={0.7}
-                roughness={0.3}
-                metalness={0.2}
-              />
-            </mesh>
-
-            {/* Sign text strip */}
-            <mesh position={[0, 3.6, -0.24]}>
-              <boxGeometry args={[4.2, 0.1, 0.01]} />
-              <meshStandardMaterial color="#ffffff" emissive="#f4c08a" emissiveIntensity={2} />
-            </mesh>
-
-            <pointLight position={[0, 4, 0]} color="#c8884a" intensity={2.5} distance={14} decay={2} />
+            {/* Phase 9B-2: signpost/board removed — the RPBuildings delivery hub
+                shell now provides identity (consistent with Batch D). Subtle
+                accent light kept. */}
+            <pointLight position={[0, 2.5, 0]} color="#c8884a" intensity={1.0} distance={12} decay={2} />
           </group>
         );
       })()}

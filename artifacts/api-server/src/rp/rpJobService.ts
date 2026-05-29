@@ -65,6 +65,7 @@ import {
   TAXI_ROUTE_COOLDOWN_MS,
   // Delivery Driver
   DELIVERY_HUB,
+  DELIVERY_HUB_DOOR,
   DELIVERY_HUB_RADIUS,
   DELIVERY_PICKUPS,
   DELIVERY_DROPOFFS,
@@ -317,8 +318,9 @@ export async function toggleDuty(
       const dz = player.z - TAXI_DEPOT_DOOR[2];
       atDepot = dx * dx + dz * dz <= TAXI_DEPOT_RADIUS * TAXI_DEPOT_RADIUS;
     } else if (activeState.job === "delivery_driver") {
-      const dx = player.x - DELIVERY_HUB[0];
-      const dz = player.z - DELIVERY_HUB[2];
+      // Phase 9B-2: gate at the hub door (payout origin DELIVERY_HUB unchanged).
+      const dx = player.x - DELIVERY_HUB_DOOR[0];
+      const dz = player.z - DELIVERY_HUB_DOOR[2];
       atDepot = dx * dx + dz * dz <= DELIVERY_HUB_RADIUS * DELIVERY_HUB_RADIUS;
     } else if (activeState.job === "mechanic") {
       // Phase 9A Batch E: gate at the garage door.
@@ -907,9 +909,9 @@ async function clockInDelivery(
     return;
   }
 
-  // Must be at Delivery Hub
-  const dx = player.x - DELIVERY_HUB[0];
-  const dz = player.z - DELIVERY_HUB[2];
+  // Must be at Delivery Hub — Phase 9B-2: gate at the hub door (payout origin unchanged).
+  const dx = player.x - DELIVERY_HUB_DOOR[0];
+  const dz = player.z - DELIVERY_HUB_DOOR[2];
   if (dx * dx + dz * dz > DELIVERY_HUB_RADIUS * DELIVERY_HUB_RADIUS) {
     socket.emit("rp:toast", {
       msg:      "You must be at the Delivery Hub to clock in.",

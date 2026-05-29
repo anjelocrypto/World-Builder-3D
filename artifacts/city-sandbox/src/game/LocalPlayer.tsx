@@ -14,7 +14,7 @@ import {
   TAXI_DEPOT_DOOR,
   TAXI_DEPOT_RADIUS,
   TAXI_CP_ACCEPT_RADIUS,
-  DELIVERY_HUB,
+  DELIVERY_HUB_DOOR,
   DELIVERY_HUB_RADIUS,
   DELIVERY_CP_ACCEPT_RADIUS,
   MECHANIC_GARAGE_DOOR,
@@ -839,7 +839,8 @@ export default function LocalPlayer({
     nearTaxiDepotRef.current = nearTaxiDepot;
 
     // Phase 5B: Delivery Hub proximity (also writes to ref for E key handler)
-    const [dhubX, , dhubZ] = DELIVERY_HUB;
+    // Phase 9B-2: measured to the hub door (matches server gate; payout origin unchanged).
+    const [dhubX, , dhubZ] = DELIVERY_HUB_DOOR;
     const dhubdx = curPos.x - dhubX;
     const dhubdz = curPos.z - dhubZ;
     const nearDeliveryHub =

@@ -855,6 +855,11 @@ export const RP_BUILDINGS: ReadonlyArray<RpBuildingDef> = [
   { id: "dealership",        x: DEALERSHIP_POS[0],        z: DEALERSHIP_POS[2],        w: 22, d: 16, facing: "north", label: "Dealership" },
   // Phase 9B-1: Taxi Depot — relocated SW-north pocket; small 10×8 yard.
   { id: "taxi_depot",        x: TAXI_DEPOT[0],            z: TAXI_DEPOT[2],            w: 10, d:  8, facing: "south", label: "Taxi Depot" },
+  // Phase 9B-2: Delivery Hub warehouse. Building CENTRE is (66,−26) — distinct
+  // from DELIVERY_HUB (58,−28), which stays the unchanged delivery PAYOUT origin.
+  // The payout origin sits inside this footprint (warehouse over the dock), and
+  // the west-facing door at (55.5,−26) is the clock-in point near the x=45 road.
+  { id: "delivery_hub",      x: 66,                       z: -26,                      w: 18, d: 14, facing: "west",  label: "Delivery Hub" },
 ];
 
 /** Door/interact point for a building: front-edge midpoint pushed outside. */
@@ -896,3 +901,4 @@ export const MEDIC_CENTER_DOOR:      [number, number, number] = buildingDoorById
 export const MECHANIC_GARAGE_DOOR:   [number, number, number] = buildingDoorById("mechanic_garage");
 export const DEALERSHIP_DOOR:        [number, number, number] = buildingDoorById("dealership");
 export const TAXI_DEPOT_DOOR:        [number, number, number] = buildingDoorById("taxi_depot");
+export const DELIVERY_HUB_DOOR:      [number, number, number] = buildingDoorById("delivery_hub");
