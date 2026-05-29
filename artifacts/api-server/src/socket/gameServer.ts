@@ -86,6 +86,8 @@ interface PlayerState {
   attackStartedAt: number | null;
   isGrounded: boolean;
   moveSpeed: number;
+  /** Selectable character model id; set once at join, never via playerUpdate. */
+  character: "classic" | "simple";
 }
 
 interface VehicleState {
@@ -195,9 +197,13 @@ export function setupGameServer(httpServer: HttpServer) {
   io.on("connection", (socket: Socket) => {
     logger.info({ socketId: socket.id }, "Player connected");
 
-    socket.on("join", async (data: { username: string; token?: string }) => {
+    socket.on("join", async (data: { username: string; token?: string; character?: unknown }) => {
       const username = (data?.username ?? "Player").slice(0, 20);
       const token = typeof data?.token === "string" ? data.token.slice(0, 36) : "";
+      // Validate the selected character against the allowlist (mirror of the
+      // client characterCatalog CHARACTER_IDS). Anything else → "classic".
+      const character: "classic" | "simple" =
+        data?.character === "simple" ? "simple" : "classic";
       const [sx, sy, sz] = getSpawn();
       const player: PlayerState = {
         id: socket.id,
@@ -212,6 +218,7 @@ export function setupGameServer(httpServer: HttpServer) {
         attackSeq: 0,
         attackKind: null,
         attackStartedAt: null,
+        character,
         isGrounded: true,
         moveSpeed: 0,
       };
@@ -440,7 +447,9 @@ export function setupGameServer(httpServer: HttpServer) {
         }
       }
 
-      const updated: PlayerState = { ...player, ...data, id: socket.id };
+      // `character` is set once at join and must never be changed by a
+      // playerUpdate packet — pin it to the authoritative join value.
+      const updated: PlayerState = { ...player, ...data, id: socket.id, character: player.character };
       players.set(socket.id, updated);
       socket.broadcast.emit("playerMoved", updated);
     });

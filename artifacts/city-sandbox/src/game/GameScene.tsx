@@ -62,6 +62,8 @@ const KEY_MAP = [
 interface GameSceneProps {
   myId: string;
   username: string;
+  /** Selectable character chosen in the lobby. */
+  character?: "classic" | "simple";
   playerCount: number;
   connected: boolean;
   gameState: { players: Record<string, import("../shared/types").PlayerState>; vehicles: Record<string, VehicleState> };
@@ -220,6 +222,7 @@ interface GameSceneProps {
 export default function GameScene({
   myId,
   username,
+  character,
   playerCount,
   connected,
   gameState,
@@ -1212,6 +1215,7 @@ export default function GameScene({
             emitGangMissionCheckpoint={emitGangMissionCheckpoint}
             suppressVehicleLockKey={suppressVehicleLockKey}
             houseTeleportRef={houseTeleportRef}
+            characterId={character}
           />
 
           <PerfMonitor />

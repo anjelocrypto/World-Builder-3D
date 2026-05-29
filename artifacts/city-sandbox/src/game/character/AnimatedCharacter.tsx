@@ -4,84 +4,81 @@ import { useGLTF, useAnimations } from "@react-three/drei";
 import { SkeletonUtils } from "three-stdlib";
 import * as THREE from "three";
 import type { CharacterRuntime } from "./CharacterAvatar";
+import {
+  CHARACTERS,
+  CHARACTER_LIST,
+  DEFAULT_CHARACTER,
+  locomotionClipKey,
+  type CharacterId,
+} from "./characterCatalog";
 
-const BASE = import.meta.env.BASE_URL;
-const MODEL_STANDING = `${BASE}models/standing.glb`;
-const MODEL_WALKING = `${BASE}models/walking.glb`;
-const MODEL_RUNNING = `${BASE}models/running.glb`;
-const MODEL_FIGHT1 = `${BASE}models/fight1.glb`;
-const MODEL_FIGHT2 = `${BASE}models/fight2.glb`;
-
-useGLTF.preload(MODEL_STANDING);
-useGLTF.preload(MODEL_WALKING);
-useGLTF.preload(MODEL_RUNNING);
-useGLTF.preload(MODEL_FIGHT1);
-useGLTF.preload(MODEL_FIGHT2);
+// Preload every GLB for every character at module load (after the Game
+// chunk is lazy-imported, i.e. only once the user has joined). useGLTF
+// caches by URL, so the per-character useGLTF(...) calls below are cheap
+// cache hits.
+for (const def of CHARACTER_LIST) {
+  useGLTF.preload(def.baseUrl);
+  for (const e of def.extraClips) useGLTF.preload(e.url);
+}
 
 const FADE = 0.18;
 
 interface AnimatedCharacterProps {
   runtimeRef: React.MutableRefObject<CharacterRuntime>;
   isLocal?: boolean;
+  /** Which character to render. Defaults to the classic hero. */
+  characterId?: CharacterId;
 }
 
 /**
- * GLB-driven character. Loads 5 source models (standing / walking /
- * running / fight1 / fight2). Each ships with one embedded clip; we
- * extract those clips and bind them ALL to a single cloned standing
- * mesh's mixer (the rigs share a Mixamo-style skeleton, so the
- * fight clips re-target onto the standing skeleton cleanly).
+ * GLB-driven character, configured by the character catalog.
  *
- * State → clip mapping:
- *   idle  → "idle"  (looped)
- *   walk  → "walk"  (looped)
- *   run   → "run"   (looped)
+ * For the selected character it loads the base model (idle pose) + every
+ * extra clip GLB, clones the base skinned mesh, and binds all clips to one
+ * mixer (the rigs within a character share a skeleton, so the clips
+ * re-target cleanly). State → clip mapping comes from the catalog:
+ *   idle/walk/run → looped locomotion clip
  *   jump/fall/driving → fall back to idle pose
- *   attack_light  → "fight1" one-shot, plays over current loop
- *   attack_heavy  → "fight2" one-shot, plays over current loop
+ *   attack_light/attack_heavy → one-shot clip played over the locomotion loop
  *
- * One-shot attacks are triggered by attackSeq strict-increment, NOT by
- * animState — same pattern as PlaceholderCharacter — so a second fight
- * queued by LocalPlayer fires the moment the queued attackSeq bump
- * arrives, regardless of any animState transitions in between.
+ * One-shot attacks are triggered by attackSeq strict-increment (NOT by
+ * animState) so a queued second attack fires the moment its seq bump arrives.
+ *
+ * NOTE: hooks must run unconditionally, so this component is keyed by
+ * characterId at the call site (CharacterAvatar) — a character change
+ * remounts it with a fresh, correctly-sized set of useGLTF calls.
  */
 export default function AnimatedCharacter({
   runtimeRef,
   isLocal = false,
+  characterId = DEFAULT_CHARACTER,
 }: AnimatedCharacterProps) {
-  const standing = useGLTF(MODEL_STANDING);
-  const walking = useGLTF(MODEL_WALKING);
-  const running = useGLTF(MODEL_RUNNING);
-  const fight1 = useGLTF(MODEL_FIGHT1);
-  const fight2 = useGLTF(MODEL_FIGHT2);
+  const def = CHARACTERS[characterId] ?? CHARACTERS[DEFAULT_CHARACTER];
 
-  // Per-instance skinned-mesh clone. SkeletonUtils.clone preserves
-  // the bone hierarchy so the mixer can drive it independently of
-  // other character instances.
+  // Load the base model + every extra clip GLB for THIS character. The URL
+  // list is fixed for a given characterId (the component is remounted via
+  // key when the id changes), so the hook order stays stable per mount.
+  const base = useGLTF(def.baseUrl);
+  const extras = def.extraClips.map((e) => useGLTF(e.url));
+
+  // Per-instance skinned-mesh clone so the mixer drives it independently.
   const cloned = useMemo(
-    () => SkeletonUtils.clone(standing.scene),
-    [standing.scene],
+    () => SkeletonUtils.clone(base.scene),
+    [base.scene],
   );
 
-  // Cast shadows on every mesh in the cloned hierarchy.
   useEffect(() => {
     cloned.traverse((obj) => {
       if ((obj as THREE.Mesh).isMesh) {
         obj.castShadow = true;
         obj.receiveShadow = true;
-        // Tint the shirt-ish material so the local player is visually
-        // distinct from remote players, without altering the GLB asset.
-        const mesh = obj as THREE.Mesh;
-        if (Array.isArray(mesh.material)) return;
-        // Optional: only re-tint if user opts in; left disabled to
-        // preserve the artist's authored albedo.
       }
     });
   }, [cloned, isLocal]);
 
-  // Re-name each source clip to its semantic state so useAnimations
-  // exposes them under stable keys regardless of how the artist named
-  // the original take in Blender / Mixamo.
+  // Extract the first clip from each source GLB and rename it to its catalog
+  // clipKey, so useAnimations exposes stable keys regardless of the artist's
+  // Blender/Mixamo take names.
   const clips = useMemo(() => {
     const named: THREE.AnimationClip[] = [];
     const pickFirst = (arr: THREE.AnimationClip[], name: string) => {
@@ -91,55 +88,39 @@ export default function AnimatedCharacter({
       c.name = name;
       named.push(c);
     };
-    pickFirst(standing.animations, "idle");
-    pickFirst(walking.animations, "walk");
-    pickFirst(running.animations, "run");
-    pickFirst(fight1.animations, "fight1");
-    pickFirst(fight2.animations, "fight2");
+    pickFirst(base.animations, def.baseClipKey);
+    def.extraClips.forEach((e, i) => pickFirst(extras[i]?.animations ?? [], e.clipKey));
     return named;
-  }, [
-    standing.animations,
-    walking.animations,
-    running.animations,
-    fight1.animations,
-    fight2.animations,
-  ]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [base.animations, ...extras.map((x) => x.animations), def]);
 
   const groupRef = useRef<THREE.Group>(null);
   const { actions, mixer } = useAnimations(clips, groupRef);
 
-  // Currently-playing locomotion clip name. We cross-fade between
-  // "idle"/"walk"/"run". Attacks (fight1/fight2) play one-shot ON TOP
-  // of the locomotion clip via additive-style overlap (same mixer,
-  // separate action, fade in fast / fade out fast).
   const currentLocoRef = useRef<string | null>(null);
   const lastSeqRef = useRef(runtimeRef.current.attackSeq);
   const activeAttackRef = useRef<THREE.AnimationAction | null>(null);
 
-  // Start idle loop on mount once actions are bound.
+  // Start idle loop; configure the two attack clips as one-shot.
   useEffect(() => {
-    const idle = actions["idle"];
+    const idle = actions[def.locomotion.idle];
     if (idle) {
       idle.reset().fadeIn(FADE).play();
-      currentLocoRef.current = "idle";
+      currentLocoRef.current = def.locomotion.idle;
     }
-    // Configure fight clips as one-shot.
-    for (const name of ["fight1", "fight2"]) {
-      const a = actions[name];
+    for (const key of [def.attackLightKey, def.attackHeavyKey]) {
+      const a = actions[key];
       if (a) {
         a.setLoop(THREE.LoopOnce, 1);
         a.clampWhenFinished = false;
       }
     }
     return () => {
-      // Stop everything on unmount so the mixer doesn't leak time
-      // into a detached scene.
       for (const a of Object.values(actions)) a?.stop();
     };
-  }, [actions]);
+  }, [actions, def]);
 
-  // Clear the active-attack ref when its clip finishes so a new fight
-  // can be triggered immediately by attackSeq.
+  // Clear the active-attack ref when its clip finishes.
   useEffect(() => {
     const onFinished = (e: { action: THREE.AnimationAction }) => {
       if (activeAttackRef.current === e.action) {
@@ -154,14 +135,12 @@ export default function AnimatedCharacter({
   useFrame(() => {
     const r = runtimeRef.current;
 
-    // --- One-shot fight trigger on attackSeq strict-increment ---
+    // --- One-shot attack on attackSeq strict-increment ---
     if (r.attackSeq > lastSeqRef.current) {
       lastSeqRef.current = r.attackSeq;
-      const which = r.attackKind === "heavy" ? "fight2" : "fight1";
+      const which = r.attackKind === "heavy" ? def.attackHeavyKey : def.attackLightKey;
       const next = actions[which];
       if (next) {
-        // Stop any in-flight attack so a queued fight2 cleanly takes
-        // over from a tail-end fight1 cross-fade.
         if (activeAttackRef.current && activeAttackRef.current !== next) {
           activeAttackRef.current.fadeOut(FADE * 0.5);
         }
@@ -171,29 +150,18 @@ export default function AnimatedCharacter({
     }
 
     // --- Locomotion loop selection ---
-    let target: string;
-    if (r.animState === "run") target = "run";
-    else if (r.animState === "walk") target = "walk";
-    else target = "idle"; // idle / jump / fall / driving / attack_*
-
+    const target = locomotionClipKey(def, r.animState);
     if (currentLocoRef.current !== target) {
       const next = actions[target];
-      const prev = currentLocoRef.current
-        ? actions[currentLocoRef.current]
-        : null;
+      const prev = currentLocoRef.current ? actions[currentLocoRef.current] : null;
       if (next) next.reset().fadeIn(FADE).play();
       if (prev && prev !== next) prev.fadeOut(FADE);
       currentLocoRef.current = target;
     }
   });
 
-  // Mixamo / generic male rigs typically export at meter scale with
-  // the character ~1.8m tall, which matches our PLAYER_HEIGHT (1.2m
-  // body center → ~1.8m total). Drop scale slightly so the GLB hero
-  // sits roughly where the placeholder boxes did. Adjust if the rig
-  // visibly clips terrain.
   return (
-    <group ref={groupRef} scale={[1, 1, 1]}>
+    <group ref={groupRef} scale={[def.scale, def.scale, def.scale]}>
       <primitive object={cloned} />
     </group>
   );

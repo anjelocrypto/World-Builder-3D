@@ -68,6 +68,7 @@ import { CarVisual } from "./VehicleObject";
 import CharacterAvatar, {
   type CharacterRuntime,
 } from "./character/CharacterAvatar";
+import type { CharacterId } from "./character/characterCatalog";
 import {
   resolveAnimState,
   ATTACK_LIGHT_COOLDOWN_MS,
@@ -255,6 +256,8 @@ interface LocalPlayerProps {
    * pos.current.set primitive as the vehicle-exit reposition.
    */
   houseTeleportRef?: React.MutableRefObject<[number, number, number] | null>;
+  /** Which selectable character the local player chose in the lobby. */
+  characterId?: CharacterId;
 }
 
 export default function LocalPlayer({
@@ -283,6 +286,7 @@ export default function LocalPlayer({
   emitGangMissionCheckpoint,
   suppressVehicleLockKey,
   houseTeleportRef,
+  characterId,
 }: LocalPlayerProps) {
   const { camera, gl } = useThree();
   const [, getKeys] = useKeyboardControls<Controls>();
@@ -1858,7 +1862,7 @@ export default function LocalPlayer({
           pos.current.z,
         ]}
       >
-        <CharacterAvatar runtimeRef={avatarRuntimeRef} isLocal />
+        <CharacterAvatar runtimeRef={avatarRuntimeRef} isLocal characterId={characterId} />
       </group>
       {/* Driving vehicle visual — uses CarVisual so taxi/van/compact
           look correct while we drive them. */}

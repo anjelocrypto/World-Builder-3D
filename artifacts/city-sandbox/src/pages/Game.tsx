@@ -5,9 +5,10 @@ import GameScene from "../game/GameScene";
 
 interface GameProps {
   username: string;
+  character?: "classic" | "simple";
 }
 
-export default function Game({ username }: GameProps) {
+export default function Game({ username, character = "classic" }: GameProps) {
   const {
     socket,
     myId,
@@ -17,7 +18,7 @@ export default function Game({ username }: GameProps) {
     setGameState,
     emitPlayerUpdate,
     emitVehicleUpdate,
-  } = useSocket(username);
+  } = useSocket(username, character);
 
   // Attach rp:profile / rp:profileUpdate / rp:toast listeners as soon as
   // the socket instance exists — BEFORE the myId/ready guard below. This
@@ -130,6 +131,7 @@ export default function Game({ username }: GameProps) {
     <GameScene
       myId={myId}
       username={username}
+      character={character}
       playerCount={playerCount}
       connected={connected}
       gameState={gameState}

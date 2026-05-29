@@ -3,6 +3,7 @@ import { Html } from "@react-three/drei";
 import PlaceholderCharacter from "./PlaceholderCharacter";
 import AnimatedCharacter from "./AnimatedCharacter";
 import type { PlayerAnimState } from "./characterState";
+import { DEFAULT_CHARACTER, type CharacterId } from "./characterCatalog";
 
 /**
  * Per-frame mutable state read by the visual character renderer.
@@ -34,6 +35,8 @@ interface CharacterAvatarProps {
   username?: string;
   /** Local player gets a different shirt color. */
   isLocal?: boolean;
+  /** Which selectable character model to render. */
+  characterId?: CharacterId;
 }
 
 // =============================================================
@@ -48,6 +51,7 @@ export default function CharacterAvatar({
   runtimeRef,
   username,
   isLocal = false,
+  characterId = DEFAULT_CHARACTER,
 }: CharacterAvatarProps) {
   return (
     <group>
@@ -56,7 +60,14 @@ export default function CharacterAvatar({
           <PlaceholderCharacter runtimeRef={runtimeRef} isLocal={isLocal} />
         }
       >
-        <AnimatedCharacter runtimeRef={runtimeRef} isLocal={isLocal} />
+        {/* Keyed by characterId so switching characters remounts the GLB
+            loader with the correct (fixed) set of useGLTF calls. */}
+        <AnimatedCharacter
+          key={characterId}
+          runtimeRef={runtimeRef}
+          isLocal={isLocal}
+          characterId={characterId}
+        />
       </Suspense>
       {username && !isLocal && (
         <Html position={[0, 1.85, 0]} center distanceFactor={10}>

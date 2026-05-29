@@ -1,12 +1,14 @@
 import { useState } from "react";
 import MenuWorldPreview from "@/game/MenuWorldPreview";
+import { CHARACTER_LIST, type CharacterId } from "@/game/character/characterCatalog";
 
 interface LobbyProps {
-  onJoin: (username: string) => void;
+  onJoin: (username: string, character: CharacterId) => void;
 }
 
 export default function Lobby({ onJoin }: LobbyProps) {
   const [username, setUsername] = useState("");
+  const [character, setCharacter] = useState<CharacterId>("classic");
   const [error, setError] = useState("");
 
   const handleJoin = () => {
@@ -20,7 +22,7 @@ export default function Lobby({ onJoin }: LobbyProps) {
       return;
     }
     setError("");
-    onJoin(name);
+    onJoin(name, character);
   };
 
   const handleKey = (e: React.KeyboardEvent) => {
@@ -142,6 +144,40 @@ export default function Lobby({ onJoin }: LobbyProps) {
           {error && (
             <div style={{ fontSize: 12, color: "#e74c3c" }}>{error}</div>
           )}
+
+          {/* Character picker */}
+          <div style={{ fontSize: 13, color: "#aac", marginTop: 4 }}>
+            CHOOSE YOUR CHARACTER
+          </div>
+          <div style={{ display: "flex", gap: 10 }}>
+            {CHARACTER_LIST.map((c) => {
+              const selected = character === c.id;
+              return (
+                <button
+                  key={c.id}
+                  data-testid={`button-character-${c.id}`}
+                  onClick={() => setCharacter(c.id)}
+                  style={{
+                    flex: 1,
+                    padding: "10px 0",
+                    borderRadius: 4,
+                    cursor: "pointer",
+                    fontFamily: "inherit",
+                    fontSize: 14,
+                    fontWeight: "bold",
+                    letterSpacing: 1,
+                    color: selected ? "#000" : "#cde",
+                    background: selected ? "#00e5ff" : "rgba(0,0,0,0.45)",
+                    border: `1px solid ${selected ? "#00e5ff" : "rgba(0,229,255,0.4)"}`,
+                    boxShadow: selected ? "0 4px 14px rgba(0,229,255,0.3)" : "none",
+                    transition: "all 0.12s",
+                  }}
+                >
+                  {c.label.toUpperCase()}
+                </button>
+              );
+            })}
+          </div>
 
           <button
             data-testid="button-join"

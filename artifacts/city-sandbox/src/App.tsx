@@ -7,16 +7,26 @@ import Lobby from "@/pages/Lobby";
 // the heavy character GLBs from being fetched before JOIN WORLD is clicked.
 const Game = lazy(() => import("@/pages/Game"));
 
+type CharacterChoice = "classic" | "simple";
+
 export default function App() {
   const [username, setUsername] = useState<string | null>(null);
+  const [character, setCharacter] = useState<CharacterChoice>("classic");
 
   if (!username) {
-    return <Lobby onJoin={(name) => setUsername(name)} />;
+    return (
+      <Lobby
+        onJoin={(name, char) => {
+          setCharacter(char);
+          setUsername(name);
+        }}
+      />
+    );
   }
 
   return (
     <Suspense fallback={<div style={{ width: "100vw", height: "100vh", background: "#0a0a1a" }} />}>
-      <Game username={username} />
+      <Game username={username} character={character} />
     </Suspense>
   );
 }

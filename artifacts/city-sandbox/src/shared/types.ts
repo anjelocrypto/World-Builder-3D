@@ -47,6 +47,12 @@ export interface PlayerState {
   isGrounded?: boolean;
   /** Horizontal speed in m/s, used by remote renderers for blends. */
   moveSpeed?: number;
+  /**
+   * Selectable character model id ("classic" | "simple"). Optional for
+   * back-compat; renderers default to "classic" when missing. Set once at
+   * join and never changed by playerUpdate.
+   */
+  character?: "classic" | "simple";
 }
 
 export type VehicleVariant = "sedan" | "van" | "taxi" | "compact";

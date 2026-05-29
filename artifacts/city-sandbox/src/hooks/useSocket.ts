@@ -32,7 +32,7 @@ function getOrCreateToken(): string {
 
 // ── Hook ───────────────────────────────────────────────────────────────────
 
-export function useSocket(username: string) {
+export function useSocket(username: string, character: "classic" | "simple" = "classic") {
   const socketRef = useRef<Socket | null>(null);
   // Reactive copy of the socket instance so hooks that need to attach their
   // own listeners (e.g. useRpSocket) can use it as a useEffect dependency.
@@ -65,7 +65,7 @@ export function useSocket(username: string) {
       setConnected(true);
       // Include the stable token so the server can upsert rp_players and
       // send back rp:profile (cash, bank, driverLicense, etc.).
-      sock.emit("join", { username, token });
+      sock.emit("join", { username, token, character });
     });
 
     sock.on("disconnect", () => {
@@ -154,7 +154,7 @@ export function useSocket(username: string) {
       sock.disconnect();
       setSocket(null);
     };
-  }, [username]);
+  }, [username, character]);
 
   const emitPlayerUpdate = useCallback((data: Partial<PlayerState>) => {
     socketRef.current?.emit("playerUpdate", data);

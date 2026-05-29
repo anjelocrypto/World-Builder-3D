@@ -83,6 +83,7 @@ export default function RemotePlayer({ state, isCuffed = false }: RemotePlayerPr
         runtimeRef={runtimeRef}
         username={state.username}
         isLocal={false}
+        characterId={state.character}
       />
       {/* Phase 6C: cuff indicator — small red torus ring above the player's head */}
       {isCuffed && (
