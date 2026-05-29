@@ -445,8 +445,12 @@ export const MEDIC_ROUTE_COOLDOWN_MS = 60_000;
 // All 6 POLICE_PATROL_POINTS are on road carriageways ✓; min parked-car clearance
 // 8.94 m (PP1 vs car-7) ✓ — no further adjustments required.
 
-/** Police Station entrance — west outer district, between Mechanic Garage and Medical Center. */
-export const POLICE_STATION: [number, number, number] = [-68, 0, 14];
+/** Police Station — west SW block (own precinct block, south of the Medical Center).
+ *  Phase 9B-4: cluster relocated (0,+50) from (−68,14)→(−68,64) so a real 20×14
+ *  station footprint clears the road grid and isn't wedged between Medic/Mechanic.
+ *  x=−68: |−68−(−45)|=23>10; z=64: |64−45|=19>10. Off-road ✓.
+ *  Mirror: client POLICE_STATION in rpTypes.ts. POLICE_PATROL_POINTS unchanged. */
+export const POLICE_STATION: [number, number, number] = [-68, 0, 64];
 
 /** Radius (m) within which the player can clock in/out at the Police Station. */
 export const POLICE_STATION_RADIUS = 6;
@@ -550,19 +554,18 @@ export const LICENSE_TEST_CHECKPOINTS: [number, number, number][] = [
 
 /**
  * Jail cell world position — inside the Police Station compound. Off-road.
- * Geometry check:
- *   x=−68: nearest NS road is x=−45, |−68−(−45)| = 23 > ROAD_HALF(10) ✅
- *   z=14:  nearest EW road is z=0,   |14−0|       = 14 > ROAD_HALF(10) ✅
- * NOTE: z=6 (originally suggested) fails — |6−0|=6 < 10 (on z=0 carriageway).
- *       z=14 matches POLICE_STATION z, already validated off-road.
+ * Phase 9B-4: cluster relocated (0,+50) → (−68,64) (same xz as POLICE_STATION).
+ *   x=−68: |−68−(−45)| = 23 > ROAD_HALF(10) ✅
+ *   z=64:  |64−45|     = 19 > ROAD_HALF(10) ✅
+ * The POLICE_JAIL_RADIUS=8 confinement zone around this point stays off-road.
  */
-export const POLICE_JAIL_CELL: [number, number, number] = [-68, 1, 14];
+export const POLICE_JAIL_CELL: [number, number, number] = [-68, 1, 64];
 
 /**
- * Release position — just outside the jail area, between station and medic center.
- * z=22: |22−0|=22 > 10 ✅, |22−45|=23 > 10 ✅.
+ * Release position — just outside the jail area (station offset +8 z).
+ * Phase 9B-4: (−68,22) → (−68,72). z=72: |72−45|=27 > 10 ✅.
  */
-export const POLICE_RELEASE_POS: [number, number, number] = [-68, 1, 22];
+export const POLICE_RELEASE_POS: [number, number, number] = [-68, 1, 72];
 
 /** Radius (m) of the jail confinement zone centred on POLICE_JAIL_CELL. */
 export const POLICE_JAIL_RADIUS = 8;
@@ -595,12 +598,11 @@ export const POLICE_CUFF_TIMEOUT_SECS = 120;
  * Phase 6D: Booking Desk — inside the police station, used by officers to
  * log a booking after escorting a cuffed suspect.
  *
- * Position: x=-62, y=0, z=14.
+ * Phase 9B-4: cluster relocated (0,+50) → (−62,64) (station offset +6 x).
  *   x=-62: |−62−(−45)|=17 > 10 ✅ (off NS road at x=−45)
- *   z=14:  |14−0|=14 > 10 ✅, |14−45|=31 > 10 ✅ (off EW roads)
- *   Nearest parked car (car-5 at [−55, 0.6, −8]): dist ≈ 23.1 m > 8 ✅
+ *   z=64:  |64−45|=19 > 10 ✅ (off EW road at z=45)
  */
-export const POLICE_BOOKING_DESK_POS: [number, number, number] = [-62, 0, 14];
+export const POLICE_BOOKING_DESK_POS: [number, number, number] = [-62, 0, 64];
 
 /** Radius (m) within which officer/suspect interact with the Booking Desk. */
 export const POLICE_BOOKING_RADIUS = 4;
@@ -868,6 +870,8 @@ export const RP_BUILDINGS: ReadonlyArray<RpBuildingDef> = [
   // Phase 9B-3: Licensing Office (DMV / auto school). South door at (17,−23.5)
   // coincides with the license-test finish CP3 — drive back to the door to finish.
   { id: "licensing_office",  x: LICENSING_OFFICE_POS[0],  z: LICENSING_OFFICE_POS[2],  w: 10, d:  8, facing: "south", label: "Licensing Office" },
+  // Phase 9B-4: Police Station — own SW precinct block. South door at (−68,71.5).
+  { id: "police_station",    x: POLICE_STATION[0],        z: POLICE_STATION[2],        w: 20, d: 14, facing: "south", label: "Police Station" },
 ];
 
 /** Door/interact point for a building: front-edge midpoint pushed outside. */
@@ -911,3 +915,4 @@ export const DEALERSHIP_DOOR:        [number, number, number] = buildingDoorById
 export const TAXI_DEPOT_DOOR:        [number, number, number] = buildingDoorById("taxi_depot");
 export const DELIVERY_HUB_DOOR:      [number, number, number] = buildingDoorById("delivery_hub");
 export const LICENSING_OFFICE_DOOR:  [number, number, number] = buildingDoorById("licensing_office");
+export const POLICE_STATION_DOOR:    [number, number, number] = buildingDoorById("police_station");

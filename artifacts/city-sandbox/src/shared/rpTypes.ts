@@ -366,8 +366,9 @@ export const MEDIC_TREATMENT_DURATION_MS = 6_000;
 // ── Phase 5E: Police Patrol job constants ──────────────────────────────────
 // These MUST stay in sync with POLICE_* in api-server/src/socket/cityData.ts.
 
-/** Police Station position [x, y, z]. Adjusted from −68,0,0 to clear z=0 road. */
-export const POLICE_STATION: [number, number, number] = [-68, 0, 14];
+/** Police Station position [x, y, z].
+ *  Phase 9B-4: cluster relocated (0,+50) to (−68,64). Must mirror server cityData.ts. */
+export const POLICE_STATION: [number, number, number] = [-68, 0, 64];
 
 /** Radius (m) within which the player can clock in/out at the Police Station. */
 export const POLICE_STATION_RADIUS = 6;
@@ -382,12 +383,13 @@ export const POLICE_PATROL_ACCEPT_RADIUS = 12;
  * Jail cell world position — inside the Police Station compound.
  * Server uses this to clamp jailed player positions.
  */
-export const POLICE_JAIL_CELL: [number, number, number] = [-68, 1, 14];
+export const POLICE_JAIL_CELL: [number, number, number] = [-68, 1, 64];
 
 /**
  * Release position — where the player is teleported when jail expires.
+ * Phase 9B-4: (−68,22) → (−68,72) (station offset +8 z).
  */
-export const POLICE_RELEASE_POS: [number, number, number] = [-68, 1, 22];
+export const POLICE_RELEASE_POS: [number, number, number] = [-68, 1, 72];
 
 /** Radius (m) for warrant issuance — how close the officer must be to the suspect. */
 export const POLICE_WARRANT_RADIUS = 14;
@@ -398,8 +400,9 @@ export const POLICE_ARREST_RADIUS = 4;
 /** Phase 6C: Radius (m) within which an officer can cuff a suspect. */
 export const POLICE_CUFF_RADIUS = 4;
 
-/** Phase 6D: Booking Desk world position — inside police station. */
-export const POLICE_BOOKING_DESK_POS: [number, number, number] = [-62, 0, 14];
+/** Phase 6D: Booking Desk world position — inside police station.
+ *  Phase 9B-4: (−62,14) → (−62,64) (station offset +6 x). */
+export const POLICE_BOOKING_DESK_POS: [number, number, number] = [-62, 0, 64];
 
 /** Phase 6D: Radius (m) of the Booking Desk interaction zone. */
 export const POLICE_BOOKING_RADIUS = 4;
@@ -744,6 +747,8 @@ export const RP_BUILDINGS: ReadonlyArray<RpBuildingDef> = [
   { id: "delivery_hub",      x: 66,                       z: -26,                      w: 18, d: 14, facing: "west",  label: "Delivery Hub" },
   // Phase 9B-3: Licensing Office (DMV). South door coincides with test finish CP3.
   { id: "licensing_office",  x: LICENSING_OFFICE_POS[0],  z: LICENSING_OFFICE_POS[2],  w: 10, d:  8, facing: "south", label: "Licensing Office" },
+  // Phase 9B-4: Police Station — own SW precinct block.
+  { id: "police_station",    x: POLICE_STATION[0],        z: POLICE_STATION[2],        w: 20, d: 14, facing: "south", label: "Police Station" },
 ];
 
 /** Door/interact point for a building: front-edge midpoint pushed outside. */
@@ -778,3 +783,4 @@ export const DEALERSHIP_DOOR:        [number, number, number] = buildingDoorById
 export const TAXI_DEPOT_DOOR:        [number, number, number] = buildingDoorById("taxi_depot");
 export const DELIVERY_HUB_DOOR:      [number, number, number] = buildingDoorById("delivery_hub");
 export const LICENSING_OFFICE_DOOR:  [number, number, number] = buildingDoorById("licensing_office");
+export const POLICE_STATION_DOOR:    [number, number, number] = buildingDoorById("police_station");

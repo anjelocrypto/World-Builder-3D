@@ -39,6 +39,7 @@ const STYLES: Record<string, BuildingStyle> = {
   taxi_depot:        { wall: "#d8c24a", roof: "#8a7c2e", sign: "#f1c40f", signText: "TAXI DEPOT" },
   delivery_hub:      { wall: "#9c8a6a", roof: "#5a4a36", sign: "#cf7a33", signText: "DELIVERY HUB" },
   licensing_office:  { wall: "#cfd6dc", roof: "#8b94a0", sign: "#3f7fbf", signText: "DMV / AUTO SCHOOL" },
+  police_station:    { wall: "#b9c2cc", roof: "#3a4654", sign: "#2f6fd0", signText: "POLICE" },
 };
 
 const DEFAULT_STYLE: BuildingStyle = { wall: "#bcc0c6", roof: "#80858c", sign: "#5577ee", signText: "" };
