@@ -99,12 +99,10 @@ const CLASSIC: CharacterDef = {
   scale: 1,
 };
 
-// ── Simple (9 GLBs, one shared 24-joint rig) ─────────────────────────────
-// Clip durations (measured): idle 10.0s, run 0.5s, jump 1.93s,
+// ── Simple (10 GLBs, one shared 24-joint rig) ────────────────────────────
+// Clip durations (measured): idle 10.0s, walk 1.07s, run 0.5s, jump 1.93s,
 // punch-combo 5.70s, leg-kick 2.73s, block 2.57s, die 2.27s,
-// gethit 1.27s, talk 4.0s. There is no dedicated walk clip, so walk
-// reuses the run clip (AnimatedCharacter time-scales nothing; run reads
-// fine at walking pace). block/die/gethit/talk are LOADED (so they're
+// gethit 1.27s, talk 4.0s. block/die/gethit/talk are LOADED (so they're
 // ready) but intentionally left unbound — there is no block / death /
 // hit-reaction / talk game mechanic yet, so nothing triggers them.
 const SIMPLE: CharacterDef = {
@@ -113,6 +111,7 @@ const SIMPLE: CharacterDef = {
   baseUrl: `${BASE}models/simple-idle.glb`,
   baseClipKey: "idle",
   extraClips: [
+    { url: `${BASE}models/simple-walk.glb`, clipKey: "walk" },
     { url: `${BASE}models/simple-run.glb`, clipKey: "run" },
     { url: `${BASE}models/simple-jump.glb`, clipKey: "jump" },
     { url: `${BASE}models/simple-punch-combo-1.glb`, clipKey: "punch" },
@@ -123,15 +122,14 @@ const SIMPLE: CharacterDef = {
     { url: `${BASE}models/simple-gethit.glb`, clipKey: "gethit" },
     { url: `${BASE}models/simple-talk.glb`, clipKey: "talk" },
   ],
-  locomotion: { idle: "idle", walk: "run", run: "run" },
+  locomotion: { idle: "idle", walk: "walk", run: "run" },
   airborneKey: "jump",
   attackLightKey: "punch",
   attackHeavyKey: "kick",
   attackLightMs: 5700, // simple-punch-combo-1.glb = 5.70s
   attackHeavyMs: 2730, // simple-leg-kick.glb = 2.73s
-  // Simple has no dedicated walk clip and reuses the 0.5s run clip; slow it
-  // to ~60% so walking doesn't look twitchy/sprinty.
-  walkTimeScale: 0.6,
+  // Simple now has a dedicated 1.07s walk clip (simple-walk.glb), so walk
+  // plays at native rate — no time-scaling needed.
   scale: 1,
 };
 
