@@ -521,17 +521,22 @@ const NPC_PALETTE: { skin: string; shirt: string }[] = [
   { skin: "#a87753", shirt: "#34495e" },
 ];
 
-// Walk the four corners of the block at a fixed offset OUTSIDE its
-// footprint (block_half + 3) so the NPC always travels on or near the
-// sidewalk — even for narrow split blocks where bw ≠ bd.
+// Walk the four corners of the block at a fixed inset INSIDE its outer edge
+// (block_half − 2). Phase 13A (Batch C): the previous +3 offset pushed the
+// outer corners into the highrise / landmark tower ring (towers occupy the
+// 81–93 m band just outside the ±80 block edge), so NPCs clipped through the
+// corner landmarks and mid-edge highrises by up to 2.35 m. block_half − 2 keeps
+// the loop in the lot band between the block's own buildings (≤ ±10 from
+// centre) and the tower ring, with ≥ 2.6 m clearance to every building footprint
+// (verified by dense segment sampling). Works for narrow split blocks too.
 function makeBlockSidewalkLoop(
   cx: number,
   cz: number,
   bw: number,
   bd: number
 ): [number, number][] {
-  const halfW = bw / 2 + 3;
-  const halfD = bd / 2 + 3;
+  const halfW = bw / 2 - 2;
+  const halfD = bd / 2 - 2;
   return [
     [cx + halfW, cz - halfD],
     [cx + halfW, cz + halfD],
@@ -2485,22 +2490,41 @@ if (isViteDev) {
     }
   }
 
-  // NPC pedestrian loops hug the sidewalk by design (block_half + 3), so they
+  // NPC pedestrian loops hug the sidewalk by design (block_half − 2), so they
   // are NOT asserted off-carriageway. They must, however, stay in bounds and
-  // never route through a building or a static obstacle.
+  // never route through a building or a static obstacle. `npcPositionAt`
+  // interpolates along each segment, so we SAMPLE every segment (incl. the
+  // closing leg back to the first waypoint), not just the corner waypoints.
+  const NPC_BODY_R = 0.35;
+  const samplePointInBuilding = (x: number, z: number): boolean => {
+    for (const b of BUILDINGS) {
+      if (Math.abs(x - b.x) < b.w / 2 + NPC_BODY_R && Math.abs(z - b.z) < b.d / 2 + NPC_BODY_R) return true;
+    }
+    return false;
+  };
   for (const route of NPC_ROUTES) {
-    for (const [x, z] of route.waypoints) {
-      if (!inBounds(x, z, 0)) {
-        issues.push(`NPC route ${route.id} waypoint (${x}, ${z}) is outside WORLD bounds`);
+    const wps = route.waypoints;
+    const n = wps.length;
+    for (let i = 0; i < n; i++) {
+      const [ax, az] = wps[i];
+      const [bx, bz] = wps[(i + 1) % n]; // loops are closed
+      if (!inBounds(ax, az, 0)) {
+        issues.push(`NPC route ${route.id} waypoint (${ax}, ${az}) is outside WORLD bounds`);
       }
-      for (const b of BUILDINGS) {
-        if (Math.abs(x - b.x) < b.w / 2 && Math.abs(z - b.z) < b.d / 2) {
-          issues.push(`NPC route ${route.id} waypoint (${x}, ${z}) is inside a building`);
+      const segLen = Math.hypot(bx - ax, bz - az);
+      const steps = Math.max(1, Math.ceil(segLen / 3)); // ~3 m sampling
+      for (let s = 0; s <= steps; s++) {
+        const t = s / steps;
+        const x = ax + t * (bx - ax);
+        const z = az + t * (bz - az);
+        if (samplePointInBuilding(x, z)) {
+          issues.push(`NPC route ${route.id} path (${x.toFixed(0)}, ${z.toFixed(0)}) enters a building footprint`);
           break;
         }
-      }
-      if (overlapsObstacle(x, z, 0.35)) {
-        issues.push(`NPC route ${route.id} waypoint (${x}, ${z}) is inside a static obstacle`);
+        if (overlapsObstacle(x, z, NPC_BODY_R)) {
+          issues.push(`NPC route ${route.id} path (${x.toFixed(0)}, ${z.toFixed(0)}) enters a static obstacle`);
+          break;
+        }
       }
     }
   }

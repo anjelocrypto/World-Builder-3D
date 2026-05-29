@@ -404,16 +404,26 @@ Added:
 - **Ambient traffic (9 routes):** every waypoint AND every segment midpoint must lie on a road
   carriageway (grid bounded or any regional polyline, 3 m turn-apex tolerance). Upgrades the prior
   on-road metric to a hard assertion. All sampled points pass.
-- **NPC pedestrian loops (12):** asserted in-bounds and never routing through a building or static
-  obstacle. (Deliberately NOT asserted off-carriageway — the loops hug the sidewalk at block_half
-  + 3 m by design, ~2 m off the carriageway.) All pass.
+- **NPC pedestrian loops (12) — REAL BUG FOUND & FIXED.** The validator (segment-sampled, since
+  `npcPositionAt` interpolates) revealed that the loops at the old `block_half + 3` offset walked
+  **up to 2.35 m INTO the highrise/landmark tower ring** (e.g. route 0 corner (−83,−83) inside
+  landmark (−87,−87); route 1 (−33,−83) inside highrise (−30,−86)). Codex independently confirmed
+  all 12 routes had building hits. **Fix:** rerouted `makeBlockSidewalkLoop` from `block_half + 3`
+  to `block_half − 2` — the loops now walk the lot band between each block's own buildings (≤ ±10
+  from centre) and the tower ring (≥ 81), with ≥ 2.6 m clearance to every building footprint
+  (dense segment sampling). This is an ambient-NPC path change only — no RP/gameplay/economy
+  coordinate moved. The validator now samples every segment at ~3 m steps (not just corners) and
+  uses the NPC body radius, so this class of bug cannot recur. (My initial Batch C pre-flight was
+  wrong: it tested NPC corners against the block rectangles, not the actual `BUILDINGS` array,
+  which includes the separately-placed towers — hence the missed hit.)
 
 **Coverage delta:** "Parked cars" and "NPC traffic routes" rows in §11 move from PARTIAL/metric
-to fully asserted (placement + on-road). Still uncovered (deferred): NPC routes vs fences
-(low value — loops are city-core, far from homestead fences), and static-obstacle-vs-road
-footprints (hand-placed roadside by design; §11).
+to fully asserted (placement + on-road + segment-sampled building/obstacle clearance). Still
+uncovered (deferred): NPC routes vs homestead fences (loops are city-core, far from fences), and
+static-obstacle-vs-road footprints (hand-placed roadside by design; §11).
 
-**Verification:** tsc ×4 pass; pre-flight script clean (14/14 rural cars on road/pad, 14/14 city
-cars off-road-or-tagged, traffic 0 off-road with full road set, NPC 0 in-building). api-server
-build, `BASE_PATH=/ PORT=5173 pnpm build`, and tsx `rpValidators` run on the Mac; the client dev
-validator runs at Vite dev module-load (non-fatal warnings).
+**Verification:** tsc ×4 pass. Direct replay (offset −2, 3 m segment sampling, body radius 0.35):
+**NPC building hits 0, obstacle hits 0** across all 12 routes (was −2.35 m / 12 routes hitting at
++3). Pre-flight also clean: 14/14 rural cars on road/pad, 14/14 city cars off-road-or-tagged,
+traffic 0 off-road (full road set). api-server build, `BASE_PATH=/ PORT=5173 pnpm build`, and tsx
+`rpValidators` run on the Mac; the client dev validator runs at Vite dev module-load (non-fatal).
