@@ -1,11 +1,13 @@
 /**
  * Phase 8A: Government / Mayor service.
  * Phase 8B: City tax rate — in-memory, server-authoritative.
+ * Phase 8C: City tax rate — DB-persisted via rp_city_config.
  *
  * Handles:
+ *   loadCityConfigFromDb()                 — called once at server startup
  *   handleCityAnnounce(socket, ctx, data)  — rp:cityAnnounce
- *   handleGetCityConfig(socket)            — rp:getCityConfig
- *   handleSetTaxRate(socket, ctx, data)    — rp:setTaxRate
+ *   handleGetCityConfig(socket)            — rp:getCityConfig  (in-memory, no DB query)
+ *   handleSetTaxRate(socket, ctx, data)    — rp:setTaxRate     (DB-first, then broadcast)
  *
  * Authority rules (all server-side):
  *   - Requester must be in the government faction (factionType "government"
@@ -23,11 +25,17 @@
  *   applyCityTax(grossPay) → { grossPay, taxRate, taxAmount, netPay }
  *   Called by rpJobService at every payout path; server decides netPay.
  *
- * Security constraints (Phase 8B):
- *   - No SQL migration.  No DB writes.  No election system.
+ * Security constraints (Phase 8C):
+ *   - No mayor elections.  No business license system.
  *   - No username-based authority — isMayor() checks factionType + rank from rpCache.
- *   - No admin bypass.  No production shortcut.
- *   - Client never decides tax, payout, or mayor authority.
+ *   - updatedByName derived from ctx.players (server-authoritative); never client-provided.
+ *   - mayor UUID from rpCache.entry.playerId; never client-provided.
+ *   - Cooldown NOT consumed on DB failure.
+ *   - cityTaxRate NOT mutated on DB failure.
+ *   - rp:cityConfig NOT broadcast on DB failure.
+ *   - DB write before in-memory mutation and before broadcast (DB-first order).
+ *   - handleGetCityConfig: in-memory only — no DB query per request.
+ *   - applyCityTax: unchanged API, returns integer taxAmount/netPay.
  */
 
 import type { Socket } from "socket.io";
@@ -44,6 +52,8 @@ import {
 } from "../socket/cityData";
 import { isMayor } from "./rpFactionHelpers";
 import { logger } from "../lib/logger";
+import { db, rpCityConfig } from "@workspace/db";
+import { eq } from "drizzle-orm";
 
 // ── Per-mayor announcement rate-limit ─────────────────────────────────────────
 /**
@@ -52,19 +62,103 @@ import { logger } from "../lib/logger";
  */
 const announceCooldownMap = new Map<string, number>();
 
-// ── In-memory city config (Phase 8B) ──────────────────────────────────────────
+// ── In-memory city config (Phase 8B/8C) ───────────────────────────────────────
+// Loaded from DB at startup by loadCityConfigFromDb(); kept in-memory at runtime.
+// handleGetCityConfig reads from here — no DB query per player request.
 
-/** Current city tax rate. No DB — reset to default on server restart. */
+/** Current city tax rate. Loaded from rp_city_config on startup. */
 let cityTaxRate: number = CITY_TAX_DEFAULT;
 
-/** Unix ms when the tax rate was last updated (0 = never changed). */
+/** Unix ms when the tax rate was last updated. Loaded from DB updated_at on startup. */
 let taxRateUpdatedAt: number = 0;
 
-/** Display name of the last mayor who changed the rate. */
+/** Display name of the last mayor who changed the rate. Never client-provided. */
 let taxRateUpdatedByName: string | null = null;
 
 /** Per-mayor set-tax rate-limit. Keyed by DB playerId. */
 const setTaxCooldownMap = new Map<string, number>();
+
+// ── loadCityConfigFromDb ───────────────────────────────────────────────────────
+
+/**
+ * Phase 8C: Load city config from rp_city_config at server startup.
+ * Reads "tax_rate", validates, and sets in-memory state.
+ *
+ * On missing/invalid value: keeps CITY_TAX_DEFAULT and logs a warning.
+ * On DB error: logs and falls back to default — does NOT throw.
+ *
+ * Must be awaited before any socket connections are accepted so that
+ * handleGetCityConfig and applyCityTax always return the persisted rate.
+ */
+export async function loadCityConfigFromDb(): Promise<void> {
+  try {
+    const rows = await db
+      .select()
+      .from(rpCityConfig)
+      .where(eq(rpCityConfig.key, "tax_rate"));
+
+    const row = rows[0];
+
+    if (!row) {
+      logger.warn("[rpGov] rp_city_config has no 'tax_rate' row — using default. Run seed:rp.");
+      return;
+    }
+
+    const parsed = Number(row.value);
+    if (!Number.isFinite(parsed) || parsed < CITY_TAX_MIN || parsed > CITY_TAX_MAX) {
+      logger.warn(
+        { storedValue: row.value },
+        "[rpGov] 'tax_rate' value is invalid — using default.",
+      );
+      return;
+    }
+
+    cityTaxRate         = parsed;
+    taxRateUpdatedAt    = row.updatedAt instanceof Date ? row.updatedAt.getTime() : Date.now();
+    // updatedByName is not stored in rp_city_config — null until next Mayor change.
+    taxRateUpdatedByName = null;
+
+    logger.info({ taxRate: cityTaxRate }, "[rpGov] city tax rate loaded from DB");
+  } catch (err) {
+    logger.error({ err }, "[rpGov] failed to load city config from DB — using default");
+    // Fallback: keep CITY_TAX_DEFAULT; server continues normally.
+  }
+}
+
+// ── persistCityTaxRate ────────────────────────────────────────────────────────
+
+/**
+ * Phase 8C: Upsert the "tax_rate" key in rp_city_config.
+ *
+ * DB write order contract:
+ *   persistCityTaxRate MUST complete successfully before the caller
+ *   mutates in-memory cityTaxRate, consumes cooldown, or broadcasts.
+ *   If this throws, the caller must abort and NOT update memory/broadcast.
+ *
+ * @param rate         Validated decimal rate in [CITY_TAX_MIN, CITY_TAX_MAX].
+ * @param mayorPlayerId DB UUID of the Mayor (from rpCache entry.playerId — never client-provided).
+ */
+export async function persistCityTaxRate(
+  rate:          number,
+  mayorPlayerId: string,
+): Promise<void> {
+  const valueStr = rate.toString();
+  await db
+    .insert(rpCityConfig)
+    .values({
+      key:       "tax_rate",
+      value:     valueStr,
+      updatedBy: mayorPlayerId,
+    })
+    .onConflictDoUpdate({
+      target: rpCityConfig.key,
+      set: {
+        value:     valueStr,
+        updatedAt: new Date(),
+        updatedBy: mayorPlayerId,
+      },
+    });
+}
 
 // ── getCityTaxRate (exported for rpJobService) ─────────────────────────────────
 
@@ -241,16 +335,21 @@ export function handleGetCityConfig(socket: Socket): void {
  *   7. Per-mayor cooldown (MAYOR_SET_TAX_COOLDOWN_MS), keyed by DB playerId.
  *      Cooldown is NOT consumed on validation / proximity failures.
  *
- * On success:
- *   - Updates in-memory cityTaxRate, taxRateUpdatedAt, taxRateUpdatedByName.
- *   - Broadcasts rp:cityConfig { taxRate, updatedAt, updatedByName } to all clients.
- *   - Payload contains no socketId, playerId, coords, faction, or rank.
+ * Phase 8C DB-first order (on success):
+ *   a. persistCityTaxRate(rate, entry.playerId) — DB upsert.
+ *   b. Only if DB succeeds: consume cooldown, update in-memory state, broadcast.
+ *   c. If DB fails: emit error toast, do NOT consume cooldown, do NOT update memory,
+ *      do NOT broadcast.
+ *
+ * Broadcast payload contains no socketId, playerId, coords, faction, or rank.
+ * updatedByName derived from ctx.players (server-authoritative) — never client-provided.
+ * Mayor UUID comes from entry.playerId (rpCache) — never client-provided.
  */
-export function handleSetTaxRate(
+export async function handleSetTaxRate(
   socket: Socket,
   ctx:    LicenseContext,
   data:   unknown,
-): void {
+): Promise<void> {
   const entry = ctx.rpCache.get(socket.id);
   if (!entry) return;
 
@@ -323,10 +422,11 @@ export function handleSetTaxRate(
   }
 
   // ── Guard 5: per-mayor cooldown ────────────────────────────────────────────
-  const cooldownKey    = entry.playerId;
-  const lastSetTax     = setTaxCooldownMap.get(cooldownKey) ?? 0;
-  const nowMs          = Date.now();
-  const remainingMs    = MAYOR_SET_TAX_COOLDOWN_MS - (nowMs - lastSetTax);
+  // Cooldown is checked BEFORE the DB write — do not consume it yet.
+  const cooldownKey = entry.playerId;
+  const lastSetTax  = setTaxCooldownMap.get(cooldownKey) ?? 0;
+  const nowMs       = Date.now();
+  const remainingMs = MAYOR_SET_TAX_COOLDOWN_MS - (nowMs - lastSetTax);
   if (remainingMs > 0) {
     socket.emit("rp:toast", {
       msg:      `Tax rate cooldown. Wait ${Math.ceil(remainingMs / 1000)}s.`,
@@ -336,21 +436,38 @@ export function handleSetTaxRate(
     return;
   }
 
-  // ── Commit cooldown + update in-memory config ──────────────────────────────
+  // ── Phase 8C: DB-first persist ────────────────────────────────────────────
+  // persistCityTaxRate must succeed before any state mutation or broadcast.
+  // entry.playerId is the server-authoritative Mayor UUID from rpCache.
+  // Never use a client-provided ID here.
+  try {
+    await persistCityTaxRate(rate, entry.playerId);
+  } catch (err) {
+    logger.error({ err, socketId: socket.id }, "[rpGov] persistCityTaxRate failed");
+    socket.emit("rp:toast", {
+      msg:      "Tax rate save failed — try again.",
+      color:    "red",
+      duration: 4000,
+    });
+    // Do NOT consume cooldown, do NOT update memory, do NOT broadcast.
+    return;
+  }
+
+  // ── DB succeeded: consume cooldown + update in-memory config ──────────────
   setTaxCooldownMap.set(cooldownKey, nowMs);
 
   // Derive display name from server-authoritative ctx.players — never client-provided.
   const updatedByName = ctx.players.get(socket.id)?.username ?? "Mayor";
 
-  cityTaxRate         = rate;
-  taxRateUpdatedAt    = nowMs;
+  cityTaxRate          = rate;
+  taxRateUpdatedAt     = nowMs;
   taxRateUpdatedByName = updatedByName;
 
   const pct = (rate * 100).toFixed(1).replace(/\.0$/, "");
 
   logger.info(
     { socketId: socket.id, updatedByName, rate },
-    "[rpGov] city tax rate updated",
+    "[rpGov] city tax rate updated and persisted",
   );
 
   // Broadcast new config to every connected client.

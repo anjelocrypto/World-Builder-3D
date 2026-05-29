@@ -545,16 +545,15 @@ export function setupRpHandlers(
   });
 
   // ── rp:setTaxRate ─────────────────────────────────────────────────────────
-  // Phase 8B: Mayor sets the city tax rate.
+  // Phase 8B/8C: Mayor sets the city tax rate.
   // Server validates: government faction + rank >= 4, not jailed/cuffed,
   // City Hall proximity, rate in [0, 0.15], per-mayor 30 s cooldown.
-  // On success broadcasts rp:cityConfig to all connected clients.
+  // Phase 8C: DB-first — persists to rp_city_config before updating memory
+  // or broadcasting. On DB failure emits red toast, no memory/broadcast update.
   socket.on("rp:setTaxRate", (data: unknown) => {
-    try {
-      handleSetTaxRate(socket, ctx, data);
-    } catch (err) {
+    handleSetTaxRate(socket, ctx, data).catch((err) => {
       logger.error({ err, socketId: socket.id }, "[rp] handleSetTaxRate threw");
       socket.emit("rp:toast", { msg: "Server error — tax rate not updated.", color: "red", duration: 4000 });
-    }
+    });
   });
 }

@@ -10,6 +10,7 @@
  *   6. rpWarrants       FK → rpPlayers × 2
  *   7. rpArrests        FK → rpPlayers × 2
  *   8. rpJobs           (independent seed table, no FKs)
+ *   9. rpCityConfig     FK → rpPlayers (updated_by, nullable)
  *
  * DO NOT import this file from api-server runtime until Phase 1B is approved.
  * Schema-only — no migrations are applied in Phase 1A.
@@ -177,4 +178,20 @@ export const rpJobs = pgTable("rp_jobs", {
   payPerRoute:   integer("pay_per_route").notNull(),
   cooldownSecs:  integer("cooldown_secs").notNull().default(300),
   maxOnDuty:     smallint("max_on_duty").notNull().default(8),
+});
+
+// ── 9. rp_city_config ─────────────────────────────────────────────────────────
+// Phase 8C: key/value store for server-wide city configuration.
+// Survives server restarts.  Currently used for:
+//   key = "tax_rate"      value = decimal string e.g. "0.075"
+//   key = "city_message"  value = plain text string
+//
+// updated_by references the DB playerId of the Mayor who last changed the row,
+// or NULL if it was set via seed/admin.  ON DELETE SET NULL keeps the row.
+export const rpCityConfig = pgTable("rp_city_config", {
+  key:       text("key").primaryKey(),
+  value:     text("value").notNull(),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  updatedBy: uuid("updated_by")
+               .references(() => rpPlayers.id, { onDelete: "set null" }),
 });
