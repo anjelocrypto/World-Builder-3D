@@ -431,11 +431,18 @@ export const INITIAL_VEHICLES: VehicleState[] = [
 // SPAWN POINTS — must match server SPAWN_POINTS
 // =============================================================
 
+// Phase 13A (Batch D): the original first four points sat ON the x=0 / z=0 road
+// centerlines (carriageway ±10), so the client offline-fallback spawn
+// (LocalPlayer: SPAWN_POINTS[hash % len]) could place a player on a road. They
+// are relocated into the four empty plaza quadrants (|x|,|z| > 10 → off both
+// road bands), giving 2 spawns per quadrant with the existing ±15 points. All
+// eight are now off-road and clear of buildings/RP buildings/RP houses/cars.
+// MUST match the server SPAWN_POINTS mirror.
 export const SPAWN_POINTS: [number, number, number][] = [
-  [0, 1, -12],
-  [12, 1, 0],
-  [-12, 1, 0],
-  [0, 1, 12],
+  [18, 1, -13],
+  [18, 1, 13],
+  [-18, 1, 13],
+  [-18, 1, -13],
   [15, 1, 15],
   [-15, 1, 15],
   [15, 1, -15],
@@ -2294,15 +2301,46 @@ if (isViteDev) {
   };
 
   // ---- City building / road sanity (existing checks) --------------------
+  // Phase 13A (Batch D): legacy plaza spawns (client offline-fallback) must be
+  // off the central road grid and clear of buildings, RP buildings, RP houses,
+  // obstacles, and parked cars.
+  const spawnOnGrid = (x: number, z: number): string | null => {
+    for (const rx of ROADS.ns) if (Math.abs(x - rx) < ROAD_HALF && Math.abs(z) < CITY_HALF) return `x=${rx}`;
+    for (const rz of ROADS.ew) if (Math.abs(z - rz) < ROAD_HALF && Math.abs(x) < CITY_HALF) return `z=${rz}`;
+    return null;
+  };
   for (const sp of SPAWN_POINTS) {
-    if (checkBuildingCollision(sp[0], sp[2])) {
+    const [sx, , sz] = sp;
+    if (checkBuildingCollision(sx, sz)) {
       issues.push(`spawn ${JSON.stringify(sp)} overlaps a building`);
     }
-    if (!inBounds(sp[0], sp[2], 1)) {
+    if (!inBounds(sx, sz, 1)) {
       issues.push(`spawn ${JSON.stringify(sp)} is outside WORLD bounds`);
     }
-    if (overlapsObstacle(sp[0], sp[2], 1.0)) {
+    if (overlapsObstacle(sx, sz, 1.0)) {
       issues.push(`spawn ${JSON.stringify(sp)} overlaps a static obstacle`);
+    }
+    const gr = spawnOnGrid(sx, sz);
+    if (gr) {
+      issues.push(`spawn ${JSON.stringify(sp)} is on a road carriageway (${gr})`);
+    }
+    for (const rp of RP_BUILDINGS) {
+      if (Math.abs(sx - rp.x) < rp.w / 2 && Math.abs(sz - rp.z) < rp.d / 2) {
+        issues.push(`spawn ${JSON.stringify(sp)} is inside RP building ${rp.id}`);
+        break;
+      }
+    }
+    for (const h of RP_HOUSES) {
+      if (Math.abs(sx - h.x) < h.w / 2 && Math.abs(sz - h.z) < h.d / 2) {
+        issues.push(`spawn ${JSON.stringify(sp)} is inside RP house ${h.slug}`);
+        break;
+      }
+    }
+    for (const v of INITIAL_VEHICLES) {
+      if (Math.hypot(sx - v.x, sz - v.z) < 2) {
+        issues.push(`spawn ${JSON.stringify(sp)} is too close to parked car ${v.id}`);
+        break;
+      }
     }
   }
   for (const v of INITIAL_VEHICLES) {
@@ -3344,6 +3382,32 @@ if (isViteDev) {
       if (Math.abs(dx) < limit && Math.abs(dz) < h.houseD / 2 + 1.0) {
         issues.push(`homestead ${h.id} house overlaps rail pillar at (${p.x.toFixed(0)},${p.z.toFixed(0)})`);
         break;
+      }
+    }
+    // Phase 13A (Batch D): the homestead YARD (largest footprint, encloses the
+    // house + fences) must clear every RP building and RP house. Yard clear ⇒
+    // house + fence panels clear, since fences sit on the yard perimeter.
+    for (const rp of RP_BUILDINGS) {
+      if (Math.abs(rp.x - h.x) < (rp.w + h.yardW) / 2 && Math.abs(rp.z - h.z) < (rp.d + h.yardD) / 2) {
+        issues.push(`homestead ${h.id} yard overlaps RP building ${rp.id}`);
+        break;
+      }
+    }
+    for (const rh of RP_HOUSES) {
+      if (Math.abs(rh.x - h.x) < (rh.w + h.yardW) / 2 && Math.abs(rh.z - h.z) < (rh.d + h.yardD) / 2) {
+        issues.push(`homestead ${h.id} yard overlaps RP house ${rh.slug}`);
+        break;
+      }
+    }
+    // Phase 13A (Batch D): the gate gap must be at least as wide as the driveway
+    // so the driveway is not blocked by a fence panel. Gap = 2 × gate-half;
+    // driveway carriageway width comes from the matching drv-hs-* road.
+    {
+      const gateGap = 2 * HOMESTEAD_FENCE_GATE_HALF;
+      const drv = REGIONAL_ROADS.find((r) => r.id === `drv-${h.id}`);
+      const drvWidth = drv?.width ?? 0;
+      if (drvWidth > gateGap + 0.01) {
+        issues.push(`homestead ${h.id} gate gap ${gateGap}m is narrower than its driveway ${drvWidth}m (fence would block it)`);
       }
     }
   }

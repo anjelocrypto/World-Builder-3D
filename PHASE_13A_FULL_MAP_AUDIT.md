@@ -2,9 +2,9 @@
 
 **Originally an audit-only report.** All findings below are computed (seeded building generator
 replicated exactly; distances/overlaps calculated in code), not eyeballed. **Status:** Batch A
-(§8), the post-audit house relocation (§9–§10), Batch B full-map validators (§11), and Batch C
-parked-car / NPC + traffic validators (§12) are implemented and verified; Batches D–F remain
-optional polish, pending approval.
+(§8), the post-audit house relocation (§9–§10), Batch B full-map validators (§11), Batch C
+parked-car / NPC + traffic validators (§12), and Batch D homestead + legacy-spawn validators
+(§13) are implemented and verified; Batches E–F remain optional polish, pending approval.
 
 ---
 
@@ -205,7 +205,7 @@ overlap. No action.
 
 ---
 
-## 6. Fix Plan (Batch A–C implemented; D–F pending approval)
+## 6. Fix Plan (Batch A–D implemented; E–F pending approval)
 
 - **Batch A — P0/P1 hard geometry. ✅ IMPLEMENTED (§8).** Filtered `GENERATED_BUILDINGS` against
   RP-building footprints (+1 m). Client-only; no RP coords moved. Seed replay → 0 overlaps.
@@ -221,9 +221,10 @@ overlap. No action.
 - **Batch C — parked cars / NPC traffic polish. ✅ IMPLEMENTED (§12).** On-road/on-pad assertions
   for rural cars (§5.6); intentional-roadside tag set for city kerbside cars (§5.7); ambient-traffic
   waypoint + segment-midpoint on-road assertion; NPC-route in-bounds + not-in-building/obstacle.
-- **Batch D — residential / homestead polish.** Retire or relocate the on-road legacy plaza spawns
-  (§5.4); programmatic check that each homestead's driveway reaches the inner-ring road and no fence
-  blocks its own gate; verify cluster spacing reads intentional.
+- **Batch D — residential / homestead polish. ✅ IMPLEMENTED (§13).** Relocated the 4 on-road legacy
+  plaza spawns off-road (§5.4); added spawn-off-road + spawn-vs-RP validators, homestead yard/house/
+  fence vs RP buildings + RP houses, and an explicit gate-gap ≥ driveway-width check (homestead
+  driveway-connectivity + gate-alignment were already validated).
 - **Batch E — nature/tree/rock density polish.** Audit flora density per region (west fields look
   sparse; some corner clusters dense); assert no trunk/rock sits on a driveway, cabin door, or path;
   optionally lightly populate the under-used west zone.
@@ -430,3 +431,47 @@ static-obstacle-vs-road footprints (hand-placed roadside by design; §11).
 +3). Pre-flight also clean: 14/14 rural cars on road/pad, 14/14 city cars off-road-or-tagged,
 traffic 0 off-road (full road set). api-server build, `BASE_PATH=/ PORT=5173 pnpm build`, and tsx
 `rpValidators` run on the Mac; the client dev validator runs at Vite dev module-load (non-fatal).
+
+---
+
+## 13. Batch D — residential / homestead polish + legacy-spawn cleanup
+
+**One real issue found & fixed (the only coordinate change); everything else clean.**
+
+### Finding — legacy plaza spawns on roads (the §5.4 P3, now confirmed used)
+`SPAWN_POINTS` is NOT dead: the server spawns via `safeStationSpawn`, but the **client uses
+`SPAWN_POINTS[hash % len]` as its offline-fallback spawn** (`LocalPlayer.tsx`). Four of the eight
+points sat on the x=0 / z=0 road centerlines — `(0,−12)`, `(12,0)`, `(−12,0)`, `(0,12)` — so an
+offline fallback could drop a player on a road. **Smallest fix:** relocated those four into the
+empty plaza quadrants → `(18,−13)`, `(18,13)`, `(−18,13)`, `(−18,−13)` (the four `(±15,±15)`
+points were already off-road and kept). Mirror updated on both server + client `cityData.ts`.
+No RP / traffic / NPC / economy coordinate touched.
+
+### Validators added (client dev block)
+- **Spawns:** off the central road grid + clear of buildings, RP buildings, RP houses, static
+  obstacles, parked cars, and in bounds (extended the existing spawn loop, which only covered
+  buildings/bounds/obstacles).
+- **Homesteads vs RP:** each homestead **yard** footprint (the largest, enclosing house + fence
+  panels) must clear every RP building and RP house — a category the prior homestead validator
+  never checked.
+- **Gate not blocked:** explicit assertion that each homestead's gate gap (2 × gate-half = 4 m) is
+  ≥ its driveway width (4 m), so a fence panel can't block the driveway. (Driveway-connects-to-
+  ring-vertex and driveway-end-within-3m-of-gate-centre were already validated pre-Batch-D.)
+
+### No-bug confirmations (pre-flighted, current data)
+- Homestead yards clear RP houses by ≥30 m and RP buildings by ≥35 m.
+- All 12 homestead driveways start on an inner-city-ring vertex; gate gap (4 m) = driveway (4 m).
+- Homestead house/fence-vs-roads/cars/obstacles/station/rail already validated and clean.
+
+### Verification
+- tsc ×4 pass.
+- Direct geometry replay: (1) all 8 relocated spawns off-road + clear of RP/cars ✓; (2) 12/12
+  homestead driveways connect to a ring vertex ✓; (3) gate gap ≥ driveway width ✓; (4) 12/12
+  homestead yards clear of RP buildings + RP houses ✓; (5) 8 spawns distinct, no new overlap ✓.
+- api-server build, `BASE_PATH=/ PORT=5173 pnpm build`, tsx `rpValidators` run on the Mac.
+
+### Remaining (Batches E–F, optional polish — not blockers)
+- **Batch E:** flora/rock density per region (west fields sparse; some corner clusters dense);
+  assert no trunk/rock on a driveway/cabin door/path; optional light west-zone population.
+- **Batch F:** reduce intra-block procedural building self-overlap (§5.2, cosmetic); document the
+  render-only/no-collision systems (massifs, bridge deck, skybridges, rail); minor skyline variety.

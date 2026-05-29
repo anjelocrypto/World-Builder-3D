@@ -54,11 +54,15 @@ export const INITIAL_VEHICLES = [
 // NOTE: Phase 1B replaces the random-round-robin spawn with safeStationSpawn().
 // SPAWN_POINTS is kept exported so client code that imports it for the
 // deterministic offline fallback continues to compile.
+// Phase 13A (Batch D): first four points relocated off the x=0 / z=0 road
+// centerlines into empty plaza quadrants (off-road). MIRROR of client
+// shared/cityData.ts SPAWN_POINTS. (Players spawn via safeStationSpawn; this
+// array is the client offline-fallback spawn.)
 export const SPAWN_POINTS: [number, number, number][] = [
-  [0,   1, -12],
-  [12,  1,  0 ],
-  [-12, 1,  0 ],
-  [0,   1,  12],
+  [18,  1, -13],
+  [18,  1,  13],
+  [-18, 1,  13],
+  [-18, 1, -13],
   [15,  1,  15],
   [-15, 1,  15],
   [15,  1, -15],
