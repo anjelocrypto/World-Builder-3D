@@ -458,6 +458,40 @@ export interface CityAnnouncement {
   createdAt: number;
 }
 
+// ── Phase 8F: City Projects ────────────────────────────────────────────────────
+// MUST stay in sync with CITY_PROJECT_DEFS in api-server/src/socket/cityData.ts.
+
+/** One active city project as emitted in rp:cityProjects. */
+export interface ActiveCityProject {
+  projectId: string;
+  label:     string;
+  expiresAt: number; // Unix ms — client computes remainingMs = expiresAt - Date.now()
+}
+
+/** Client-side project catalogue (mirrors server CITY_PROJECT_DEFS). */
+export const CITY_PROJECT_DEFS_CLIENT = [
+  {
+    id:    "public_works",
+    label: "Public Works Boost",
+    cost:  500,
+    desc:  "City Worker & Delivery Driver payouts +10% for 10 min",
+  },
+  {
+    id:    "transit_subsidy",
+    label: "Transit Subsidy",
+    cost:  400,
+    desc:  "Taxi Driver payouts +10% for 10 min",
+  },
+  {
+    id:    "emergency_funding",
+    label: "Emergency Services Funding",
+    cost:  600,
+    desc:  "Medic, Mechanic & Police Patrol payouts +10% for 10 min",
+  },
+] as const;
+
+export type CityProjectId = typeof CITY_PROJECT_DEFS_CLIENT[number]["id"];
+
 // ── Phase 8E: City Grant constants ────────────────────────────────────────────
 // MUST stay in sync with CITY_GRANT_* in api-server/src/socket/cityData.ts.
 

@@ -191,6 +191,10 @@ interface HUDProps {
    * next to the tax rate. Omitted until rp:cityConfig is first received.
    */
   cityBudget?: number;
+  /**
+   * Phase 8F: active city projects for the compact badge display.
+   */
+  cityProjects?: import("../shared/rpTypes").ActiveCityProject[];
 }
 
 // Phase accent colors. Used both by the clock chip and by the
@@ -722,6 +726,7 @@ export default function HUD({
   nearGovernmentOffice,
   cityTaxRate,
   cityBudget,
+  cityProjects,
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
@@ -2008,6 +2013,24 @@ export default function HUD({
             </div>
           )}
 
+          {/* Phase 8F: Active city project badges (all players) */}
+          {cityProjects && cityProjects.filter((p) => p.expiresAt > Date.now()).map((p) => (
+            <div
+              key={p.projectId}
+              style={{
+                background:    PANEL_BG,
+                border:        "1px solid rgba(51, 85, 204, 0.35)",
+                borderRadius:  PANEL_RADIUS,
+                padding:       "3px 8px",
+                fontSize:      11,
+                color:         "#6688cc",
+                letterSpacing: 0.3,
+              }}
+            >
+              🏗️ {p.label}
+            </div>
+          ))}
+
           {/* Phase 8D: City budget badge */}
           {cityBudget != null && (
             <div
@@ -2206,6 +2229,55 @@ export default function HUD({
                   {" "}· ${ cityBudget.toLocaleString()} available
                 </span>
               )}
+            </div>
+          </div>
+        )}
+
+        {/* Phase 8F: P key — City Project (Mayor only, near City Hall) */}
+        {nearGovernmentOffice &&
+          !inVehicle &&
+          factionType === "government" &&
+          (factionRank ?? 0) >= 4 && (
+          <div
+            style={{
+              position:       "absolute",
+              bottom:         256,
+              left:           "50%",
+              transform:      "translateX(-50%)",
+              display:        "flex",
+              alignItems:     "center",
+              gap:            10,
+              background:     "rgba(4,10,28,0.82)",
+              border:         "1px solid rgba(51, 85, 204, 0.35)",
+              borderRadius:   8,
+              padding:        "7px 16px",
+              pointerEvents:  "none",
+              whiteSpace:     "nowrap",
+            }}
+          >
+            <div
+              style={{
+                width:          26,
+                height:         26,
+                background:     "rgba(51,85,204,0.15)",
+                border:         "1px solid rgba(51,85,204,0.55)",
+                borderRadius:   5,
+                display:        "flex",
+                alignItems:     "center",
+                justifyContent: "center",
+                fontSize:       13,
+                fontWeight:     "bold",
+                color:          "#6688ff",
+                boxShadow:      "inset 0 -2px 0 rgba(51,85,204,0.3)",
+              }}
+            >
+              P
+            </div>
+            <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+              🏗️{" "}
+              <span style={{ color: "#6688ff", fontWeight: "bold" }}>
+                Fund City Project
+              </span>
             </div>
           </div>
         )}

@@ -105,7 +105,7 @@ import {
   POLICE_PATROL_ROUTE_COOLDOWN_MS,
 } from "../socket/cityData";
 import { isPolice, isMedic } from "./rpFactionHelpers";
-import { applyCityTax, addTaxRevenueTx, setCityBudgetInMemory } from "./rpGovernmentService";
+import { applyCityTax, applyCityProjectBonus, addTaxRevenueTx, setCityBudgetInMemory } from "./rpGovernmentService";
 
 // ── Context ────────────────────────────────────────────────────────────────────
 
@@ -643,10 +643,13 @@ async function handleCityWorkerCheckpoint(
 
   // ── Route complete — pay the player ─────────────────────────────────────
   // Fix 1: DB transaction FIRST; mutate state/entry/emit only after commit.
+  // Phase 8F: apply project bonus before tax.
+  const { boostedGrossPay: cwBoosted, bonusAmount: cwBonus, activeProjectLabel: cwProjectLabel } =
+    applyCityProjectBonus("city_worker", JOB_CITY_WORKER_PAY);
   const { grossPay: cwGross, taxRate: cwRate, taxAmount: cwTax, netPay: cwNet } =
-    applyCityTax(JOB_CITY_WORKER_PAY);
+    applyCityTax(cwBoosted);
   let newCash   = entry.cash;
-  let newBudget = 0; // Phase 8D: updated inside tx if tax > 0
+  let newBudget = 0;
   try {
     await db.transaction(async (tx) => {
       const [wallet] = await tx
@@ -670,7 +673,7 @@ async function handleCityWorkerCheckpoint(
         bankDelta: 0,
         cashAfter: newCash,
         bankAfter: wallet.bank,
-        note:      `City Worker route complete — gross=${cwGross} tax=${cwTax} net=${cwNet} rate=${cwRate}`,
+        note:      `City Worker route complete — base=${JOB_CITY_WORKER_PAY} bonus=${cwBonus} gross=${cwGross} tax=${cwTax} net=${cwNet} rate=${cwRate}${cwProjectLabel ? ` project=${cwProjectLabel}` : ""}`,
       });
 
       await tx
@@ -678,7 +681,6 @@ async function handleCityWorkerCheckpoint(
         .set({ onDuty: false, currentJob: null, lastPaycheckAt: new Date(now) })
         .where(eq(rpPlayers.id, entry.playerId));
 
-      // Phase 8D: accumulate tax revenue into city budget atomically.
       if (cwTax > 0) newBudget = await addTaxRevenueTx(tx, cwTax);
     });
   } catch (err) {
@@ -799,8 +801,10 @@ async function handleTaxiCheckpoint(
   }
 
   // ── Dropoff reached — pay the driver ──────────────────────────────────────
+  const { boostedGrossPay: taxiBoosted, bonusAmount: taxiBonus, activeProjectLabel: taxiProjectLabel } =
+    applyCityProjectBonus("taxi", state.taxiFare);
   const { grossPay: taxiGross, taxRate: taxiRate, taxAmount: taxiTax, netPay: taxiNet } =
-    applyCityTax(state.taxiFare);
+    applyCityTax(taxiBoosted);
   let newCash   = entry.cash;
   let newBudget = 0;
   try {
@@ -826,7 +830,7 @@ async function handleTaxiCheckpoint(
         bankDelta: 0,
         cashAfter: newCash,
         bankAfter: wallet.bank,
-        note:      `Taxi Driver fare — gross=${taxiGross} tax=${taxiTax} net=${taxiNet} rate=${taxiRate}`,
+        note:      `Taxi Driver fare — base=${state.taxiFare} bonus=${taxiBonus} gross=${taxiGross} tax=${taxiTax} net=${taxiNet} rate=${taxiRate}${taxiProjectLabel ? ` project=${taxiProjectLabel}` : ""}`,
       });
 
       await tx
@@ -1055,8 +1059,10 @@ async function handleDeliveryCheckpoint(
   }
 
   // ── Final stop — pay atomically ───────────────────────────────────────────
+  const { boostedGrossPay: delBoosted, bonusAmount: delBonus, activeProjectLabel: delProjectLabel } =
+    applyCityProjectBonus("delivery", state.deliveryPay!);
   const { grossPay: delGross, taxRate: delRate, taxAmount: delTax, netPay: delNet } =
-    applyCityTax(state.deliveryPay!);
+    applyCityTax(delBoosted);
   let newCash   = entry.cash;
   let newBudget = 0;
   try {
@@ -1082,7 +1088,7 @@ async function handleDeliveryCheckpoint(
         bankDelta: 0,
         cashAfter: newCash,
         bankAfter: wallet.bank,
-        note:      `Delivery Driver route complete (${state.deliveryDropoffs?.length ?? 0} stops) — gross=${delGross} tax=${delTax} net=${delNet} rate=${delRate}`,
+        note:      `Delivery Driver route complete (${state.deliveryDropoffs?.length ?? 0} stops) — base=${state.deliveryPay} bonus=${delBonus} gross=${delGross} tax=${delTax} net=${delNet} rate=${delRate}${delProjectLabel ? ` project=${delProjectLabel}` : ""}`,
       });
 
       await tx
@@ -1344,8 +1350,10 @@ async function handleMechanicCheckpoint(
   }
 
   // ── Timer elapsed — pay atomically ───────────────────────────────────────────
+  const { boostedGrossPay: mechBoosted, bonusAmount: mechBonus, activeProjectLabel: mechProjectLabel } =
+    applyCityProjectBonus("mechanic", state.mechanicPay!);
   const { grossPay: mechGross, taxRate: mechRate, taxAmount: mechTax, netPay: mechNet } =
-    applyCityTax(state.mechanicPay!);
+    applyCityTax(mechBoosted);
   let newCash   = entry.cash;
   let newBudget = 0;
   try {
@@ -1371,7 +1379,7 @@ async function handleMechanicCheckpoint(
         bankDelta: 0,
         cashAfter: newCash,
         bankAfter: wallet.bank,
-        note:      `Mechanic service call complete — gross=${mechGross} tax=${mechTax} net=${mechNet} rate=${mechRate}`,
+        note:      `Mechanic service call complete — base=${state.mechanicPay} bonus=${mechBonus} gross=${mechGross} tax=${mechTax} net=${mechNet} rate=${mechRate}${mechProjectLabel ? ` project=${mechProjectLabel}` : ""}`,
       });
 
       await tx
@@ -1675,8 +1683,10 @@ async function handleMedicCheckpoint(
   const erdz = drivenVehicle.z - erz;
   if (erdx * erdx + erdz * erdz > radiusSq) return; // not at ER yet
 
+  const { boostedGrossPay: medicBoosted, bonusAmount: medicBonus, activeProjectLabel: medicProjectLabel } =
+    applyCityProjectBonus("medic", state.medicPay!);
   const { grossPay: medicGross, taxRate: medicRate, taxAmount: medicTax, netPay: medicNet } =
-    applyCityTax(state.medicPay!);
+    applyCityTax(medicBoosted);
   let newCash   = entry.cash;
   let newBudget = 0;
   try {
@@ -1702,7 +1712,7 @@ async function handleMedicCheckpoint(
         bankDelta: 0,
         cashAfter: newCash,
         bankAfter: wallet.bank,
-        note:      `Paramedic run complete (patient delivered to ER) — gross=${medicGross} tax=${medicTax} net=${medicNet} rate=${medicRate}`,
+        note:      `Paramedic run complete (patient delivered to ER) — base=${state.medicPay} bonus=${medicBonus} gross=${medicGross} tax=${medicTax} net=${medicNet} rate=${medicRate}${medicProjectLabel ? ` project=${medicProjectLabel}` : ""}`,
       });
 
       await tx
@@ -1966,8 +1976,10 @@ async function handlePolicePatrolCheckpoint(
   }
 
   // ── Final patrol point — pay atomically ──────────────────────────────────
+  const { boostedGrossPay: patrolBoosted, bonusAmount: patrolBonus, activeProjectLabel: patrolProjectLabel } =
+    applyCityProjectBonus("police_patrol", state.policePatrolPay!);
   const { grossPay: patrolGross, taxRate: patrolRate, taxAmount: patrolTax, netPay: patrolNet } =
-    applyCityTax(state.policePatrolPay!);
+    applyCityTax(patrolBoosted);
   let newCash   = entry.cash;
   let newBudget = 0;
   try {
@@ -1993,7 +2005,7 @@ async function handlePolicePatrolCheckpoint(
         bankDelta: 0,
         cashAfter: newCash,
         bankAfter: wallet.bank,
-        note:      `Police Patrol route complete — gross=${patrolGross} tax=${patrolTax} net=${patrolNet} rate=${patrolRate}`,
+        note:      `Police Patrol route complete — base=${state.policePatrolPay} bonus=${patrolBonus} gross=${patrolGross} tax=${patrolTax} net=${patrolNet} rate=${patrolRate}${patrolProjectLabel ? ` project=${patrolProjectLabel}` : ""}`,
       });
 
       await tx

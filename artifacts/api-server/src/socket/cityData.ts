@@ -751,3 +751,45 @@ export const MAYOR_GRANT_COOLDOWN_MS = 30_000;
 
 /** Maximum characters in a grant note (server-validated). */
 export const CITY_GRANT_NOTE_MAX_CHARS = 120;
+
+// ── Phase 8F: City Project Funding ────────────────────────────────────────────
+
+/** Duration of each funded city project: 10 minutes. */
+export const CITY_PROJECT_DURATION_MS = 10 * 60 * 1_000;
+
+/** Gross pay bonus rate applied by an active project (+10%). */
+export const CITY_PROJECT_BONUS_RATE = 0.1;
+
+/**
+ * Static project catalogue.  The server is authoritative for costs, durations,
+ * and job slug coverage; the client mirrors these values for UI only.
+ */
+export const CITY_PROJECT_DEFS: ReadonlyArray<{
+  readonly id:       string;
+  readonly label:    string;
+  readonly cost:     number;
+  readonly desc:     string;
+  readonly jobSlugs: ReadonlyArray<string>;
+}> = [
+  {
+    id:       "public_works",
+    label:    "Public Works Boost",
+    cost:     500,
+    desc:     "City Worker and Delivery Driver payouts +10% for 10 min",
+    jobSlugs: ["city_worker", "delivery"],
+  },
+  {
+    id:       "transit_subsidy",
+    label:    "Transit Subsidy",
+    cost:     400,
+    desc:     "Taxi Driver payouts +10% for 10 min",
+    jobSlugs: ["taxi"],
+  },
+  {
+    id:       "emergency_funding",
+    label:    "Emergency Services Funding",
+    cost:     600,
+    desc:     "Medic, Mechanic, and Police Patrol payouts +10% for 10 min",
+    jobSlugs: ["medic", "mechanic", "police_patrol"],
+  },
+];

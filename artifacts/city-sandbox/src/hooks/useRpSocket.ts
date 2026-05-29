@@ -15,7 +15,7 @@
 
 import { useEffect, useState, useCallback } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject } from "../shared/rpTypes";
 import { canDriveVehicleClient, GROVE_TAG_COOLDOWN_MS, CITY_TAX_DEFAULT } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
@@ -129,20 +129,21 @@ export function useRpSocket(socket: Socket | null) {
     taxRate:       CITY_TAX_DEFAULT,
     updatedAt:     0,
     updatedByName: null,
-    cityBudget:    0,         // Phase 8D: accumulated tax revenue
+    cityBudget:    0,
   });
+
+  /** Phase 8F: Active city projects broadcast by rp:cityProjects. */
+  const [cityProjects, setCityProjects] = useState<ActiveCityProject[]>([]);
 
   useEffect(() => {
     if (!socket) return;
 
     const onProfile = (data: RpProfile) => {
       setRpProfile({ ...data, ownedVehicles: data.ownedVehicles ?? [] });
-      // Phase 8B: Request city config after the RP join path is ready.
-      // Emitting here (rather than at listener-attach time) guarantees that
-      // setupRpHandlers has already registered rp:getCityConfig on the server
-      // and that the server-side RP cache entry exists, so late-joining
-      // players always receive the current tax rate, not just the default.
+      // Phase 8B: Request city config after RP join path is ready.
       socket.emit("rp:getCityConfig");
+      // Phase 8F: Request active city projects at the same time.
+      socket.emit("rp:getCityProjects");
     };
 
     const onProfileUpdate = (data: Partial<RpProfile>) => {
@@ -327,11 +328,18 @@ export function useRpSocket(socket: Socket | null) {
     // or whenever the Mayor changes the rate.
     // Guard incoming values: reject NaN/Infinity for taxRate, negative for cityBudget.
     const onCityConfig = (data: CityConfig) => {
-      const taxRate = Number.isFinite(data.taxRate) ? data.taxRate : CITY_TAX_DEFAULT;
+      const taxRate    = Number.isFinite(data.taxRate) ? data.taxRate : CITY_TAX_DEFAULT;
       const cityBudget = Number.isSafeInteger(data.cityBudget) && data.cityBudget >= 0
         ? data.cityBudget
         : 0;
       setCityConfig({ ...data, taxRate, cityBudget });
+    };
+
+    // Phase 8F: rp:cityProjects — server broadcasts active project list.
+    // Prune expired projects client-side as a defence-in-depth measure.
+    const onCityProjects = (data: { projects: ActiveCityProject[] }) => {
+      const nowMs = Date.now();
+      setCityProjects((data.projects ?? []).filter((p) => p.expiresAt > nowMs));
     };
 
     // Phase 7A: rp:factionChat — a faction member sent a message.
@@ -378,6 +386,7 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:gangTerritoryStatus",  onGangTerritoryStatus);
     socket.on("rp:cityAnnounce",         onCityAnnounce);
     socket.on("rp:cityConfig",           onCityConfig);
+    socket.on("rp:cityProjects",         onCityProjects);
 
     return () => {
       socket.off("rp:profile",              onProfile);
@@ -407,6 +416,7 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:gangTerritoryStatus",  onGangTerritoryStatus);
       socket.off("rp:cityAnnounce",         onCityAnnounce);
       socket.off("rp:cityConfig",           onCityConfig);
+      socket.off("rp:cityProjects",         onCityProjects);
     };
   }, [socket]);
 
@@ -714,6 +724,16 @@ export function useRpSocket(socket: Socket | null) {
       (targetSocketId: string, amount: number, note: string) => {
         socket?.emit("rp:cityGrant", { targetSocketId, amount, note });
       },
+      [socket],
+    ),
+    /** Phase 8F: Active city projects broadcast by rp:cityProjects. */
+    cityProjects,
+    emitGetCityProjects: useCallback(
+      () => { socket?.emit("rp:getCityProjects"); },
+      [socket],
+    ),
+    emitCityProjectFund: useCallback(
+      (projectId: string) => { socket?.emit("rp:cityProjectFund", { projectId }); },
       [socket],
     ),
   };

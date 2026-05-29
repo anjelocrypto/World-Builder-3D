@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject } from "../shared/rpTypes";
 import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS, GOVERNMENT_OFFICE_POS, GOVERNMENT_OFFICE_RADIUS, MAYOR_MIN_RANK } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
@@ -21,6 +21,7 @@ import { GangMissionHUD } from "./GangMissionHUD";
 import CityAnnouncementHUD from "./CityAnnouncementHUD";
 import CityTaxHUD from "./CityTaxHUD";
 import CityBudgetHUD, { type GrantablePlayer } from "./CityBudgetHUD";
+import CityProjectsHUD from "./CityProjectsHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -170,6 +171,10 @@ interface GameSceneProps {
   emitSetTaxRate: (rate: number) => void;
   /** Phase 8E: Emit rp:cityGrant — Mayor sends a cash grant to an online player. */
   emitCityGrant: (targetSocketId: string, amount: number, note: string) => void;
+  /** Phase 8F: Active city projects from useRpSocket. */
+  cityProjects: ActiveCityProject[];
+  /** Phase 8F: Emit rp:cityProjectFund — Mayor activates a city project. */
+  emitCityProjectFund: (projectId: string) => void;
 }
 
 export default function GameScene({
@@ -236,6 +241,8 @@ export default function GameScene({
   cityConfig,
   emitSetTaxRate,
   emitCityGrant,
+  cityProjects,
+  emitCityProjectFund,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -309,6 +316,10 @@ export default function GameScene({
   const [showCityBudgetHUD, setShowCityBudgetHUD] = useState(false);
   const showCityBudgetHUDRef = useRef(showCityBudgetHUD);
   showCityBudgetHUDRef.current = showCityBudgetHUD;
+  // Phase 8F: City Projects HUD visibility (P key at Government Office, Mayor only).
+  const [showCityProjectsHUD, setShowCityProjectsHUD] = useState(false);
+  const showCityProjectsHUDRef = useRef(showCityProjectsHUD);
+  showCityProjectsHUDRef.current = showCityProjectsHUD;
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -462,6 +473,7 @@ export default function GameScene({
         e.code !== "KeyE" &&  // Phase 8A: E at Gov Office for Mayor city announcement
         e.code !== "KeyT" &&  // Phase 8B: T at Gov Office for Mayor tax rate
         e.code !== "KeyB" &&  // Phase 8E: B at Gov Office for Mayor city grant
+        e.code !== "KeyP" &&  // Phase 8F: P at Gov Office for Mayor city project
         e.code !== "F7"
       ) return;
       // Ignore key-repeat (held key firing continuously).
@@ -482,8 +494,9 @@ export default function GameScene({
         showFactionAdminRef.current ||
         showGangHUDRef.current ||
         showCityAnnouncementHUDRef.current ||
-        showCityTaxHUDRef.current ||
-        showCityBudgetHUDRef.current;
+        showCityTaxHUDRef.current     ||
+        showCityBudgetHUDRef.current  ||
+        showCityProjectsHUDRef.current;
 
       // Phase 7C: F7 toggles faction admin panel (dev-only).
       // Opens only when no other modal is open; always allowed to close itself.
@@ -548,6 +561,19 @@ export default function GameScene({
         }
         if (!anyModalOpen && isMayorRef.current && nearGovOfficeRef.current) {
           setShowCityBudgetHUD(true);
+          return;
+        }
+        return;
+      }
+
+      // Phase 8F: P at Government Office — Mayor opens City Project Funding panel.
+      if (e.code === "KeyP") {
+        if (showCityProjectsHUDRef.current) {
+          setShowCityProjectsHUD(false);
+          return;
+        }
+        if (!anyModalOpen && isMayorRef.current && nearGovOfficeRef.current) {
+          setShowCityProjectsHUD(true);
           return;
         }
         return;
@@ -1031,6 +1057,7 @@ export default function GameScene({
         nearGovernmentOffice={nearGovernmentOffice}
         cityTaxRate={cityConfig.taxRate}
         cityBudget={cityConfig.cityBudget}
+        cityProjects={cityProjects}
       />
 
       {/* Phase 7A: Faction chat panel */}
@@ -1101,6 +1128,16 @@ export default function GameScene({
         <CityAnnouncementHUD
           onSend={emitCityAnnounce}
           onClose={() => setShowCityAnnouncementHUD(false)}
+        />
+      )}
+
+      {/* Phase 8F: City Projects panel (Mayor only, near Gov Office, P key) */}
+      {showCityProjectsHUD && (
+        <CityProjectsHUD
+          currentBudget={cityConfig.cityBudget}
+          activeProjects={cityProjects}
+          onFund={emitCityProjectFund}
+          onClose={() => setShowCityProjectsHUD(false)}
         />
       )}
 

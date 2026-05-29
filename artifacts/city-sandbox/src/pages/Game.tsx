@@ -79,6 +79,8 @@ export default function Game({ username }: GameProps) {
     cityConfig,
     emitSetTaxRate,
     emitCityGrant,
+    cityProjects,
+    emitCityProjectFund,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -173,6 +175,8 @@ export default function Game({ username }: GameProps) {
       cityConfig={cityConfig}
       emitSetTaxRate={emitSetTaxRate}
       emitCityGrant={emitCityGrant}
+      cityProjects={cityProjects}
+      emitCityProjectFund={emitCityProjectFund}
     />
   );
 }

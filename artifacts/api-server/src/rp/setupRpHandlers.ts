@@ -44,6 +44,8 @@ import {
   handleGetCityConfig,
   handleSetTaxRate,
   handleCityGrant,
+  handleGetCityProjects,
+  handleCityProjectFund,
 } from "./rpGovernmentService";
 import {
   handleFactionChat,
@@ -555,6 +557,30 @@ export function setupRpHandlers(
     handleSetTaxRate(socket, ctx, data).catch((err) => {
       logger.error({ err, socketId: socket.id }, "[rp] handleSetTaxRate threw");
       socket.emit("rp:toast", { msg: "Server error — tax rate not updated.", color: "red", duration: 4000 });
+    });
+  });
+
+  // ── rp:getCityProjects ────────────────────────────────────────────────────
+  // Phase 8F: Any connected player may request the current active project list.
+  // Read-only; no auth check. Emits rp:cityProjects back to requesting socket.
+  socket.on("rp:getCityProjects", () => {
+    try {
+      handleGetCityProjects(socket);
+    } catch (err) {
+      logger.error({ err, socketId: socket.id }, "[rp] handleGetCityProjects threw");
+    }
+  });
+
+  // ── rp:cityProjectFund ────────────────────────────────────────────────────
+  // Phase 8F: Mayor funds a city project by spending the city budget.
+  // Server validates: Mayor authority, not jailed/cuffed, City Hall proximity,
+  // known projectId, project not already active, sufficient budget.
+  // DB-first: spendCityBudgetTx in transaction. On commit: activate project,
+  // broadcast rp:cityConfig + rp:cityProjects. No memory update on failure.
+  socket.on("rp:cityProjectFund", (data: unknown) => {
+    handleCityProjectFund(socket, ctx, data).catch((err) => {
+      logger.error({ err, socketId: socket.id }, "[rp] handleCityProjectFund threw");
+      socket.emit("rp:toast", { msg: "Server error — project not funded.", color: "red", duration: 4000 });
     });
   });
 

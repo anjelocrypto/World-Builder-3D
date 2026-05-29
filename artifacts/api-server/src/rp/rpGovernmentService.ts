@@ -54,6 +54,9 @@ import {
   CITY_GRANT_MAX,
   MAYOR_GRANT_COOLDOWN_MS,
   CITY_GRANT_NOTE_MAX_CHARS,
+  CITY_PROJECT_DEFS,
+  CITY_PROJECT_DURATION_MS,
+  CITY_PROJECT_BONUS_RATE,
 } from "../socket/cityData";
 import { isMayor } from "./rpFactionHelpers";
 import { logger } from "../lib/logger";
@@ -116,6 +119,65 @@ let cityBudget: number = 0;
 // addTaxRevenueTx can be called inside existing job payout transactions without
 // importing Drizzle internals.
 type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
+// ── Phase 8F: Active city project state ───────────────────────────────────────
+// In-memory only — projects reset on server restart.  Persisting to DB is a
+// future phase concern; for now rp_city_config stores only budget.
+
+interface ActiveProjectEntry {
+  projectId: string;
+  label:     string;
+  expiresAt: number; // Unix ms
+}
+
+/** Map of projectId → running project. */
+const activeCityProjects = new Map<string, ActiveProjectEntry>();
+
+/** Remove expired projects. Call before any read or payout bonus check. */
+function pruneExpiredProjects(): void {
+  const nowMs = Date.now();
+  for (const [id, proj] of activeCityProjects.entries()) {
+    if (proj.expiresAt <= nowMs) activeCityProjects.delete(id);
+  }
+}
+
+/** Build the rp:cityProjects broadcast payload from current in-memory state. */
+function buildProjectsPayload(): { projects: ActiveProjectEntry[] } {
+  pruneExpiredProjects();
+  return { projects: Array.from(activeCityProjects.values()) };
+}
+
+// ── applyCityProjectBonus (Phase 8F) ──────────────────────────────────────────
+
+/**
+ * Apply any active city project bonus to a gross pay amount.
+ * Must be called BEFORE applyCityTax so tax is computed on the boosted gross.
+ *
+ * Returns the boosted gross, the bonus amount (0 if no project applies), and
+ * the label of the active project (for transaction log notes).
+ */
+export function applyCityProjectBonus(
+  jobSlug:  string,
+  grossPay: number,
+): {
+  grossPay:           number;
+  bonusAmount:        number;
+  boostedGrossPay:    number;
+  activeProjectLabel: string | null;
+} {
+  pruneExpiredProjects();
+
+  for (const proj of activeCityProjects.values()) {
+    const def = CITY_PROJECT_DEFS.find((d) => d.id === proj.projectId);
+    if (def && (def.jobSlugs as readonly string[]).includes(jobSlug)) {
+      const bonusAmount     = Math.floor(grossPay * CITY_PROJECT_BONUS_RATE);
+      const boostedGrossPay = grossPay + bonusAmount;
+      return { grossPay, bonusAmount, boostedGrossPay, activeProjectLabel: proj.label };
+    }
+  }
+
+  return { grossPay, bonusAmount: 0, boostedGrossPay: grossPay, activeProjectLabel: null };
+}
 
 // ── parseStrictNonNegInt ──────────────────────────────────────────────────────
 
@@ -554,6 +616,151 @@ export async function handleCityGrant(
     msg:      `$${amount} granted to ${targetName}. Budget remaining: $${newBudget.toLocaleString()}`,
     color:    "green",
     duration: 5000,
+  });
+}
+
+// ── handleGetCityProjects (Phase 8F) ─────────────────────────────────────────
+
+/**
+ * rp:getCityProjects — Any connected player may request active project list.
+ * No auth check; read-only in-memory state only.
+ */
+export function handleGetCityProjects(socket: Socket): void {
+  socket.emit("rp:cityProjects", buildProjectsPayload());
+}
+
+// ── handleCityProjectFund (Phase 8F) ──────────────────────────────────────────
+
+/**
+ * rp:cityProjectFund — Mayor activates a city project by spending the budget.
+ *
+ * Authority checks (all server-side):
+ *   1. Mayor (government faction + rank >= MAYOR_MIN_RANK).
+ *   2. Not jailed.  Not cuffed.
+ *   3. Within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_POS.
+ *   4. projectId must match a known CITY_PROJECT_DEFS entry.
+ *   5. Project must not already be active (after pruning expired).
+ *   6. Sufficient city budget (soft in-memory check + hard DB check).
+ *
+ * DB-first: spendCityBudgetTx inside a transaction.
+ * After commit only: setCityBudgetInMemory, activate project in-memory,
+ * broadcast rp:cityConfig + rp:cityProjects.
+ * On failure: no memory update, no project activation.
+ */
+export async function handleCityProjectFund(
+  socket: Socket,
+  ctx:    LicenseContext,
+  data:   unknown,
+): Promise<void> {
+  const entry = ctx.rpCache.get(socket.id);
+  if (!entry) return;
+
+  // ── Guard 1: Mayor ────────────────────────────────────────────────────────
+  if (!isMayor(entry)) {
+    socket.emit("rp:toast", { msg: "Only the Mayor can fund city projects.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 2: not jailed ───────────────────────────────────────────────────
+  if (entry.jailUntil && entry.jailUntil > new Date()) {
+    socket.emit("rp:toast", { msg: "You cannot do that while jailed.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 3: not cuffed ───────────────────────────────────────────────────
+  if (entry.cuffedBy) {
+    socket.emit("rp:toast", { msg: "You cannot do that while cuffed.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 4: City Hall proximity ──────────────────────────────────────────
+  const playerState = ctx.players.get(socket.id);
+  if (!playerState) return;
+
+  const [gx, , gz] = GOVERNMENT_OFFICE_POS;
+  const dxg = playerState.x - gx;
+  const dzg = playerState.z - gz;
+  if (Math.sqrt(dxg * dxg + dzg * dzg) > GOVERNMENT_OFFICE_RADIUS) {
+    socket.emit("rp:toast", { msg: "Visit City Hall to fund city projects.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Parse payload ─────────────────────────────────────────────────────────
+  const raw       = data as Record<string, unknown> | null | undefined;
+  const projectId = typeof raw?.projectId === "string" ? raw.projectId.trim() : "";
+
+  // ── Validate project id ───────────────────────────────────────────────────
+  const def = CITY_PROJECT_DEFS.find((d) => d.id === projectId);
+  if (!def) {
+    socket.emit("rp:toast", { msg: "Unknown project.", color: "yellow", duration: 3000 });
+    return;
+  }
+
+  // ── Check not already active ──────────────────────────────────────────────
+  pruneExpiredProjects();
+  if (activeCityProjects.has(projectId)) {
+    socket.emit("rp:toast", {
+      msg:      `${def.label} is already active.`,
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // ── Soft budget check (in-memory; hard check is in DB) ────────────────────
+  if (cityBudget < def.cost) {
+    socket.emit("rp:toast", {
+      msg:      `Insufficient city budget ($${cityBudget.toLocaleString()} available, $${def.cost} needed).`,
+      color:    "red",
+      duration: 4000,
+    });
+    return;
+  }
+
+  // ── DB-first: spend city budget ───────────────────────────────────────────
+  let newBudget = 0;
+  try {
+    await db.transaction(async (tx) => {
+      newBudget = await spendCityBudgetTx(tx, def.cost);
+    });
+  } catch (err) {
+    if (err instanceof InsufficientBudgetError) {
+      socket.emit("rp:toast", {
+        msg:      `Insufficient city budget ($${err.available.toLocaleString()} available).`,
+        color:    "red",
+        duration: 4000,
+      });
+      return;
+    }
+    logger.error({ err, socketId: socket.id }, "[rpGov] handleCityProjectFund: DB failed");
+    socket.emit("rp:toast", { msg: "Project funding failed — try again.", color: "red", duration: 4000 });
+    return;
+  }
+
+  // ── DB committed — activate project in memory ─────────────────────────────
+  const expiresAt = Date.now() + CITY_PROJECT_DURATION_MS;
+  setCityBudgetInMemory(newBudget);
+  activeCityProjects.set(projectId, { projectId, label: def.label, expiresAt });
+
+  const mayorName = ctx.players.get(socket.id)?.username ?? "Mayor";
+  logger.info(
+    { socketId: socket.id, mayorName, projectId, cost: def.cost, newBudget, expiresAt },
+    "[rpGov] city project funded",
+  );
+
+  // Broadcast updated budget + active projects to all clients.
+  ctx.io.emit("rp:cityConfig", {
+    taxRate:       cityTaxRate,
+    updatedAt:     taxRateUpdatedAt > 0 ? taxRateUpdatedAt : Date.now(),
+    updatedByName: taxRateUpdatedByName,
+    cityBudget:    newBudget,
+  });
+  ctx.io.emit("rp:cityProjects", buildProjectsPayload());
+
+  socket.emit("rp:toast", {
+    msg:      `${def.label} is now active for 10 minutes! Cost: $${def.cost}`,
+    color:    "green",
+    duration: 6000,
   });
 }
 
