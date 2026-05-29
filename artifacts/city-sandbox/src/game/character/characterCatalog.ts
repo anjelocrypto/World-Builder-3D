@@ -58,6 +58,22 @@ export interface CharacterDef {
   /** One-shot attack clip keys (triggered by attackSeq, not animState). */
   attackLightKey: string;
   attackHeavyKey: string;
+  /**
+   * Per-character attack clip durations (ms) — MUST match the real GLB clip
+   * lengths so the animation-state window and the visual one-shot agree. Used
+   * for the attack display window, the combo timing, and the queued-heavy
+   * release. (Classic light=fight1 2.50s / heavy=fight2 6.87s; Simple
+   * light=punch-combo 5.70s / heavy=leg-kick 2.73s.)
+   */
+  attackLightMs: number;
+  attackHeavyMs: number;
+  /**
+   * Optional playback rate for the walk locomotion clip. When a character has
+   * no dedicated walk clip and reuses a fast run clip for walking (Simple),
+   * this slows it so walking doesn't look twitchy. Omit → 1 (Classic has a
+   * real walk clip and needs no rescale).
+   */
+  walkTimeScale?: number;
   /** Uniform scale applied to the rendered group (rig sizing). */
   scale: number;
 }
@@ -78,6 +94,8 @@ const CLASSIC: CharacterDef = {
   locomotion: { idle: "idle", walk: "walk", run: "run" },
   attackLightKey: "fight1",
   attackHeavyKey: "fight2",
+  attackLightMs: 2500, // fight1.glb = 2.50s
+  attackHeavyMs: 6870, // fight2.glb = 6.87s
   scale: 1,
 };
 
@@ -109,6 +127,11 @@ const SIMPLE: CharacterDef = {
   airborneKey: "jump",
   attackLightKey: "punch",
   attackHeavyKey: "kick",
+  attackLightMs: 5700, // simple-punch-combo-1.glb = 5.70s
+  attackHeavyMs: 2730, // simple-leg-kick.glb = 2.73s
+  // Simple has no dedicated walk clip and reuses the 0.5s run clip; slow it
+  // to ~60% so walking doesn't look twitchy/sprinty.
+  walkTimeScale: 0.6,
   scale: 1,
 };
 
@@ -126,6 +149,11 @@ export const CHARACTER_IDS: ReadonlyArray<CharacterId> = ["classic", "simple"];
 /** Coerce any incoming value to a valid CharacterId (defaults to classic). */
 export function normalizeCharacterId(v: unknown): CharacterId {
   return v === "simple" || v === "classic" ? v : DEFAULT_CHARACTER;
+}
+
+/** Per-character attack clip duration (ms) for a given kind. */
+export function attackDurationMs(def: CharacterDef, kind: "light" | "heavy"): number {
+  return kind === "heavy" ? def.attackHeavyMs : def.attackLightMs;
 }
 
 /** Which looping clip key a locomotion state maps to for a character. */

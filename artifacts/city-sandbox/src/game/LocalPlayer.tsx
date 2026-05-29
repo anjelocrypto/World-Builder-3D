@@ -68,13 +68,14 @@ import { CarVisual } from "./VehicleObject";
 import CharacterAvatar, {
   type CharacterRuntime,
 } from "./character/CharacterAvatar";
-import type { CharacterId } from "./character/characterCatalog";
+import {
+  CHARACTERS,
+  DEFAULT_CHARACTER,
+  attackDurationMs,
+  type CharacterId,
+} from "./character/characterCatalog";
 import {
   resolveAnimState,
-  ATTACK_LIGHT_COOLDOWN_MS,
-  ATTACK_HEAVY_COOLDOWN_MS,
-  ATTACK_LIGHT_DURATION_MS,
-  ATTACK_HEAVY_DURATION_MS,
 } from "./character/characterState";
 
 export enum Controls {
@@ -290,6 +291,14 @@ export default function LocalPlayer({
 }: LocalPlayerProps) {
   const { camera, gl } = useThree();
   const [, getKeys] = useKeyboardControls<Controls>();
+
+  // Phase: per-character animation timing. Attack clip durations differ per
+  // character (Classic fight1/fight2 vs Simple punch/kick), so cooldowns,
+  // combo windows, and the queued-heavy release all read from the selected
+  // character's def instead of the old Classic-only globals.
+  const charDef = CHARACTERS[characterId ?? DEFAULT_CHARACTER] ?? CHARACTERS[DEFAULT_CHARACTER];
+  const attackLightDurMs = attackDurationMs(charDef, "light");
+  const attackHeavyDurMs = attackDurationMs(charDef, "heavy");
 
   // Prefer the authoritative server spawn (from gameState.players[myId]).
   // Fall back to a deterministic offline pick if the server didn't send one.
@@ -548,7 +557,7 @@ export default function LocalPlayer({
       attackKindRef.current === "light"
     ) {
       const elapsed = now - attackStartedAtRef.current;
-      if (elapsed >= ATTACK_LIGHT_DURATION_MS) {
+      if (elapsed >= attackLightDurMs) {
         fightQueuedRef.current = false;
         // Bypass the heavy cooldown — this is the queued combo follow-up
         // the player explicitly asked for, not a fresh standalone heavy.
@@ -1031,7 +1040,7 @@ export default function LocalPlayer({
     // and vice versa. Each kind has its own timer.
     const lastRef = kind === "heavy" ? lastHeavyAtRef : lastLightAtRef;
     const cd =
-      kind === "heavy" ? ATTACK_HEAVY_COOLDOWN_MS : ATTACK_LIGHT_COOLDOWN_MS;
+      kind === "heavy" ? attackHeavyDurMs : attackLightDurMs;
     if (tNow - lastRef.current < cd) return;
     lastRef.current = tNow;
     attackSeqRef.current += 1;
@@ -1050,8 +1059,8 @@ export default function LocalPlayer({
     if (startedAt !== null && attackKindRef.current !== null) {
       const dur =
         attackKindRef.current === "heavy"
-          ? ATTACK_HEAVY_DURATION_MS
-          : ATTACK_LIGHT_DURATION_MS;
+          ? attackHeavyDurMs
+          : attackLightDurMs;
       const elapsed = tNow - startedAt;
       if (elapsed < dur) {
         if (attackKindRef.current === "light") {
@@ -1259,6 +1268,8 @@ export default function LocalPlayer({
       grounded: isGrounded.current,
       velY: vel.current.y,
       horizSpeed,
+      attackDurationMs:
+        attackKindRef.current === "heavy" ? attackHeavyDurMs : attackLightDurMs,
     });
     const runtime = avatarRuntimeRef.current;
     runtime.animState = animState;

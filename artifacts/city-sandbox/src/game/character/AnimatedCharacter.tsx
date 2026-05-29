@@ -37,12 +37,17 @@ interface AnimatedCharacterProps {
  * extra clip GLB, clones the base skinned mesh, and binds all clips to one
  * mixer (the rigs within a character share a skeleton, so the clips
  * re-target cleanly). State → clip mapping comes from the catalog:
- *   idle/walk/run → looped locomotion clip
- *   jump/fall/driving → fall back to idle pose
+ *   idle/walk/run → looped locomotion clip (walk may be time-scaled, e.g.
+ *                   Simple reuses its run clip slowed for walking)
+ *   jump/fall     → the character's airborneKey clip when defined (Simple),
+ *                   else fall back to the idle pose (Classic)
+ *   driving       → idle pose
  *   attack_light/attack_heavy → one-shot clip played over the locomotion loop
  *
  * One-shot attacks are triggered by attackSeq strict-increment (NOT by
  * animState) so a queued second attack fires the moment its seq bump arrives.
+ * They are faded out as soon as animState leaves the attack window, so the
+ * character returns to walk/run smoothly instead of holding the swing pose.
  *
  * NOTE: hooks must run unconditionally, so this component is keyed by
  * characterId at the call site (CharacterAvatar) — a character change
@@ -149,12 +154,35 @@ export default function AnimatedCharacter({
       }
     }
 
+    // --- Cancel a still-playing attack as soon as the STATE leaves the attack
+    // window. The state machine (resolveAnimState) drops attack_* the moment
+    // the player moves past the min display window; without this the one-shot
+    // attack action would keep playing (and dominate) until the clip's own
+    // `finished` event, leaving the character visually stuck mid-swing while
+    // walking. Fading it here hands locomotion back cleanly.
+    if (
+      activeAttackRef.current &&
+      r.animState !== "attack_light" &&
+      r.animState !== "attack_heavy"
+    ) {
+      activeAttackRef.current.fadeOut(FADE);
+      activeAttackRef.current = null;
+    }
+
     // --- Locomotion loop selection ---
     const target = locomotionClipKey(def, r.animState);
     if (currentLocoRef.current !== target) {
       const next = actions[target];
       const prev = currentLocoRef.current ? actions[currentLocoRef.current] : null;
-      if (next) next.reset().fadeIn(FADE).play();
+      if (next) {
+        next.reset();
+        // Simple has no walk clip and reuses the fast run clip for walking;
+        // slow it via the per-character walkTimeScale so walking doesn't look
+        // sprinty. All other states play at native rate.
+        next.timeScale =
+          r.animState === "walk" && def.walkTimeScale ? def.walkTimeScale : 1;
+        next.fadeIn(FADE).play();
+      }
       if (prev && prev !== next) prev.fadeOut(FADE);
       currentLocoRef.current = target;
     }
