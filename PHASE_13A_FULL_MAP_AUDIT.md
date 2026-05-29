@@ -1,8 +1,9 @@
 # Phase 13A — Full World Map Structure & Placement Audit
 
-**Audit only. No coordinates, data, or code changed.** All findings below are computed
-(seeded building generator replicated exactly; distances/overlaps calculated in code), not
-eyeballed. Stop-after-report — awaiting approval and batch selection.
+**Originally an audit-only report.** All findings below are computed (seeded building generator
+replicated exactly; distances/overlaps calculated in code), not eyeballed. **Status:** Batch A
+(§8), the post-audit house relocation (§9–§10), and Batch B full-map validators (§11) are now
+implemented and verified; Batches C–F remain pending approval.
 
 ---
 
@@ -203,15 +204,19 @@ overlap. No action.
 
 ---
 
-## 6. Fix Plan (for approval — nothing implemented)
+## 6. Fix Plan (Batch A & B implemented; C–F pending approval)
 
-- **Batch A — P0/P1 hard geometry.** Resolve §5.1: filter `GENERATED_BUILDINGS` against RP-building
-  footprints (or add keep-out rects). Client-only; no RP coords move. Re-run seed replay → assert 0
-  overlaps. *This is the only P1 and the recommended first step.*
-- **Batch B — validator upgrades.** New `validateGeneratedBuildings()` (procedural vs RP buildings,
-  RP houses, cars, roads). Wire real `STATIC_OBSTACLES` into V3/V5/V6 (§5.3). Bound road segments in
-  `footprintHitsRoad` (§5.5). Optional footprint validator for STATIC_OBSTACLES vs roads/each-other.
-  Boot-time assertions only; no gameplay change.
+- **Batch A — P0/P1 hard geometry. ✅ IMPLEMENTED (§8).** Filtered `GENERATED_BUILDINGS` against
+  RP-building footprints (+1 m). Client-only; no RP coords moved. Seed replay → 0 overlaps.
+- **Post-audit house relocation. ✅ IMPLEMENTED (§9–§10).** Moved the 3 starter houses off the
+  landmark towers + ring road to clean ±117 corners.
+- **Batch B — validator upgrades. ✅ IMPLEMENTED (§11 — source of truth).** Client dev block checks
+  RP houses + RP buildings + all BUILDINGS against the full world (BUILDINGS / REGIONAL_ROADS via a
+  proper AABB-band helper / STATIC_OBSTACLES / cars); server gained `footprintHitsCentralRoadBounded`
+  + the city-core-envelope assertion. Validator-only; no gameplay change. *(The plan originally
+  proposed a `validateGeneratedBuildings()` and wiring `STATIC_OBSTACLES` into the server marker
+  validators — implemented instead in the client dev block, where that geometry actually lives, to
+  respect the api-server → city-sandbox import boundary.)*
 - **Batch C — parked cars / NPC traffic polish.** On-road/on-pad assertions for rural cars (§5.6);
   intentional-roadside tagging for city kerbside cars (§5.7); a traffic/NPC-route validator that
   samples waypoints + segment midpoints against roads, buildings, obstacles, fences, houses.
@@ -229,7 +234,9 @@ overlap. No action.
 ## 7. Stop
 
 Audit complete. The only P1 is §5.1 (procedural towers clipping 5 RP buildings). **Batch A is
-now implemented (below); Batch B+ remain pending your approval.**
+implemented (§8), the post-audit house relocation is implemented (§9–§10), and Batch B
+(full-map validator upgrades) is implemented (§11 — the source of truth). Batches C–F remain
+pending your approval.**
 
 ---
 
@@ -258,8 +265,8 @@ Highrises (8) and landmarks (5) were left unchanged — the audit confirms they 
 `GENERATED_BUILDINGS`) is sufficient.
 
 **Verification:** tsc ×4 pass. api-server build, Vite build, and tsx RP validators run on the
-Mac (no server/validator code changed in Batch A). Batch B (new `validateGeneratedBuildings`,
-wiring real `STATIC_OBSTACLES`, bounded road segments) is **not** implemented — awaiting approval.
+Mac (no server/validator code changed in Batch A). Batch B (full-map validator upgrades) is now
+implemented — see §11 for the authoritative summary and coverage matrix.
 
 ---
 
