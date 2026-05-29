@@ -5,7 +5,7 @@ import * as THREE from "three";
 import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard, CityLedger } from "../shared/rpTypes";
 import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS, GOVERNMENT_OFFICE_POS, GOVERNMENT_OFFICE_RADIUS, MAYOR_MIN_RANK } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
@@ -23,6 +23,7 @@ import CityTaxHUD from "./CityTaxHUD";
 import CityBudgetHUD, { type GrantablePlayer } from "./CityBudgetHUD";
 import CityProjectsHUD from "./CityProjectsHUD";
 import CityDashboardHUD from "./CityDashboardHUD";
+import CityLedgerHUD from "./CityLedgerHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -180,6 +181,10 @@ interface GameSceneProps {
   cityDashboard: CityDashboard | null;
   /** Phase 8H: Emit rp:getCityDashboard — Mayor requests a fresh snapshot. */
   emitGetCityDashboard: () => void;
+  /** Phase 8I: Read-only city ledger snapshot from useRpSocket. */
+  cityLedger: CityLedger | null;
+  /** Phase 8I: Emit rp:getCityLedger — Mayor requests a fresh ledger. */
+  emitGetCityLedger: () => void;
 }
 
 export default function GameScene({
@@ -250,6 +255,8 @@ export default function GameScene({
   emitCityProjectFund,
   cityDashboard,
   emitGetCityDashboard,
+  cityLedger,
+  emitGetCityLedger,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -331,6 +338,10 @@ export default function GameScene({
   const [showCityDashboardHUD, setShowCityDashboardHUD] = useState(false);
   const showCityDashboardHUDRef = useRef(showCityDashboardHUD);
   showCityDashboardHUDRef.current = showCityDashboardHUD;
+  // Phase 8I: City Ledger HUD visibility (L key at Government Office, Mayor only).
+  const [showCityLedgerHUD, setShowCityLedgerHUD] = useState(false);
+  const showCityLedgerHUDRef = useRef(showCityLedgerHUD);
+  showCityLedgerHUDRef.current = showCityLedgerHUD;
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -486,6 +497,7 @@ export default function GameScene({
         e.code !== "KeyB" &&  // Phase 8E: B at Gov Office for Mayor city grant
         e.code !== "KeyP" &&  // Phase 8F: P at Gov Office for Mayor city project
         e.code !== "KeyD" &&  // Phase 8H: D at Gov Office for Mayor city dashboard
+        e.code !== "KeyL" &&  // Phase 8I: L at Gov Office for Mayor city ledger
         e.code !== "F7"
       ) return;
       // Ignore key-repeat (held key firing continuously).
@@ -509,7 +521,8 @@ export default function GameScene({
         showCityTaxHUDRef.current     ||
         showCityBudgetHUDRef.current  ||
         showCityProjectsHUDRef.current ||
-        showCityDashboardHUDRef.current;
+        showCityDashboardHUDRef.current ||
+        showCityLedgerHUDRef.current;
 
       // Phase 7C: F7 toggles faction admin panel (dev-only).
       // Opens only when no other modal is open; always allowed to close itself.
@@ -606,6 +619,23 @@ export default function GameScene({
           return;
         }
         // fall through — let KeyboardControls handle D for strafing.
+      }
+
+      // Phase 8I: L at Government Office — Mayor opens read-only City Ledger.
+      // KeyL is also the vehicle lock/unlock key (handled in LocalPlayer's frame
+      // loop). We only intercept it to close an open ledger, or to open it when
+      // the Mayor is eligible at City Hall; otherwise we fall through so the
+      // existing lock/unlock behavior continues to work everywhere else.
+      if (e.code === "KeyL") {
+        if (showCityLedgerHUDRef.current) {
+          setShowCityLedgerHUD(false);
+          return;
+        }
+        if (!anyModalOpen && isMayorRef.current && nearGovOfficeRef.current) {
+          setShowCityLedgerHUD(true);
+          return;
+        }
+        // fall through — let LocalPlayer handle L for vehicle lock/unlock.
       }
 
       if (anyModalOpen) return;
@@ -1176,6 +1206,15 @@ export default function GameScene({
           dashboard={cityDashboard}
           onRequest={emitGetCityDashboard}
           onClose={() => setShowCityDashboardHUD(false)}
+        />
+      )}
+
+      {/* Phase 8I: City Ledger panel (Mayor only, near Gov Office, L key) */}
+      {showCityLedgerHUD && (
+        <CityLedgerHUD
+          ledger={cityLedger}
+          onRequest={emitGetCityLedger}
+          onClose={() => setShowCityLedgerHUD(false)}
         />
       )}
 

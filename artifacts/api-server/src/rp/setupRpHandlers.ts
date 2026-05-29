@@ -47,6 +47,7 @@ import {
   handleGetCityProjects,
   handleCityProjectFund,
   handleGetCityDashboard,
+  handleGetCityLedger,
 } from "./rpGovernmentService";
 import {
   handleFactionChat,
@@ -596,6 +597,17 @@ export function setupRpHandlers(
     } catch (err) {
       logger.error({ err, socketId: socket.id }, "[rp] handleGetCityDashboard threw");
     }
+  });
+
+  // ── rp:getCityLedger ──────────────────────────────────────────────────────
+  // Phase 8I: Mayor requests the read-only city budget ledger.
+  // Server validates: Mayor authority, not jailed/cuffed, City Hall proximity.
+  // Read-only — one SELECT (limit 50) + in-memory project events. No writes.
+  // Emits rp:cityLedger with a privacy-safe payload (no per-player fields).
+  socket.on("rp:getCityLedger", () => {
+    handleGetCityLedger(socket, ctx).catch((err) => {
+      logger.error({ err, socketId: socket.id }, "[rp] handleGetCityLedger threw");
+    });
   });
 
   // ── rp:cityGrant ──────────────────────────────────────────────────────────

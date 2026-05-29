@@ -526,6 +526,26 @@ export interface CityDashboard {
   cuffedPlayers: number;
 }
 
+// ── Phase 8I: City Ledger ───────────────────────────────────────────────────────
+
+/**
+ * One read-only city budget ledger entry emitted in rp:cityLedger.
+ * Privacy-safe: no per-player identifiers, coordinates, tokens, or balances.
+ */
+export interface CityLedgerEntry {
+  id:        string;
+  type:      "tax_revenue" | "government_grant" | "city_project_funded";
+  amount:    number;
+  label:     string;
+  createdAt: number; // Unix ms
+  note?:     string;
+}
+
+/** Read-only city ledger snapshot (most recent first, max 25 entries). */
+export interface CityLedger {
+  entries: CityLedgerEntry[];
+}
+
 // ── Phase 8E: City Grant constants ────────────────────────────────────────────
 // MUST stay in sync with CITY_GRANT_* in api-server/src/socket/cityData.ts.
 

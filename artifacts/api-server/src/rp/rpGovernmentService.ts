@@ -61,7 +61,7 @@ import {
 import { isMayor } from "./rpFactionHelpers";
 import { logger } from "../lib/logger";
 import { db, rpCityConfig, rpWallets, rpTransactionLog } from "@workspace/db";
-import { eq } from "drizzle-orm";
+import { eq, desc, inArray } from "drizzle-orm";
 
 // ── Per-mayor announcement rate-limit ─────────────────────────────────────────
 /**
@@ -143,6 +143,35 @@ const activeCityProjects = new Map<string, ActiveProjectEntry>();
  *   delete(projectId) — always in finally{} (success or failure)
  */
 const pendingCityProjectFunds = new Set<string>();
+
+// ── Phase 8I: in-memory project-funding ledger ────────────────────────────────
+
+/**
+ * One recorded city-project funding event. In-memory only — project funding is
+ * not tied to a single player payout, so it isn't captured in rpTransactionLog.
+ * We keep a small ring of the most recent events for the Mayor's ledger panel.
+ * Holds no sensitive per-player data: just the project label, cost, and time.
+ */
+interface ProjectFundEvent {
+  projectId: string;
+  label:     string;
+  cost:      number;
+  createdAt: number; // Unix ms
+}
+
+/** Max project-funding events retained in memory for the ledger. */
+const MAX_PROJECT_FUND_EVENTS = 25;
+
+/** Most-recent-last ring of project funding events (trimmed to the max). */
+const recentProjectFundEvents: ProjectFundEvent[] = [];
+
+/** Append a project-funding event, trimming to MAX_PROJECT_FUND_EVENTS. */
+function recordProjectFundEvent(ev: ProjectFundEvent): void {
+  recentProjectFundEvents.push(ev);
+  if (recentProjectFundEvents.length > MAX_PROJECT_FUND_EVENTS) {
+    recentProjectFundEvents.splice(0, recentProjectFundEvents.length - MAX_PROJECT_FUND_EVENTS);
+  }
+}
 
 /** Remove expired projects. Call before any read or payout bonus check. */
 function pruneExpiredProjects(): void {
@@ -796,6 +825,174 @@ export function handleGetCityDashboard(socket: Socket, ctx: LicenseContext): voi
   socket.emit("rp:cityDashboard", buildCityDashboardPayload(ctx));
 }
 
+// ── handleGetCityLedger (Phase 8I) ────────────────────────────────────────────
+
+/** Max ledger entries returned to the client. */
+const CITY_LEDGER_MAX_ENTRIES = 25;
+/** Rows to read from rpTransactionLog before filtering/mapping down. */
+const CITY_LEDGER_DB_LIMIT = 50;
+
+/**
+ * One safe, read-only ledger entry. Contains no socket IDs, DB player IDs,
+ * coordinates, tokens, or wallet balances — only an amount, a generic label,
+ * the event type, and a timestamp.
+ */
+interface CityLedgerEntry {
+  id:        string;
+  type:      "tax_revenue" | "government_grant" | "city_project_funded";
+  amount:    number;
+  label:     string;
+  createdAt: number; // Unix ms
+  note?:     string;
+}
+
+/**
+ * Defensively extract an integer field like `tax=123` from a transaction note.
+ * Returns null when the field is missing or not a clean integer — callers must
+ * handle null and never assume a parse succeeded.
+ */
+function parseNoteInt(note: string | null | undefined, field: string): number | null {
+  if (typeof note !== "string") return null;
+  const m = note.match(new RegExp(`(?:^|\\s)${field}=(-?\\d+)(?:\\s|$)`));
+  if (!m) return null;
+  const n = Number(m[1]);
+  return Number.isSafeInteger(n) ? n : null;
+}
+
+/** Defensively extract the trailing `project=Label` token from a note. */
+function parseNoteProject(note: string | null | undefined): string | null {
+  if (typeof note !== "string") return null;
+  const m = note.match(/(?:^|\s)project=(.+?)\s*$/);
+  return m ? m[1].trim() || null : null;
+}
+
+/**
+ * Build the read-only city ledger from recent transaction-log rows plus the
+ * in-memory project-funding events. All figures are city-budget movements:
+ *   - tax_revenue:        the `tax=` portion of a job_pay note (budget inflow)
+ *   - government_grant:   cashDelta of a government_grant row (budget outflow)
+ *   - city_project_funded: cost from recentProjectFundEvents (budget outflow)
+ *
+ * Defensive throughout: a row with an unparseable note is skipped (for tax)
+ * or falls back to a safe label; nothing here can throw on bad data.
+ */
+async function buildCityLedgerPayload(): Promise<{ entries: CityLedgerEntry[] }> {
+  const entries: CityLedgerEntry[] = [];
+
+  // ── DB rows: job_pay (tax inflow) + government_grant (outflow) ─────────────
+  try {
+    const rows = await db
+      .select({
+        id:        rpTransactionLog.id,
+        kind:      rpTransactionLog.kind,
+        cashDelta: rpTransactionLog.cashDelta,
+        note:      rpTransactionLog.note,
+        createdAt: rpTransactionLog.createdAt,
+      })
+      .from(rpTransactionLog)
+      .where(inArray(rpTransactionLog.kind, ["job_pay", "government_grant"]))
+      .orderBy(desc(rpTransactionLog.createdAt))
+      .limit(CITY_LEDGER_DB_LIMIT);
+
+    for (const row of rows) {
+      const createdAt = row.createdAt instanceof Date ? row.createdAt.getTime() : Date.now();
+
+      if (row.kind === "job_pay") {
+        // Tax collected on this payout (budget inflow). Skip rows with no/zero tax.
+        const tax = parseNoteInt(row.note, "tax");
+        if (tax === null || tax <= 0) continue;
+        const project = parseNoteProject(row.note);
+        entries.push({
+          id:        `tx-${row.id}`,
+          type:      "tax_revenue",
+          amount:    tax,
+          label:     "Tax revenue",
+          createdAt,
+          note:      project ? `during ${project}` : undefined,
+        });
+      } else {
+        // government_grant — budget outflow equal to the credited cashDelta.
+        const amount = Number.isSafeInteger(row.cashDelta) ? row.cashDelta : 0;
+        entries.push({
+          id:        `tx-${row.id}`,
+          type:      "government_grant",
+          amount,
+          label:     "City grant",
+          createdAt,
+        });
+      }
+    }
+  } catch (err) {
+    // Never surface raw DB errors to the client; log and continue with whatever
+    // we have (in-memory project events below still render).
+    logger.error({ err }, "[rpGov] buildCityLedgerPayload: DB query failed");
+  }
+
+  // ── In-memory project funding events (budget outflow) ─────────────────────
+  for (const ev of recentProjectFundEvents) {
+    entries.push({
+      id:        `proj-${ev.projectId}-${ev.createdAt}`,
+      type:      "city_project_funded",
+      amount:    ev.cost,
+      label:     ev.label,
+      createdAt: ev.createdAt,
+    });
+  }
+
+  // Newest first, capped.
+  entries.sort((a, b) => b.createdAt - a.createdAt);
+  return { entries: entries.slice(0, CITY_LEDGER_MAX_ENTRIES) };
+}
+
+/**
+ * rp:getCityLedger — Mayor requests the read-only city budget ledger.
+ *
+ * Authority checks (identical to other Mayor actions):
+ *   1. Mayor (government faction + rank >= MAYOR_MIN_RANK) via isMayor().
+ *   2. Not jailed.  3. Not cuffed.
+ *   4. Within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_POS.
+ *
+ * Read-only: a single SELECT (limit 50) plus in-memory events. No writes.
+ * Emits rp:cityLedger with an aggregate, privacy-safe payload.
+ */
+export async function handleGetCityLedger(socket: Socket, ctx: LicenseContext): Promise<void> {
+  const entry = ctx.rpCache.get(socket.id);
+  if (!entry) return;
+
+  // ── Guard 1: Mayor ────────────────────────────────────────────────────────
+  if (!isMayor(entry)) {
+    socket.emit("rp:toast", { msg: "Only the Mayor can view the city ledger.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 2: not jailed ───────────────────────────────────────────────────
+  if (entry.jailUntil && entry.jailUntil > new Date()) {
+    socket.emit("rp:toast", { msg: "You cannot do that while jailed.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 3: not cuffed ───────────────────────────────────────────────────
+  if (entry.cuffedBy) {
+    socket.emit("rp:toast", { msg: "You cannot do that while cuffed.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 4: City Hall proximity ──────────────────────────────────────────
+  const playerState = ctx.players.get(socket.id);
+  if (!playerState) return;
+
+  const [gx, , gz] = GOVERNMENT_OFFICE_POS;
+  const dxg = playerState.x - gx;
+  const dzg = playerState.z - gz;
+  if (Math.sqrt(dxg * dxg + dzg * dzg) > GOVERNMENT_OFFICE_RADIUS) {
+    socket.emit("rp:toast", { msg: "Visit City Hall to view the city ledger.", color: "red", duration: 3000 });
+    return;
+  }
+
+  const payload = await buildCityLedgerPayload();
+  socket.emit("rp:cityLedger", payload);
+}
+
 // ── handleCityProjectFund (Phase 8F) ──────────────────────────────────────────
 
 /**
@@ -927,6 +1124,10 @@ export async function handleCityProjectFund(
   const expiresAt = Date.now() + CITY_PROJECT_DURATION_MS;
   setCityBudgetInMemory(newBudget);
   activeCityProjects.set(projectId, { projectId, label: def.label, expiresAt });
+
+  // Phase 8I: record the funding event for the Mayor's read-only ledger.
+  // In-memory only; never blocks or affects the (already-committed) spend.
+  recordProjectFundEvent({ projectId, label: def.label, cost: def.cost, createdAt: Date.now() });
 
   const mayorName = ctx.players.get(socket.id)?.username ?? "Mayor";
   logger.info(
