@@ -45,9 +45,16 @@ export interface CharacterDef {
   extraClips: CharacterClipSource[];
   /**
    * Map a looping locomotion state to a clip key. Only idle/walk/run are
-   * looped; everything else falls through to `idleKey` for the base pose.
+   * looped; everything else (jump/fall/driving/attack_*) falls through to the
+   * airborne clip (when defined) or the idle base pose.
    */
   locomotion: { idle: string; walk: string; run: string };
+  /**
+   * Optional looping clip played while airborne (animState "jump" or "fall").
+   * Omit for characters without a jump animation — they fall back to the idle
+   * pose, preserving the original Classic behavior.
+   */
+  airborneKey?: string;
   /** One-shot attack clip keys (triggered by attackSeq, not animState). */
   attackLightKey: string;
   attackHeavyKey: string;
@@ -99,6 +106,7 @@ const SIMPLE: CharacterDef = {
     { url: `${BASE}models/simple-talk.glb`, clipKey: "talk" },
   ],
   locomotion: { idle: "idle", walk: "run", run: "run" },
+  airborneKey: "jump",
   attackLightKey: "punch",
   attackHeavyKey: "kick",
   scale: 1,
@@ -124,5 +132,8 @@ export function normalizeCharacterId(v: unknown): CharacterId {
 export function locomotionClipKey(def: CharacterDef, anim: PlayerAnimState): string {
   if (anim === "run") return def.locomotion.run;
   if (anim === "walk") return def.locomotion.walk;
-  return def.locomotion.idle; // idle / jump / fall / driving / attack_*
+  // Airborne: use the jump/fall clip when the character defines one, else the
+  // idle base pose (Classic has no jump clip → unchanged idle fallback).
+  if ((anim === "jump" || anim === "fall") && def.airborneKey) return def.airborneKey;
+  return def.locomotion.idle; // idle / driving / attack_* / airborne-without-clip
 }
