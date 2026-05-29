@@ -88,10 +88,11 @@ function resolveItem(itemSlug: string, quantity: number): InventoryItemPayload {
       quantity:    qty,
     };
   }
-  // Unknown slug — render generically; never expose it as anything special.
+  // Unknown slug — render generically; do not surface the raw slug as a name.
+  // The slug is retained only as a stable React key on the client.
   return {
     slug:        itemSlug,
-    name:        itemSlug,
+    name:        "Unknown Item",
     category:    "Misc",
     description: "",
     quantity:    qty,

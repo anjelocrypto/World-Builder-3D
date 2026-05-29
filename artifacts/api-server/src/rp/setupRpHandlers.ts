@@ -333,7 +333,8 @@ export function setupRpHandlers(
   // requesting socket only. Read-only — no mutation. No playerId/ids in payload.
   socket.on("rp:getInventory", () => {
     handleGetInventory(socket, ctx).catch((err) => {
-      logger.error({ err, socketId: socket.id }, "[rp] handleGetInventory threw");
+      // Phase 11C: no socket ids in logs (consistent with 11B hardening).
+      logger.error({ err }, "[rp] handleGetInventory threw");
     });
   });
 

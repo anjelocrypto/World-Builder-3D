@@ -371,6 +371,10 @@ export default function GameScene({
   // Phase 11C: stable ref for the inventory fetch emitter (used in keydown handler).
   const emitGetInventoryRef = useRef(emitGetInventory);
   emitGetInventoryRef.current = emitGetInventory;
+  // Phase 11B/11C: track whether the received-ID / police-inspection panel is
+  // visible so the keydown guard can block opening other modals over it.
+  const receivedIDOpenRef = useRef(receivedID !== null);
+  receivedIDOpenRef.current = receivedID !== null;
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -559,7 +563,8 @@ export default function GameScene({
         showCityDashboardHUDRef.current ||
         showCityLedgerHUDRef.current ||
         showIDCardRef.current ||
-        showInventoryRef.current;
+        showInventoryRef.current ||
+        receivedIDOpenRef.current;
 
       // Phase 7C: F7 toggles faction admin panel (dev-only).
       // Opens only when no other modal is open; always allowed to close itself.
