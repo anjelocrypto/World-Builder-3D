@@ -27,6 +27,7 @@ import { setupRpHandlers, type LicenseContext } from "../rp/setupRpHandlers";
 import { failTest, cleanupOnDisconnect } from "../rp/rpLicenseService";
 import { loadAndSpawnOwnedVehicles } from "../rp/rpVehicleService";
 import { cleanupPendingGangRequest, cleanupGangMission } from "../rp/rpFactionService";
+import { clearIdShareForPlayer } from "../rp/rpIdentityService";
 
 // Clamp a horizontal world coordinate so a hacked client cannot push a
 // player or vehicle outside the playable map. The margin keeps the
@@ -557,6 +558,11 @@ export function setupGameServer(httpServer: HttpServer) {
       cleanupPendingGangRequest(socket.id, ctx);
       // Phase 7G: remove any active Tag Turf mission.
       cleanupGangMission(socket.id);
+      // Phase 11B: clear ID-share cooldown (keyed by playerId; read before delete).
+      {
+        const leavingEntry = rpCache.get(socket.id);
+        if (leavingEntry) clearIdShareForPlayer(leavingEntry.playerId);
+      }
 
       // Clear RP cache (after test cleanup).
       rpCache.delete(socket.id);

@@ -5,8 +5,8 @@ import * as THREE from "three";
 import { configureWorldRenderer } from "./rendererConfig";
 import type { VehicleState } from "../shared/types";
 import type { NpcStumbleMap } from "../shared/collision";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard, CityLedger } from "../shared/rpTypes";
-import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS, GOVERNMENT_OFFICE_DOOR, GOVERNMENT_OFFICE_RADIUS, MAYOR_MIN_RANK } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard, CityLedger, ReceivedIDCard } from "../shared/rpTypes";
+import { POLICE_WARRANT_RADIUS, POLICE_ARREST_RADIUS, POLICE_CUFF_RADIUS, POLICE_BOOKING_DESK_POS, POLICE_BOOKING_RADIUS, POLICE_FINE_RADIUS, GROVE_STREET_HANGOUT_POS, GROVE_STREET_HANGOUT_RADIUS, GROVE_STREET_TURF_CENTER, GROVE_STREET_TURF_RADIUS, GOVERNMENT_OFFICE_DOOR, GOVERNMENT_OFFICE_RADIUS, MAYOR_MIN_RANK, ID_SHARE_RADIUS } from "../shared/rpTypes";
 import CityMap from "./CityMap";
 import LocalPlayer, { Controls } from "./LocalPlayer";
 import LicenseTestHUD from "./LicenseTestHUD";
@@ -25,6 +25,7 @@ import CityProjectsHUD from "./CityProjectsHUD";
 import CityDashboardHUD from "./CityDashboardHUD";
 import CityLedgerHUD from "./CityLedgerHUD";
 import IDCardHUD from "./IDCardHUD";
+import ReceivedIDHUD from "./ReceivedIDHUD";
 import RPBuildings from "./RPBuildings";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
@@ -186,6 +187,14 @@ interface GameSceneProps {
   cityLedger: CityLedger | null;
   /** Phase 8I: Emit rp:getCityLedger — Mayor requests a fresh ledger. */
   emitGetCityLedger: () => void;
+  /** Phase 11B: An ID shown to you, or a police inspection result (from useRpSocket). */
+  receivedID: ReceivedIDCard | null;
+  /** Phase 11B: Emit rp:showID — show your own public ID to a nearby player. */
+  emitShowID: (targetId: string) => void;
+  /** Phase 11B: Emit rp:policeInspectID — on-duty officer inspects a nearby ID. */
+  emitPoliceInspectID: (targetId: string) => void;
+  /** Phase 11B: Dismiss the received-ID panel. */
+  dismissReceivedID: () => void;
 }
 
 export default function GameScene({
@@ -258,6 +267,10 @@ export default function GameScene({
   emitGetCityDashboard,
   cityLedger,
   emitGetCityLedger,
+  receivedID,
+  emitShowID,
+  emitPoliceInspectID,
+  dismissReceivedID,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -479,6 +492,9 @@ export default function GameScene({
   // Phase 6E: stable ref for H-key fine emit.
   const emitIssueFineRef = useRef(emitIssueFine);
   emitIssueFineRef.current = emitIssueFine;
+  // Phase 11B: stable ref for V-key officer ID inspection emit.
+  const emitPoliceInspectIDRef = useRef(emitPoliceInspectID);
+  emitPoliceInspectIDRef.current = emitPoliceInspectID;
 
   // Phase 6A/6B: J/K police action keys.
   // J = Issue 1★ warrant against the nearest player within POLICE_WARRANT_RADIUS.
@@ -501,6 +517,7 @@ export default function GameScene({
         e.code !== "KeyD" &&  // Phase 8H: D at Gov Office for Mayor city dashboard
         e.code !== "KeyL" &&  // Phase 8I: L at Gov Office for Mayor city ledger
         e.code !== "KeyC" &&  // Phase 11A: C opens the ID/wallet card (anywhere)
+        e.code !== "KeyV" &&  // Phase 11B: V = on-duty officer inspects nearest ID
         e.code !== "F7"
       ) return;
       // Ignore key-repeat (held key firing continuously).
@@ -761,6 +778,25 @@ export default function GameScene({
         if (nearestId) setShowFinePanel(true);
         return;
       }
+
+      if (e.code === "KeyV") {
+        // V = On-duty officer inspects the nearest player's ID within ID_SHARE_RADIUS.
+        // The server re-validates officer status, range, and rate limit; the client
+        // only nominates a target socket id.
+        let nearestId: string | null = null;
+        let nearestDist = Infinity;
+        for (const p of players) {
+          const dx = p.x - pos.x;
+          const dz = p.z - pos.z;
+          const dist = Math.sqrt(dx * dx + dz * dz);
+          if (dist <= ID_SHARE_RADIUS && dist < nearestDist) {
+            nearestDist = dist;
+            nearestId   = p.id;
+          }
+        }
+        if (nearestId) emitPoliceInspectIDRef.current(nearestId);
+        return;
+      }
     };
 
     window.addEventListener("keydown", handler);
@@ -798,6 +834,22 @@ export default function GameScene({
       }
     }
     return best;
+  })();
+
+  // Phase 11B: nearest player within ID_SHARE_RADIUS (any player), for the
+  // "Show My ID" button in the ID card. On foot only.
+  const nearIdShareTarget: { id: string; name: string } | null = (() => {
+    if (uiState.inVehicle) return null;
+    let best: { id: string; name: string; dist: number } | null = null;
+    for (const p of remotePlayers) {
+      const dx = p.x - playerPosRef.current.x;
+      const dz = p.z - playerPosRef.current.z;
+      const dist = Math.sqrt(dx * dx + dz * dz);
+      if (dist <= ID_SHARE_RADIUS && (!best || dist < best.dist)) {
+        best = { id: p.id, name: (p as { username?: string }).username ?? p.id, dist };
+      }
+    }
+    return best ? { id: best.id, name: best.name } : null;
   })();
 
   // Nearest WANTED player within arrest range (must have wantedStars > 0).
@@ -1244,7 +1296,18 @@ export default function GameScene({
           username={username}
           profile={rpProfile}
           onClose={() => setShowIDCard(false)}
+          nearestName={nearIdShareTarget?.name ?? null}
+          onShowNearest={
+            nearIdShareTarget
+              ? () => { emitShowID(nearIdShareTarget.id); setShowIDCard(false); }
+              : null
+          }
         />
+      )}
+
+      {/* Phase 11B: an ID shown to you, or a police inspection result */}
+      {receivedID && (
+        <ReceivedIDHUD card={receivedID} onClose={dismissReceivedID} />
       )}
 
       {/* Phase 8B/8D: City Tax Rate panel (Mayor only, near Gov Office, T key) */}

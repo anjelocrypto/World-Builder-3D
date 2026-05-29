@@ -91,6 +91,35 @@ export interface RpProfile {
   activeJob:     ActiveJob | null;
 }
 
+// ── Phase 11B: nearby ID sharing + police inspection ──────────────────────────
+//
+// A privacy-safe identity card delivered by the server. Every field is
+// server-derived from rpCache/ctx.players; the client cannot forge them.
+// NEVER contains cash, bank, playerId (DB UUID), socket ids, or coordinates.
+
+export interface ReceivedIDCard {
+  /** Display name (username) of the player whose ID this is. */
+  name:           string;
+  driverLicense:  boolean;
+  weaponLicense:  boolean;
+  /** Faction display fields — null when the subject has no faction. */
+  factionName:    string | null;
+  factionType:    string | null;
+  factionRank:    number | null;
+  factionColor:   string | null;
+  /** True when this card was produced by a police inspection (adds legal status). */
+  policeView:     boolean;
+  /** Legal status — present (police view only); undefined for a voluntary public show. */
+  wantedStars?:   number;
+  jailed?:        boolean;
+  cuffed?:        boolean;
+}
+
+/** Max distance (m) to show/inspect an ID — face-to-face only. */
+export const ID_SHARE_RADIUS = 4;
+/** Per-sender cooldown (ms) for show/inspect, enforced server-side. */
+export const ID_SHARE_COOLDOWN_MS = 2500;
+
 export interface RpToast {
   id:        number;   // client-assigned monotonic id for keying
   msg:       string;

@@ -85,6 +85,10 @@ export default function Game({ username }: GameProps) {
     emitGetCityDashboard,
     cityLedger,
     emitGetCityLedger,
+    receivedID,
+    emitShowID,
+    emitPoliceInspectID,
+    dismissReceivedID,
   } = useRpSocket(socket);
 
   const [ready, setReady] = useState(false);
@@ -185,6 +189,10 @@ export default function Game({ username }: GameProps) {
       emitGetCityDashboard={emitGetCityDashboard}
       cityLedger={cityLedger}
       emitGetCityLedger={emitGetCityLedger}
+      receivedID={receivedID}
+      emitShowID={emitShowID}
+      emitPoliceInspectID={emitPoliceInspectID}
+      dismissReceivedID={dismissReceivedID}
     />
   );
 }

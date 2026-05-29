@@ -36,6 +36,10 @@ import {
   handleUncuff,
 } from "./rpPoliceService";
 import {
+  handleShowID,
+  handlePoliceInspectID,
+} from "./rpIdentityService";
+import {
   issueFine,
   respondFine,
 } from "./rpFineService";
@@ -297,6 +301,30 @@ export function setupRpHandlers(
       });
     },
   );
+
+  // ── rp:showID (Phase 11B) ─────────────────────────────────────────────────
+  // Player voluntarily shows their OWN public ID to a nearby player. Server
+  // re-validates range + rate limit; emits rp:idShown (public, no financials)
+  // to the target's socket only.
+  socket.on("rp:showID", (data: { targetId?: unknown } | null | undefined) => {
+    try {
+      handleShowID(socket, ctx, data?.targetId);
+    } catch (err) {
+      logger.error({ err, socketId: socket.id }, "[rp] handleShowID threw");
+    }
+  });
+
+  // ── rp:policeInspectID (Phase 11B) ────────────────────────────────────────
+  // On-duty officer inspects a nearby player's ID. Server validates officer +
+  // range + rate limit; emits rp:idInspected (public + legal status) to the
+  // officer only. Never includes cash/bank/UUID/socket id.
+  socket.on("rp:policeInspectID", (data: { targetId?: unknown } | null | undefined) => {
+    try {
+      handlePoliceInspectID(socket, ctx, data?.targetId);
+    } catch (err) {
+      logger.error({ err, socketId: socket.id }, "[rp] handlePoliceInspectID threw");
+    }
+  });
 
   // ── rp:cuff ───────────────────────────────────────────────────────────────
   // Phase 6C: officer emits { targetId } to cuff a nearby wanted player.

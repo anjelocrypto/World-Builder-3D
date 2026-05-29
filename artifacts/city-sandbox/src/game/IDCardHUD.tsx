@@ -37,6 +37,10 @@ interface IDCardHUDProps {
   username: string;
   profile:  RpProfile | null;
   onClose:  () => void;
+  /** Phase 11B: show this ID to the nearest player; null when no one is in range. */
+  onShowNearest?: (() => void) | null;
+  /** Display name of the nearest player in range, for the button label. */
+  nearestName?:   string | null;
 }
 
 // ── Small row helpers ───────────────────────────────────────────────────────────
@@ -59,7 +63,7 @@ function StatusPill({ text, color }: { text: string; color: string }) {
   );
 }
 
-export default function IDCardHUD({ username, profile, onClose }: IDCardHUDProps) {
+export default function IDCardHUD({ username, profile, onClose, onShowNearest, nearestName }: IDCardHUDProps) {
   // ESC closes.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -174,7 +178,25 @@ export default function IDCardHUD({ username, profile, onClose }: IDCardHUDProps
           </>
         )}
 
-        <div style={{ fontSize: 10, color: "#334", textAlign: "center" }}>C or ESC to close · Personal ID — visible to you only</div>
+        {/* Phase 11B: voluntarily show your public ID to the nearest player in range. */}
+        {profile && (
+          <button
+            onClick={() => { if (onShowNearest) onShowNearest(); }}
+            disabled={!onShowNearest}
+            style={{
+              width: "100%", padding: "9px 12px", borderRadius: 7, cursor: onShowNearest ? "pointer" : "default",
+              border: `1px solid ${onShowNearest ? ACCENT : "rgba(255,255,255,0.1)"}`,
+              background: onShowNearest ? "rgba(85,119,238,0.18)" : "rgba(255,255,255,0.03)",
+              color: onShowNearest ? "#cdd8ff" : "#556", fontSize: 12, fontWeight: 700, letterSpacing: 0.3,
+            }}
+          >
+            {onShowNearest
+              ? `Show My ID to ${nearestName || "Nearest Player"}`
+              : "Show My ID — no one within 4 m"}
+          </button>
+        )}
+
+        <div style={{ fontSize: 10, color: "#334", textAlign: "center" }}>C or ESC to close · Your public ID hides cash, bank & legal status</div>
       </div>
     </div>
   );

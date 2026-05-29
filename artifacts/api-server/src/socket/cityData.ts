@@ -921,3 +921,9 @@ export const TAXI_DEPOT_DOOR:        [number, number, number] = buildingDoorById
 export const DELIVERY_HUB_DOOR:      [number, number, number] = buildingDoorById("delivery_hub");
 export const LICENSING_OFFICE_DOOR:  [number, number, number] = buildingDoorById("licensing_office");
 export const POLICE_STATION_DOOR:    [number, number, number] = buildingDoorById("police_station");
+
+// ── Phase 11B: nearby ID sharing + police inspection ──────────────────────────
+/** Max distance (m) to show/inspect an ID — face-to-face only. Mirror: client rpTypes.ts. */
+export const ID_SHARE_RADIUS = 4;
+/** Per-sender cooldown (ms) for show/inspect ID, enforced server-side. */
+export const ID_SHARE_COOLDOWN_MS = 2500;
