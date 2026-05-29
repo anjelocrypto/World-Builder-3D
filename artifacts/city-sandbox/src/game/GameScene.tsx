@@ -20,6 +20,7 @@ import GangHUD from "./GangHUD";
 import { GangMissionHUD } from "./GangMissionHUD";
 import CityAnnouncementHUD from "./CityAnnouncementHUD";
 import CityTaxHUD from "./CityTaxHUD";
+import CityBudgetHUD, { type GrantablePlayer } from "./CityBudgetHUD";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -167,6 +168,8 @@ interface GameSceneProps {
   cityConfig: CityConfig;
   /** Phase 8B: Emit rp:setTaxRate — Mayor sets a new city tax rate. */
   emitSetTaxRate: (rate: number) => void;
+  /** Phase 8E: Emit rp:cityGrant — Mayor sends a cash grant to an online player. */
+  emitCityGrant: (targetSocketId: string, amount: number, note: string) => void;
 }
 
 export default function GameScene({
@@ -232,6 +235,7 @@ export default function GameScene({
   emitCityAnnounce,
   cityConfig,
   emitSetTaxRate,
+  emitCityGrant,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -301,6 +305,10 @@ export default function GameScene({
   const [showCityTaxHUD, setShowCityTaxHUD] = useState(false);
   const showCityTaxHUDRef = useRef(showCityTaxHUD);
   showCityTaxHUDRef.current = showCityTaxHUD;
+  // Phase 8E: City Budget / Grant HUD visibility (B key at Government Office, Mayor only).
+  const [showCityBudgetHUD, setShowCityBudgetHUD] = useState(false);
+  const showCityBudgetHUDRef = useRef(showCityBudgetHUD);
+  showCityBudgetHUDRef.current = showCityBudgetHUD;
 
   const playerPosRef = useRef(new THREE.Vector3(0, 1, 0));
   const wrapperRef = useRef<HTMLDivElement>(null);
@@ -453,6 +461,7 @@ export default function GameScene({
         e.code !== "KeyG" &&
         e.code !== "KeyE" &&  // Phase 8A: E at Gov Office for Mayor city announcement
         e.code !== "KeyT" &&  // Phase 8B: T at Gov Office for Mayor tax rate
+        e.code !== "KeyB" &&  // Phase 8E: B at Gov Office for Mayor city grant
         e.code !== "F7"
       ) return;
       // Ignore key-repeat (held key firing continuously).
@@ -473,7 +482,8 @@ export default function GameScene({
         showFactionAdminRef.current ||
         showGangHUDRef.current ||
         showCityAnnouncementHUDRef.current ||
-        showCityTaxHUDRef.current;
+        showCityTaxHUDRef.current ||
+        showCityBudgetHUDRef.current;
 
       // Phase 7C: F7 toggles faction admin panel (dev-only).
       // Opens only when no other modal is open; always allowed to close itself.
@@ -527,7 +537,20 @@ export default function GameScene({
           setShowCityTaxHUD(true);
           return;
         }
-        return; // T has no fallthrough — not used for other interactions.
+        return;
+      }
+
+      // Phase 8E: B at Government Office — Mayor opens City Grant panel.
+      if (e.code === "KeyB") {
+        if (showCityBudgetHUDRef.current) {
+          setShowCityBudgetHUD(false);
+          return;
+        }
+        if (!anyModalOpen && isMayorRef.current && nearGovOfficeRef.current) {
+          setShowCityBudgetHUD(true);
+          return;
+        }
+        return;
       }
 
       if (anyModalOpen) return;
@@ -1090,6 +1113,23 @@ export default function GameScene({
           onClose={() => setShowCityTaxHUD(false)}
         />
       )}
+
+      {/* Phase 8E: City Grant panel (Mayor only, near Gov Office, B key) */}
+      {showCityBudgetHUD && (() => {
+        const grantable: GrantablePlayer[] = remotePlayers.map((p) => ({
+          id:       p.id,
+          username: (p as { username?: string }).username ?? p.id,
+        }));
+        return (
+          <CityBudgetHUD
+            currentBudget={cityConfig.cityBudget}
+            myId={myId}
+            onlinePlayers={grantable}
+            onGrant={emitCityGrant}
+            onClose={() => setShowCityBudgetHUD(false)}
+          />
+        );
+      })()}
 
       {/* Phase 8A: City Announcement banner — shown to ALL players for 8 s after broadcast */}
       {visibleAnnouncement && (

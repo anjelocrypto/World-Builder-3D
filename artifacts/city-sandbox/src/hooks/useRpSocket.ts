@@ -709,5 +709,12 @@ export function useRpSocket(socket: Socket | null) {
       (rate: number) => { socket?.emit("rp:setTaxRate", { rate }); },
       [socket],
     ),
+    /** Phase 8E: Mayor issues a cash grant to an online player. */
+    emitCityGrant: useCallback(
+      (targetSocketId: string, amount: number, note: string) => {
+        socket?.emit("rp:cityGrant", { targetSocketId, amount, note });
+      },
+      [socket],
+    ),
   };
 }

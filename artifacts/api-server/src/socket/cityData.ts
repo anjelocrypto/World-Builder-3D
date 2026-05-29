@@ -737,3 +737,17 @@ export const CITY_TAX_DEFAULT = 0.05;
 
 /** Minimum ms between two tax-rate changes from the same mayor. */
 export const MAYOR_SET_TAX_COOLDOWN_MS = 30_000;
+
+// ── Phase 8E: City Budget Grants ──────────────────────────────────────────────
+
+/** Minimum single grant amount in dollars. */
+export const CITY_GRANT_MIN = 50;
+
+/** Maximum single grant amount in dollars. */
+export const CITY_GRANT_MAX = 1_000;
+
+/** Minimum ms between grants from the same mayor (30 s). */
+export const MAYOR_GRANT_COOLDOWN_MS = 30_000;
+
+/** Maximum characters in a grant note (server-validated). */
+export const CITY_GRANT_NOTE_MAX_CHARS = 120;

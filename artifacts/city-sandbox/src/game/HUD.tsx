@@ -2156,6 +2156,60 @@ export default function HUD({
           </div>
         )}
 
+        {/* Phase 8E: B key — City Grant (Mayor only, near City Hall) */}
+        {nearGovernmentOffice &&
+          !inVehicle &&
+          factionType === "government" &&
+          (factionRank ?? 0) >= 4 && (
+          <div
+            style={{
+              position:       "absolute",
+              bottom:         214,
+              left:           "50%",
+              transform:      "translateX(-50%)",
+              display:        "flex",
+              alignItems:     "center",
+              gap:            10,
+              background:     "rgba(4,10,28,0.82)",
+              border:         "1px solid rgba(204,170,68,0.35)",
+              borderRadius:   8,
+              padding:        "7px 16px",
+              pointerEvents:  "none",
+              whiteSpace:     "nowrap",
+            }}
+          >
+            <div
+              style={{
+                width:          26,
+                height:         26,
+                background:     "rgba(153,119,34,0.18)",
+                border:         "1px solid rgba(204,170,68,0.55)",
+                borderRadius:   5,
+                display:        "flex",
+                alignItems:     "center",
+                justifyContent: "center",
+                fontSize:       13,
+                fontWeight:     "bold",
+                color:          "#ccaa44",
+                boxShadow:      "inset 0 -2px 0 rgba(200,170,68,0.3)",
+              }}
+            >
+              B
+            </div>
+            <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+              🏦{" "}
+              <span style={{ color: "#ccaa44", fontWeight: "bold" }}>
+                City Grant
+              </span>
+              {cityBudget != null && (
+                <span style={{ color: "#9bb", fontSize: 11 }}>
+                  {" "}· ${ cityBudget.toLocaleString()} available
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+
       {/* ============================================================
           FULL-SCREEN — Jail overlay (Phase 6A)
           Renders on top of everything except modals (z-index 2500).

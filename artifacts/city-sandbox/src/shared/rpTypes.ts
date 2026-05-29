@@ -458,6 +458,13 @@ export interface CityAnnouncement {
   createdAt: number;
 }
 
+// ── Phase 8E: City Grant constants ────────────────────────────────────────────
+// MUST stay in sync with CITY_GRANT_* in api-server/src/socket/cityData.ts.
+
+export const CITY_GRANT_MIN            = 50;
+export const CITY_GRANT_MAX            = 1_000;
+export const CITY_GRANT_NOTE_MAX_CHARS = 120;
+
 // ── Phase 8B: City Tax Rate constants ─────────────────────────────────────────
 // MUST stay in sync with CITY_TAX_* in api-server/src/socket/cityData.ts.
 

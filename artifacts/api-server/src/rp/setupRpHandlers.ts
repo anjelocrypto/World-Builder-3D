@@ -43,6 +43,7 @@ import {
   handleCityAnnounce,
   handleGetCityConfig,
   handleSetTaxRate,
+  handleCityGrant,
 } from "./rpGovernmentService";
 import {
   handleFactionChat,
@@ -554,6 +555,19 @@ export function setupRpHandlers(
     handleSetTaxRate(socket, ctx, data).catch((err) => {
       logger.error({ err, socketId: socket.id }, "[rp] handleSetTaxRate threw");
       socket.emit("rp:toast", { msg: "Server error — tax rate not updated.", color: "red", duration: 4000 });
+    });
+  });
+
+  // ── rp:cityGrant ──────────────────────────────────────────────────────────
+  // Phase 8E: Mayor issues a cash grant to an online player.
+  // Server validates: Mayor authority, not jailed/cuffed, City Hall proximity,
+  // valid target, valid integer amount ($50–$1000), sufficient city budget,
+  // per-mayor 30 s cooldown. DB-first: budget spend + wallet credit + log
+  // all commit in one transaction. No memory update on failure.
+  socket.on("rp:cityGrant", (data: unknown) => {
+    handleCityGrant(socket, ctx, data).catch((err) => {
+      logger.error({ err, socketId: socket.id }, "[rp] handleCityGrant threw");
+      socket.emit("rp:toast", { msg: "Server error — grant not issued.", color: "red", duration: 4000 });
     });
   });
 }

@@ -50,10 +50,14 @@ import {
   CITY_TAX_MAX,
   CITY_TAX_DEFAULT,
   MAYOR_SET_TAX_COOLDOWN_MS,
+  CITY_GRANT_MIN,
+  CITY_GRANT_MAX,
+  MAYOR_GRANT_COOLDOWN_MS,
+  CITY_GRANT_NOTE_MAX_CHARS,
 } from "../socket/cityData";
 import { isMayor } from "./rpFactionHelpers";
 import { logger } from "../lib/logger";
-import { db, rpCityConfig } from "@workspace/db";
+import { db, rpCityConfig, rpWallets, rpTransactionLog } from "@workspace/db";
 import { eq } from "drizzle-orm";
 
 // ── Per-mayor announcement rate-limit ─────────────────────────────────────────
@@ -78,6 +82,26 @@ let taxRateUpdatedByName: string | null = null;
 
 /** Per-mayor set-tax rate-limit. Keyed by DB playerId. */
 const setTaxCooldownMap = new Map<string, number>();
+
+/** Phase 8E: Per-mayor grant rate-limit. Keyed by DB playerId. */
+const grantCooldownMap = new Map<string, number>();
+
+// ── InsufficientBudgetError ───────────────────────────────────────────────────
+
+/**
+ * Phase 8E: thrown by spendCityBudgetTx when the stored budget < requested amount.
+ * Caught specifically in handleCityGrant to show a user-friendly toast without
+ * logging a server error.
+ */
+export class InsufficientBudgetError extends Error {
+  constructor(
+    readonly available: number,
+    readonly requested: number,
+  ) {
+    super(`Insufficient city budget: available=${available}, requested=${requested}`);
+    this.name = "InsufficientBudgetError";
+  }
+}
 
 /**
  * Phase 8D: Accumulated city budget from job tax revenue.
@@ -249,6 +273,288 @@ export async function addTaxRevenueTx(
 
   // ── Step 7: Return newBudget ──────────────────────────────────────────────
   return newBudget;
+}
+
+// ── spendCityBudgetTx (Phase 8E) ──────────────────────────────────────────────
+
+/**
+ * Decrements the city budget by amount inside an existing DB transaction.
+ * Exact inverse of addTaxRevenueTx; same 7-step SELECT-FOR-UPDATE pattern.
+ *
+ * Throws InsufficientBudgetError when stored budget < amount.
+ * Throws on invalid stored value (rolls back the enclosing transaction).
+ *
+ * Returns the new budget integer; caller syncs in-memory after tx commit.
+ */
+export async function spendCityBudgetTx(
+  tx:     DbTransaction,
+  amount: number,
+): Promise<number> {
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
+    throw new Error(`[rpGov] spendCityBudgetTx: invalid amount=${amount}`);
+  }
+
+  // Step 1: SELECT FOR UPDATE
+  let rows = await tx
+    .select()
+    .from(rpCityConfig)
+    .where(eq(rpCityConfig.key, "city_budget"))
+    .for("update");
+
+  // Step 2: If missing, INSERT "0" ON CONFLICT DO NOTHING
+  if (!rows[0]) {
+    await tx
+      .insert(rpCityConfig)
+      .values({ key: "city_budget", value: "0", updatedBy: null })
+      .onConflictDoNothing();
+
+    // Step 3: SELECT FOR UPDATE again
+    rows = await tx
+      .select()
+      .from(rpCityConfig)
+      .where(eq(rpCityConfig.key, "city_budget"))
+      .for("update");
+  }
+
+  const row = rows[0];
+  if (!row) {
+    throw new Error("[rpGov] spendCityBudgetTx: city_budget row missing after insert");
+  }
+
+  // Step 4: Strict-parse — THROW on invalid
+  const currentStored = parseStrictNonNegInt(row.value);
+  if (currentStored === null) {
+    throw new Error(
+      `[rpGov] spendCityBudgetTx: stored city_budget '${row.value}' is invalid`,
+    );
+  }
+
+  // Step 5: Insufficient funds
+  if (currentStored < amount) {
+    throw new InsufficientBudgetError(currentStored, amount);
+  }
+
+  // Step 6: Compute and verify
+  const newBudget = currentStored - amount;
+  if (!Number.isSafeInteger(newBudget) || newBudget < 0) {
+    throw new Error(
+      `[rpGov] spendCityBudgetTx: newBudget=${newBudget} is invalid`,
+    );
+  }
+
+  // Step 7: UPDATE
+  await tx
+    .update(rpCityConfig)
+    .set({ value: newBudget.toString(), updatedAt: new Date(), updatedBy: null })
+    .where(eq(rpCityConfig.key, "city_budget"));
+
+  return newBudget;
+}
+
+// ── handleCityGrant (Phase 8E) ────────────────────────────────────────────────
+
+/**
+ * rp:cityGrant — Mayor sends a dollar grant to an online player.
+ *
+ * Authority checks (all server-side):
+ *   1. Mayor (government faction + rank >= MAYOR_MIN_RANK).
+ *   2. Not jailed.  Not cuffed.
+ *   3. Within GOVERNMENT_OFFICE_RADIUS of GOVERNMENT_OFFICE_POS (server position).
+ *   4. Payload: targetSocketId (string), amount (integer CITY_GRANT_MIN–MAX), note (optional ≤120 chars).
+ *   5. Target exists in rpCache + players map; target not jailed.
+ *   6. No self-grants.
+ *   7. Per-mayor 30 s cooldown, keyed by DB playerId.
+ *
+ * DB-first order:
+ *   - spendCityBudgetTx + target wallet credit + rpTransactionLog all commit
+ *     in one transaction.
+ *   - Only on commit: consume cooldown, update in-memory cityBudget and
+ *     target entry.cash, emit rp:profileUpdate + toasts, broadcast rp:cityConfig.
+ *   - On DB failure / insufficient funds: do NOT update memory, do NOT consume
+ *     cooldown, emit error toast to mayor.
+ */
+export async function handleCityGrant(
+  socket: Socket,
+  ctx:    LicenseContext,
+  data:   unknown,
+): Promise<void> {
+  const entry = ctx.rpCache.get(socket.id);
+  if (!entry) return;
+
+  // ── Guard 1: Mayor ─────────────────────────────────────────────────────────
+  if (!isMayor(entry)) {
+    socket.emit("rp:toast", { msg: "Only the Mayor can issue city grants.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 2: not jailed ───────────────────────────────────────────────────
+  if (entry.jailUntil && entry.jailUntil > new Date()) {
+    socket.emit("rp:toast", { msg: "You cannot do that while jailed.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 3: not cuffed ───────────────────────────────────────────────────
+  if (entry.cuffedBy) {
+    socket.emit("rp:toast", { msg: "You cannot do that while cuffed.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 4: City Hall proximity ──────────────────────────────────────────
+  const playerState = ctx.players.get(socket.id);
+  if (!playerState) return;
+
+  const [gx, , gz] = GOVERNMENT_OFFICE_POS;
+  const dxg = playerState.x - gx;
+  const dzg = playerState.z - gz;
+  if (Math.sqrt(dxg * dxg + dzg * dzg) > GOVERNMENT_OFFICE_RADIUS) {
+    socket.emit("rp:toast", { msg: "Visit City Hall to issue grants.", color: "red", duration: 3000 });
+    return;
+  }
+
+  // ── Parse payload ─────────────────────────────────────────────────────────
+  const raw            = data as Record<string, unknown> | null | undefined;
+  const targetSocketId = typeof raw?.targetSocketId === "string" ? raw.targetSocketId.trim() : "";
+  const amount         = typeof raw?.amount === "number" ? raw.amount : NaN;
+  const note           = typeof raw?.note === "string"
+    ? raw.note.trim().slice(0, CITY_GRANT_NOTE_MAX_CHARS)
+    : "";
+
+  // ── Validate amount ───────────────────────────────────────────────────────
+  if (!Number.isInteger(amount) || amount < CITY_GRANT_MIN || amount > CITY_GRANT_MAX) {
+    socket.emit("rp:toast", {
+      msg:      `Grant amount must be $${CITY_GRANT_MIN}–$${CITY_GRANT_MAX}.`,
+      color:    "yellow",
+      duration: 3000,
+    });
+    return;
+  }
+
+  // ── Validate target ───────────────────────────────────────────────────────
+  if (!targetSocketId) {
+    socket.emit("rp:toast", { msg: "Select a player to receive the grant.", color: "yellow", duration: 3000 });
+    return;
+  }
+
+  // No self-grants
+  if (targetSocketId === socket.id) {
+    socket.emit("rp:toast", { msg: "You cannot grant funds to yourself.", color: "yellow", duration: 3000 });
+    return;
+  }
+
+  const targetEntry  = ctx.rpCache.get(targetSocketId);
+  const targetPlayer = ctx.players.get(targetSocketId);
+  if (!targetEntry || !targetPlayer) {
+    socket.emit("rp:toast", { msg: "That player is no longer online.", color: "yellow", duration: 3000 });
+    return;
+  }
+
+  if (targetEntry.jailUntil && targetEntry.jailUntil > new Date()) {
+    socket.emit("rp:toast", { msg: "Cannot grant to a jailed player.", color: "yellow", duration: 3000 });
+    return;
+  }
+
+  // ── Guard 5: per-mayor cooldown ───────────────────────────────────────────
+  const cooldownKey = entry.playerId;
+  const lastGrant   = grantCooldownMap.get(cooldownKey) ?? 0;
+  const nowMs       = Date.now();
+  const remainingMs = MAYOR_GRANT_COOLDOWN_MS - (nowMs - lastGrant);
+  if (remainingMs > 0) {
+    socket.emit("rp:toast", {
+      msg:      `Grant cooldown. Wait ${Math.ceil(remainingMs / 1000)}s.`,
+      color:    "yellow",
+      duration: 2000,
+    });
+    return;
+  }
+
+  // ── DB-first transaction ──────────────────────────────────────────────────
+  let newBudget      = 0;
+  let newTargetCash  = 0;
+  try {
+    await db.transaction(async (tx) => {
+      // 1. Spend from city budget (throws InsufficientBudgetError if low)
+      newBudget = await spendCityBudgetTx(tx, amount);
+
+      // 2. Lock + credit target wallet
+      const [wallet] = await tx
+        .select()
+        .from(rpWallets)
+        .where(eq(rpWallets.playerId, targetEntry.playerId))
+        .for("update");
+      if (!wallet) throw new Error("no wallet row for grant target");
+
+      newTargetCash = wallet.cash + amount;
+      await tx
+        .update(rpWallets)
+        .set({ cash: newTargetCash, updatedAt: new Date() })
+        .where(eq(rpWallets.playerId, targetEntry.playerId));
+
+      // 3. Transaction log (cashDelta = amount credited to target)
+      const txNote = note
+        ? `City grant from Mayor — ${note}`
+        : "City grant from Mayor";
+      await tx.insert(rpTransactionLog).values({
+        playerId:  targetEntry.playerId,
+        kind:      "government_grant",
+        cashDelta: amount,
+        bankDelta: 0,
+        cashAfter: newTargetCash,
+        bankAfter: wallet.bank,
+        note:      txNote,
+      });
+    });
+  } catch (err) {
+    if (err instanceof InsufficientBudgetError) {
+      socket.emit("rp:toast", {
+        msg:      `Insufficient city budget ($${err.available.toLocaleString()} available).`,
+        color:    "red",
+        duration: 4000,
+      });
+      return;
+    }
+    logger.error({ err, socketId: socket.id }, "[rpGov] handleCityGrant: transaction failed");
+    socket.emit("rp:toast", { msg: "Grant failed — try again.", color: "red", duration: 4000 });
+    return;
+  }
+
+  // ── DB committed — update in-memory state ─────────────────────────────────
+  // Consume cooldown only after successful commit.
+  grantCooldownMap.set(cooldownKey, nowMs);
+  setCityBudgetInMemory(newBudget);
+  targetEntry.cash = newTargetCash;
+
+  const mayorName  = ctx.players.get(socket.id)?.username ?? "Mayor";
+  const targetName = (targetPlayer as { username?: string }).username ?? targetSocketId;
+
+  logger.info(
+    { socketId: socket.id, mayorName, targetSocketId, targetName, amount, newBudget },
+    "[rpGov] city grant issued",
+  );
+
+  // Emit to target
+  ctx.io.to(targetSocketId).emit("rp:profileUpdate", { cash: newTargetCash });
+  ctx.io.to(targetSocketId).emit("rp:toast", {
+    msg:      note
+      ? `🏛️ City grant: +$${amount} from ${mayorName} — "${note}"`
+      : `🏛️ City grant: +$${amount} from ${mayorName}.`,
+    color:    "gold",
+    duration: 8000,
+  });
+
+  // Broadcast updated city config to all clients
+  ctx.io.emit("rp:cityConfig", {
+    taxRate:       cityTaxRate,
+    updatedAt:     taxRateUpdatedAt > 0 ? taxRateUpdatedAt : Date.now(),
+    updatedByName: taxRateUpdatedByName,
+    cityBudget:    newBudget,
+  });
+
+  // Confirm to mayor
+  socket.emit("rp:toast", {
+    msg:      `$${amount} granted to ${targetName}. Budget remaining: $${newBudget.toLocaleString()}`,
+    color:    "green",
+    duration: 5000,
+  });
 }
 
 // ── persistCityTaxRate ────────────────────────────────────────────────────────
