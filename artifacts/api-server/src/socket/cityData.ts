@@ -60,7 +60,7 @@ export const INITIAL_VEHICLES = [
 // array is the client offline-fallback spawn.)
 export const SPAWN_POINTS: [number, number, number][] = [
   [18,  1, -13],
-  [18,  1,  13],
+  [17,  1,  13],
   [-18, 1,  13],
   [-18, 1, -13],
   [15,  1,  15],

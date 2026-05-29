@@ -440,7 +440,7 @@ export const INITIAL_VEHICLES: VehicleState[] = [
 // MUST match the server SPAWN_POINTS mirror.
 export const SPAWN_POINTS: [number, number, number][] = [
   [18, 1, -13],
-  [18, 1, 13],
+  [17, 1, 13],
   [-18, 1, 13],
   [-18, 1, -13],
   [15, 1, 15],
@@ -2309,6 +2309,9 @@ if (isViteDev) {
     for (const rz of ROADS.ew) if (Math.abs(z - rz) < ROAD_HALF && Math.abs(x) < CITY_HALF) return `z=${rz}`;
     return null;
   };
+  // Phase 13A (Batch D): minimum clearance from a fallback spawn to any parked
+  // car, so the player never materialises on top of / inside a vehicle.
+  const SPAWN_CAR_CLEARANCE = 4.5;
   for (const sp of SPAWN_POINTS) {
     const [sx, , sz] = sp;
     if (checkBuildingCollision(sx, sz)) {
@@ -2337,8 +2340,8 @@ if (isViteDev) {
       }
     }
     for (const v of INITIAL_VEHICLES) {
-      if (Math.hypot(sx - v.x, sz - v.z) < 2) {
-        issues.push(`spawn ${JSON.stringify(sp)} is too close to parked car ${v.id}`);
+      if (Math.hypot(sx - v.x, sz - v.z) < SPAWN_CAR_CLEARANCE) {
+        issues.push(`spawn ${JSON.stringify(sp)} is within ${SPAWN_CAR_CLEARANCE} m of parked car ${v.id}`);
         break;
       }
     }

@@ -443,14 +443,17 @@ traffic 0 off-road (full road set). api-server build, `BASE_PATH=/ PORT=5173 pnp
 `SPAWN_POINTS[hash % len]` as its offline-fallback spawn** (`LocalPlayer.tsx`). Four of the eight
 points sat on the x=0 / z=0 road centerlines — `(0,−12)`, `(12,0)`, `(−12,0)`, `(0,12)` — so an
 offline fallback could drop a player on a road. **Smallest fix:** relocated those four into the
-empty plaza quadrants → `(18,−13)`, `(18,13)`, `(−18,13)`, `(−18,−13)` (the four `(±15,±15)`
+empty plaza quadrants → `(18,−13)`, `(17,13)`, `(−18,13)`, `(−18,−13)` (the four `(±15,±15)`
 points were already off-road and kept). Mirror updated on both server + client `cityData.ts`.
-No RP / traffic / NPC / economy coordinate touched.
+No RP / traffic / NPC / economy coordinate touched. *(Post-Codex: the first candidate `(18,13)`
+was only 4.47 m from car-2 (22,15) — under the 4.5 m bar — so it was re-solved to `(17,13)`,
+5.39 m clear.)*
 
 ### Validators added (client dev block)
 - **Spawns:** off the central road grid + clear of buildings, RP buildings, RP houses, static
-  obstacles, parked cars, and in bounds (extended the existing spawn loop, which only covered
-  buildings/bounds/obstacles).
+  obstacles, and in bounds, plus **≥ `SPAWN_CAR_CLEARANCE` (4.5 m) from every parked car** (a named
+  constant — the enforced threshold now matches the clearance claimed in this report). Extends the
+  existing spawn loop, which only covered buildings/bounds/obstacles.
 - **Homesteads vs RP:** each homestead **yard** footprint (the largest, enclosing house + fence
   panels) must clear every RP building and RP house — a category the prior homestead validator
   never checked.
@@ -465,9 +468,10 @@ No RP / traffic / NPC / economy coordinate touched.
 
 ### Verification
 - tsc ×4 pass.
-- Direct geometry replay: (1) all 8 relocated spawns off-road + clear of RP/cars ✓; (2) 12/12
-  homestead driveways connect to a ring vertex ✓; (3) gate gap ≥ driveway width ✓; (4) 12/12
-  homestead yards clear of RP buildings + RP houses ✓; (5) 8 spawns distinct, no new overlap ✓.
+- Direct geometry replay: (1) all 8 spawns off-road + clear of RP buildings/houses + **≥4.5 m from
+  every car** (worst (17,13) = 5.39 m) ✓; (2) 12/12 homestead driveways connect to a ring vertex ✓;
+  (3) gate gap ≥ driveway width ✓; (4) 12/12 homestead yards clear of RP buildings + RP houses ✓;
+  (5) 8 spawns distinct, no new overlap ✓.
 - api-server build, `BASE_PATH=/ PORT=5173 pnpm build`, tsx `rpValidators` run on the Mac.
 
 ### Remaining (Batches E–F, optional polish — not blockers)
