@@ -131,7 +131,7 @@ footprints; AABB-overlap and edge-distance math for the rest.
 | Rocks | NO | — | (generation-time rejection only) | no startup assertion |
 | Parked cars | PARTIAL | V1/V4 | inside RP footprint; 8 m from markers | vs procedural/static obstacles/regional roads |
 | NPC traffic routes | NO | — | — | waypoints vs roads/buildings/obstacles |
-| Player spawns | PARTIAL | V3/V6 | station spawn off-road + (would-be) obstacle | legacy plaza points unvalidated & on-road |
+| Player spawns | PARTIAL | V3/V6 | station spawn off-road + (would-be) obstacle | *(Batch D, §13: legacy plaza spawns relocated off-road + now fully validated client-side)* |
 | RP buildings | YES | V1 | road, gap, cars, doors, walls, jail geom | vs procedural buildings, trees, obstacles |
 | RP houses | YES | V2 | road, RP gap, cars, doors, house gap, interior, markers | vs procedural buildings, trees, homesteads |
 | ATMs | YES | V3 | off-road + (would-be) obstacle | footprint n/a (points) |
@@ -361,7 +361,7 @@ correctly reports 0. No object was moved.
 | RP houses | `validateRpHouses` (+core envelope, bounded roads) | NEW (full world) | road/RP-gap/cars/doors/interior/markers/core + vs BUILDINGS/regional/obstacles/cars | — |
 | Static obstacles / homesteads / fences | — | PARTIAL | houses & spawns & vehicles vs obstacles; homesteads vs vehicles/lamps/station/stairs | obstacle-vs-road not asserted (hand-placed roadside by design) |
 | Parked cars | `validateRpBuildings`/`…Houses`/`…VehicleClearance` | YES | vs RP buildings/houses, 8 m marker clearance, vs buildings/obstacles, grounding | — |
-| Spawns | `validateRpMarkers`/`safeStationSpawn` | YES | off-road + obstacle + bounds + vs buildings | legacy plaza `SPAWN_POINTS` on grid (P3, §5.4) — unmoved |
+| Spawns | `validateRpMarkers`/`safeStationSpawn` | YES (Batch D, §13) | station spawn off-road + obstacle + bounds; legacy plaza `SPAWN_POINTS` relocated off-road (Batch D) and now asserted off-grid + clear of buildings / RP buildings / RP houses / obstacles + ≥4.5 m from parked cars | — |
 | ATMs / job & checkpoint markers | `validateRpMarkers`/`…VehicleClearance` | — | on/off-road per role, obstacle, 8 m car clearance | — |
 | Gang turf / tag points | `validateRpMarkers` + `validateRpHouses` | — | off-road; house turf-radius clearance | — |
 | Ambient traffic routes | — | YES (Batch C, §12) | every waypoint AND segment midpoint hard-asserted on-road (grid + regional, 3 m apex tol) | diagonal-segment road test is conservative (over-safe) |
