@@ -468,25 +468,34 @@ export interface ActiveCityProject {
   expiresAt: number; // Unix ms — client computes remainingMs = expiresAt - Date.now()
 }
 
-/** Client-side project catalogue (mirrors server CITY_PROJECT_DEFS). */
+/**
+ * Client-side project catalogue (mirrors server CITY_PROJECT_DEFS).
+ *
+ * `effect` is a short display-only summary of the active gameplay effects.
+ * Phase 8F added the +10% payout boost; Phase 8G added the 50% cooldown cut.
+ * These values are authoritative on the server — this is purely for UI.
+ */
 export const CITY_PROJECT_DEFS_CLIENT = [
   {
-    id:    "public_works",
-    label: "Public Works Boost",
-    cost:  500,
-    desc:  "City Worker & Delivery Driver payouts +10% for 10 min",
+    id:     "public_works",
+    label:  "Public Works Boost",
+    cost:   500,
+    desc:   "City Worker & Delivery Driver: +10% payout and 50% shorter route cooldown for 10 min",
+    effect: "+10% payout · 50% cooldown",
   },
   {
-    id:    "transit_subsidy",
-    label: "Transit Subsidy",
-    cost:  400,
-    desc:  "Taxi Driver payouts +10% for 10 min",
+    id:     "transit_subsidy",
+    label:  "Transit Subsidy",
+    cost:   400,
+    desc:   "Taxi Driver: +10% payout and 50% shorter route cooldown for 10 min",
+    effect: "+10% payout · 50% cooldown",
   },
   {
-    id:    "emergency_funding",
-    label: "Emergency Services Funding",
-    cost:  600,
-    desc:  "Medic, Mechanic & Police Patrol payouts +10% for 10 min",
+    id:     "emergency_funding",
+    label:  "Emergency Services Funding",
+    cost:   600,
+    desc:   "Medic, Mechanic & Police Patrol: +10% payout and 50% shorter cooldown for 10 min",
+    effect: "+10% payout · 50% cooldown",
   },
 ] as const;
 

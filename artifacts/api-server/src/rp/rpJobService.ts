@@ -105,7 +105,7 @@ import {
   POLICE_PATROL_ROUTE_COOLDOWN_MS,
 } from "../socket/cityData";
 import { isPolice, isMedic } from "./rpFactionHelpers";
-import { applyCityTax, applyCityProjectBonus, addTaxRevenueTx, setCityBudgetInMemory } from "./rpGovernmentService";
+import { applyCityTax, applyCityProjectBonus, getCityProjectCooldownMultiplier, addTaxRevenueTx, setCityBudgetInMemory } from "./rpGovernmentService";
 
 // ── Context ────────────────────────────────────────────────────────────────────
 
@@ -405,12 +405,16 @@ async function clockInCityWorker(
     return;
   }
 
-  // Cooldown check
+  // Cooldown check (Phase 8G: public_works halves the City Worker cooldown)
   const now = Date.now();
   if (entry.lastPaycheckAt !== null) {
     const elapsed = now - entry.lastPaycheckAt;
-    if (elapsed < JOB_ROUTE_COOLDOWN_MS) {
-      const waitSecs = Math.ceil((JOB_ROUTE_COOLDOWN_MS - elapsed) / 1000);
+    const effectiveCooldown = Math.max(
+      1000,
+      Math.round(JOB_ROUTE_COOLDOWN_MS * getCityProjectCooldownMultiplier("city_worker")),
+    );
+    if (elapsed < effectiveCooldown) {
+      const waitSecs = Math.ceil((effectiveCooldown - elapsed) / 1000);
       socket.emit("rp:toast", {
         msg:      `Route cooldown — wait ${waitSecs}s before starting another route.`,
         color:    "yellow",
@@ -488,12 +492,16 @@ async function clockInTaxi(
     return;
   }
 
-  // Cooldown check
+  // Cooldown check (Phase 8G: transit_subsidy halves the Taxi cooldown)
   const now = Date.now();
   if (entry.lastPaycheckAt !== null) {
     const elapsed = now - entry.lastPaycheckAt;
-    if (elapsed < TAXI_ROUTE_COOLDOWN_MS) {
-      const waitSecs = Math.ceil((TAXI_ROUTE_COOLDOWN_MS - elapsed) / 1000);
+    const effectiveCooldown = Math.max(
+      1000,
+      Math.round(TAXI_ROUTE_COOLDOWN_MS * getCityProjectCooldownMultiplier("taxi")),
+    );
+    if (elapsed < effectiveCooldown) {
+      const waitSecs = Math.ceil((effectiveCooldown - elapsed) / 1000);
       socket.emit("rp:toast", {
         msg:      `Route cooldown — wait ${waitSecs}s before starting another route.`,
         color:    "yellow",
@@ -906,12 +914,16 @@ async function clockInDelivery(
     return;
   }
 
-  // Cooldown check
+  // Cooldown check (Phase 8G: public_works halves the Delivery cooldown)
   const now = Date.now();
   if (entry.lastPaycheckAt !== null) {
     const elapsed = now - entry.lastPaycheckAt;
-    if (elapsed < DELIVERY_ROUTE_COOLDOWN_MS) {
-      const waitSecs = Math.ceil((DELIVERY_ROUTE_COOLDOWN_MS - elapsed) / 1000);
+    const effectiveCooldown = Math.max(
+      1000,
+      Math.round(DELIVERY_ROUTE_COOLDOWN_MS * getCityProjectCooldownMultiplier("delivery")),
+    );
+    if (elapsed < effectiveCooldown) {
+      const waitSecs = Math.ceil((effectiveCooldown - elapsed) / 1000);
       socket.emit("rp:toast", {
         msg:      `Route cooldown — wait ${waitSecs}s before starting another route.`,
         color:    "yellow",
@@ -1188,11 +1200,16 @@ async function clockInMechanic(
   }
 
   // Cooldown check — uses shared lastPaycheckAt
+  // (Phase 8G: emergency_funding halves the Mechanic cooldown)
   const now = Date.now();
   if (entry.lastPaycheckAt !== null) {
     const elapsed = now - entry.lastPaycheckAt;
-    if (elapsed < MECHANIC_ROUTE_COOLDOWN_MS) {
-      const waitSecs = Math.ceil((MECHANIC_ROUTE_COOLDOWN_MS - elapsed) / 1000);
+    const effectiveCooldown = Math.max(
+      1000,
+      Math.round(MECHANIC_ROUTE_COOLDOWN_MS * getCityProjectCooldownMultiplier("mechanic")),
+    );
+    if (elapsed < effectiveCooldown) {
+      const waitSecs = Math.ceil((effectiveCooldown - elapsed) / 1000);
       socket.emit("rp:toast", {
         msg:      `Service cooldown — wait ${waitSecs}s before taking another call.`,
         color:    "yellow",
@@ -1501,12 +1518,16 @@ async function clockInMedic(
     return;
   }
 
-  // Cooldown check
+  // Cooldown check (Phase 8G: emergency_funding halves the Medic cooldown)
   const now = Date.now();
   if (entry.lastPaycheckAt !== null) {
     const elapsed = now - entry.lastPaycheckAt;
-    if (elapsed < MEDIC_ROUTE_COOLDOWN_MS) {
-      const waitSecs = Math.ceil((MEDIC_ROUTE_COOLDOWN_MS - elapsed) / 1000);
+    const effectiveCooldown = Math.max(
+      1000,
+      Math.round(MEDIC_ROUTE_COOLDOWN_MS * getCityProjectCooldownMultiplier("medic")),
+    );
+    if (elapsed < effectiveCooldown) {
+      const waitSecs = Math.ceil((effectiveCooldown - elapsed) / 1000);
       socket.emit("rp:toast", {
         msg:      `Dispatch cooldown — wait ${waitSecs}s before taking another call.`,
         color:    "yellow",
@@ -1826,12 +1847,16 @@ async function clockInPolicePatrol(
     return;
   }
 
-  // Cooldown check
+  // Cooldown check (Phase 8G: emergency_funding halves the Police Patrol cooldown)
   const now = Date.now();
   if (entry.lastPaycheckAt !== null) {
     const elapsed = now - entry.lastPaycheckAt;
-    if (elapsed < POLICE_PATROL_ROUTE_COOLDOWN_MS) {
-      const waitSecs = Math.ceil((POLICE_PATROL_ROUTE_COOLDOWN_MS - elapsed) / 1000);
+    const effectiveCooldown = Math.max(
+      1000,
+      Math.round(POLICE_PATROL_ROUTE_COOLDOWN_MS * getCityProjectCooldownMultiplier("police_patrol")),
+    );
+    if (elapsed < effectiveCooldown) {
+      const waitSecs = Math.ceil((effectiveCooldown - elapsed) / 1000);
       socket.emit("rp:toast", {
         msg:      `Patrol cooldown — wait ${waitSecs}s before starting another patrol.`,
         color:    "yellow",

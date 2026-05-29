@@ -190,6 +190,39 @@ export function applyCityProjectBonus(
   return { grossPay, bonusAmount: 0, boostedGrossPay: grossPay, activeProjectLabel: null };
 }
 
+// ── getCityProjectCooldownMultiplier (Phase 8G) ───────────────────────────────
+
+/**
+ * Server-authoritative cooldown multiplier for a job's clock-in cooldown.
+ *
+ * If an active (non-expired) city project covers this job slug, the job's
+ * route/clock-in cooldown is halved (multiplier 0.5); otherwise 1.
+ *
+ * This mirrors the payout-bonus coverage in applyCityProjectBonus: a project
+ * applies to exactly the job slugs listed in its CITY_PROJECT_DEFS entry, so:
+ *   - public_works      → city_worker, delivery
+ *   - transit_subsidy   → taxi
+ *   - emergency_funding → medic, mechanic, police_patrol
+ *
+ * Authority notes:
+ *   - Reads ONLY server-side in-memory project state; never client input.
+ *   - Prunes expired projects first so a lapsed project grants no reduction.
+ *   - Returns a multiplier, never an absolute duration, so callers keep their
+ *     own positive base-cooldown constants and the result stays > 0.
+ */
+export function getCityProjectCooldownMultiplier(jobSlug: string): number {
+  pruneExpiredProjects();
+
+  for (const proj of activeCityProjects.values()) {
+    const def = CITY_PROJECT_DEFS.find((d) => d.id === proj.projectId);
+    if (def && (def.jobSlugs as readonly string[]).includes(jobSlug)) {
+      return 0.5;
+    }
+  }
+
+  return 1;
+}
+
 // ── parseStrictNonNegInt ──────────────────────────────────────────────────────
 
 /**

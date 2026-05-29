@@ -17,6 +17,7 @@ import {
   WORLD_HALF,
   WORLD_SIZE,
 } from "../shared/cityData";
+import { CITY_PROJECT_DEFS_CLIENT } from "../shared/rpTypes";
 
 interface HUDProps {
   health: number;
@@ -216,6 +217,50 @@ const PANEL_SHADOW =
   "0 8px 24px rgba(0,0,0,0.45), 0 0 1px rgba(0,229,255,0.25), inset 0 1px 0 rgba(255,255,255,0.04)";
 
 const MINIMAP_PX = 200;
+
+// ── Phase 8G: CityProjectBadge ───────────────────────────────────────────────
+
+/**
+ * Compact active-city-project badge: name + live countdown + effect summary.
+ * Display-only — the server is authoritative for project state and effects.
+ * Ticks once per second to update the countdown.
+ */
+function CityProjectBadge({ project }: { project: import("../shared/rpTypes").ActiveCityProject }) {
+  const [, setTick] = useState(0);
+  useEffect(() => {
+    const id = setInterval(() => setTick((t) => t + 1), 1000);
+    return () => clearInterval(id);
+  }, []);
+
+  const def = CITY_PROJECT_DEFS_CLIENT.find((d) => d.id === project.projectId);
+  const ms  = Math.max(0, project.expiresAt - Date.now());
+  const sec = Math.floor(ms / 1000);
+  const mm  = Math.floor(sec / 60);
+  const ss  = sec % 60;
+  const countdown = `${mm}:${String(ss).padStart(2, "0")}`;
+
+  return (
+    <div
+      style={{
+        background:    PANEL_BG,
+        border:        "1px solid rgba(51, 85, 204, 0.35)",
+        borderRadius:  PANEL_RADIUS,
+        padding:       "3px 8px",
+        fontSize:      11,
+        color:         "#6688cc",
+        letterSpacing: 0.3,
+        display:       "flex",
+        alignItems:    "center",
+        gap:           6,
+      }}
+      title={def?.desc ?? project.label}
+    >
+      <span>🏗️ {project.label}</span>
+      <span style={{ color: "#4488ff", fontVariantNumeric: "tabular-nums" }}>⏱ {countdown}</span>
+      {def?.effect && <span style={{ color: "#5fae5f", fontSize: 10 }}>{def.effect}</span>}
+    </div>
+  );
+}
 
 // ── Phase 6A: JailOverlay ────────────────────────────────────────────────────
 
@@ -2013,22 +2058,9 @@ export default function HUD({
             </div>
           )}
 
-          {/* Phase 8F: Active city project badges (all players) */}
+          {/* Phase 8F/8G: Active city project badges (all players) — name, countdown, effect */}
           {cityProjects && cityProjects.filter((p) => p.expiresAt > Date.now()).map((p) => (
-            <div
-              key={p.projectId}
-              style={{
-                background:    PANEL_BG,
-                border:        "1px solid rgba(51, 85, 204, 0.35)",
-                borderRadius:  PANEL_RADIUS,
-                padding:       "3px 8px",
-                fontSize:      11,
-                color:         "#6688cc",
-                letterSpacing: 0.3,
-              }}
-            >
-              🏗️ {p.label}
-            </div>
+            <CityProjectBadge key={p.projectId} project={p} />
           ))}
 
           {/* Phase 8D: City budget badge */}

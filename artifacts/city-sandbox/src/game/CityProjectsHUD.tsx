@@ -177,6 +177,9 @@ export default function CityProjectsHUD({
                     {def.label}
                   </div>
                   <div style={{ fontSize: 11, color: "#556" }}>{def.desc}</div>
+                  <div style={{ fontSize: 10, color: isActive ? "#5fae5f" : "#4a5", marginTop: 3, fontWeight: 600 }}>
+                    {def.effect}
+                  </div>
                   {isActive && active && (
                     <div style={{ fontSize: 11, color: "#4488ff", marginTop: 4, fontVariantNumeric: "tabular-nums" }}>
                       ⏱ {formatCountdown(active.expiresAt)} remaining
