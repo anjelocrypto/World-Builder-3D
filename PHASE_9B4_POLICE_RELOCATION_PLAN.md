@@ -1,6 +1,6 @@
 # Phase 9B-4 — Police Station Relocation (plan only)
 
-**Status:** Audit + solver complete. **No coordinates changed yet.** This proposes the target block and the rigid-cluster translation for your approval before implementation.
+**Status:** ✅ COMPLETE — implemented in 9B-4a (commit 4356dd1), 9B-4b, and 9B-4c (commit e8f0b9e). All tsc checks, API/Vite builds, and RP marker/building validators pass; on main/origin. The proposal below was carried out as written.
 
 ## Why the police station must move
 At (−68,14) the station is wedged on the west wall between Medic (−68,28) and Mechanic (−68,−28). A believable station footprint can't gain road clearance there without overlapping them (verified in the 9A audit). It needs its own block.
@@ -52,11 +52,11 @@ Why this block: it's the SW outer-corner residential block, directly south of th
 - **9B-4b Gates/flow:** redirect the station clock-in gate + client ring/prompt to the door; reduce signpost; add signage. Confirm jail/booking/release teleports + confinement read the moved constants.
 - **9B-4c Verify:** tsc x4 + standalone validator (9 buildings) + jail-confinement-zone geometry + a full manual **arrest → cuff → book → jail → release** regression run on the Mac.
 
-## Confirmed decisions (locked — awaiting implementation go-ahead)
-- **Target block: (−68, 64)** — SW block, cluster translated by (0, +50). ✅ confirmed.
-- **Station facing: south** — door at **(−68, 72.5)**, toward the interior, clear of the z=45 road. ✅ confirmed.
+## Confirmed decisions (implemented)
+- **Target block: (−68, 64)** — SW block, cluster translated by (0, +50). ✅ done.
+- **Station facing: south** — door at **(−68, 72.5)**, toward the interior, clear of the z=45 road. ✅ done.
 
-Final cluster coordinates for 9B-4a (for reference, NOT yet applied):
+Final cluster coordinates (as implemented):
 | Constant | → New |
 |---|---|
 | `POLICE_STATION` | (−68, 0, 64) |
@@ -66,4 +66,4 @@ Final cluster coordinates for 9B-4a (for reference, NOT yet applied):
 | `police_station` building | centre (−68, 64), 20×14, facing south |
 | `POLICE_STATION_DOOR` | (−68, 72.5) |
 
-**Status: plan finalized. No coordinates edited. Awaiting your go-ahead to implement 9B-4a.**
+**Status: ✅ IMPLEMENTED.** Cluster relocated to (−68,64); building + door (−68,72.5) added; gate/ring/prompt door-aligned; atm-police moved to (−80,64). Verified and on main/origin.

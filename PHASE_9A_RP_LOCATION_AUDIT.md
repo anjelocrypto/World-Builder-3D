@@ -37,7 +37,7 @@ Distances: `roadEdge` = clearance from footprint-free point to nearest carriagew
 | STATION_SPAWN | (128, −65) | Player spawn / transit | 10.0 m | 87.1 | 60.1 | off ✓ | Platform (fine) |
 | GROVE_HANGOUT / TURF | (95, 65) | Gang turf | 10.0 m | 67.1 | 74.8 | off ✓ | Plaza/turf — keep as zone ✓ |
 
-ATMs (5): `atm-central (18,−30)`, `atm-station (132,−58)`, `atm-police (−80,14)`, `atm-medical (−80,28)`, `atm-dealership (82,−78)` — small kiosks, all off-road; keep as kiosks, just need a real kiosk mesh instead of a stick.
+ATMs (5): `atm-central (18,−30)`, `atm-station (132,−58)`, `atm-police (−80,64)` *(moved with the police station in 9B-4; was (−80,14))*, `atm-medical (−80,28)`, `atm-dealership (82,−78)` — small kiosks, all off-road; keep as kiosks, just need a real kiosk mesh instead of a stick.
 
 ---
 
@@ -94,7 +94,7 @@ The joint solver also proposed moving the locations below, but they were **dropp
 | TEST_VEHICLE_SPAWN | (13,−30) → (22,−15) | Moved *with* the office in **9B-3** to **(11,−30)** (OBB-verified clear of roads). |
 | TAXI_DEPOT (building) | (−30,−15) → (−22,24) | A real taxi-yard footprint forces a relocation (its origin shares City Hall's NW pocket). Deferred from 9A. **✅ Completed in Phase 9B-1** (commit bc6fc20): relocated to **(−28,16)** as a 10×8 yard; fare math unchanged. |
 | DELIVERY_HUB | (58,−28) → (66,−26) | Deferred from 9A (payout origin). **✅ Completed in Phase 9B-2** (commit e489591): payout origin kept fixed at (58,−28); added a separate warehouse building at (66,−26) + door at (55.5,−26). Delivery pay unchanged. |
-| POLICE_STATION | (−68,14) → (−68,21) | Boxed between Medic (z=28) and Mechanic (z=−28) on the west wall; a 20-wide station can't gain clearance without overlapping them. Needs its own block. |
+| POLICE_STATION | (−68,14) → (−68,21) | Deferred from 9A (boxed between Medic/Mechanic). **✅ Completed in Phase 9B-4** (commits 4356dd1 / e8f0b9e): whole police cluster relocated (0,+50) to its own SW block — `POLICE_STATION`/`POLICE_JAIL_CELL` **(−68,64)**, `POLICE_RELEASE_POS` **(−68,72)**, `POLICE_BOOKING_DESK_POS` **(−62,64)**; 20×14 station building + door (−68,72.5); arrest/booking/jail/release logic unchanged. |
 | car-0 | (22,−22) → (22,−31) | Only needed if Licensing moves; Licensing deferred, so car-0 **unchanged**. |
 | car-1 | (−22,22) → (−22,15) | Only needed if the Taxi building moves; deferred, so car-1 **unchanged**. |
 

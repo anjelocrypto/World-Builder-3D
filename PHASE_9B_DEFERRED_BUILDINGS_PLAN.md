@@ -22,11 +22,17 @@ Extend `RP_BUILDINGS` only after each location's coordinate/coupling decision is
 - **Decision taken:** moved the office and re-derived **only** the coupled finish/spawn; CP0–CP2 untouched.
 - **Outcome:** office (14,−30) → **(17,−29)** as a 10×8 DMV, facing **south**, door at **(17,−23.5)**. CP3 re-derived to **(17,−23.5)** (coincides with the door — drive-up finish). `TEST_VEHICLE_SPAWN` (13,−30) → **(11,−30)**, OBB-verified clear of all carriageways. Start gate + ring + prompt redirected to the door; signpost reduced; "DMV / AUTO SCHOOL" signage added. Updated the 5 hardcoded validator/OBB literals. **Test fee, license-grant logic, socket events unchanged.** Road edge 2.0 m; nearest car 8.6 m; nearest building 25 m.
 
-### 9B-4 — Police Station relocation (structural)
-- **Coupling:** boxed between Medic (z=28) and Mechanic (z=−28) on the west wall; anchors `POLICE_JAIL_CELL`, `POLICE_RELEASE_POS`, `POLICE_BOOKING_DESK_POS` (all offset from the station) plus the jail/release teleport targets in `rpPoliceService` + the jail-confinement clamp in `gameServer`. **NOT** related to `STATION_SPAWN`/`STATION_MARKER_POS` — those are the far-east transit / player-spawn platform (128/132,−65) and are **out of scope** for the police cluster.
-- **Decision needed:** give the station its own block (likely outside the −68 west strip). Every dependent point (jail/booking/release) must move as a rigid group and stay off-road + mutually consistent.
-- **Catch:** highest blast radius — touches the police arrest/booking/jail/release flow. Treat as its own mini-phase with a full police-flow regression check.
-- **Steps:** pick a block → translate the whole police cluster as a unit → footprint + all-point validation → add to `RP_BUILDINGS` + door → redirect gates/rings → validators + tsc + manual arrest→book→jail→release run.
+### 9B-4 — Police Station relocation ✅ COMPLETE (9B-4a 4356dd1, 9B-4b, 9B-4c e8f0b9e)
+- **Coupling:** boxed between Medic (z=28) and Mechanic (z=−28) on the west wall; anchored `POLICE_JAIL_CELL`, `POLICE_RELEASE_POS`, `POLICE_BOOKING_DESK_POS` + jail/release teleports + the jail-confinement clamp. `STATION_SPAWN`/`STATION_MARKER_POS` (transit platform) confirmed out of scope and untouched.
+- **Outcome:** whole police cluster translated **(0, +50)** to its own SW precinct block:
+  - `POLICE_STATION` (−68,14) → **(−68,64)** · `POLICE_JAIL_CELL` → **(−68,64)** · `POLICE_RELEASE_POS` (−68,22) → **(−68,72)** · `POLICE_BOOKING_DESK_POS` (−62,14) → **(−62,64)**
+  - Added `police_station` building (20×14, south) + `POLICE_STATION_DOOR` **(−68,72.5)**; `atm-police` moved (−80,14) → **(−80,64)**.
+  - 9B-4a: data/cluster translation + building/door. 9B-4b: clock-in gate + ring/prompt redirected to door, signpost reduced. 9B-4c: stale comments fixed + atm-police moved.
+  - Cluster offsets preserved (jail 0,0 · release 0,+8 · booking +6,0); jail-confinement zone off-road; patrol points unchanged; arrest/booking/jail/release logic unchanged. All tsc + builds + validators pass.
 
 ## Verification (every batch)
 Same gate as 9A: four `tsc` projects (enforced in-session), then api-server build + vite build + RP marker/building validators on the Mac. Mirror every moved coordinate server↔client. Commit per batch; push after Codex verification.
+
+## Phase 9B status: ✅ COMPLETE
+All four deferred buildings are now real buildings with door-aligned interaction:
+9B-1 Taxi Depot, 9B-2 Delivery Hub, 9B-3 Licensing Office, 9B-4 Police Station — all verified (tsc + API/Vite builds + RP validators) and on main/origin.
