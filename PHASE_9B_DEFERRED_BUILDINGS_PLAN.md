@@ -12,17 +12,15 @@ Extend `RP_BUILDINGS` only after each location's coordinate/coupling decision is
 - **Outcome:** `TAXI_DEPOT` moved (−30,−15) → **(−28,16)**, 31 m. The old origin's pocket is occupied by the City Hall footprint, and no taxi footprint fits there without overlapping it; the only all-clearances-pass spot is the SW-north pocket. Built as a compact **10×8** yard, facing south, door at **(−28,21.5)**. Road edge 2.0 m; nearest car 8.5 m; nearest building 26 m; nearest taxi pickup (P3) 14.6 m.
 - **Shipped:** moved `TAXI_DEPOT` (server/client mirror); added `taxi_depot` to `RP_BUILDINGS` + `TAXI_DEPOT_DOOR`; redirected both clock-in/out gates, client prompt, and visual ring to the door; reduced the old signpost to a subtle marker (Batch-D style); added the TAXI DEPOT building style. Pickups/dropoffs/fare math untouched. All tsc + API/Vite builds + RP validators pass.
 
-### 9B-2 — Delivery Hub building (payout-origin analysis required)
-- **Coupling:** `DELIVERY_HUB` is a **payout origin** (`calcDeliveryPay(DELIVERY_HUB, …)`). Moving it changes delivery pay for every route.
-- **Decision needed from you:** either (a) keep the payout origin fixed and only relocate the *gate/building* to a door-style point nearby (like the Medic split in 9A-E), or (b) accept a payout shift and document the delta. Recommend (a).
-- **Catch:** can't host a footprint near (58,−28) without clipping the x=45 road; needs a small relocation of the building shell while the payout origin stays put.
-- **Steps:** decide (a)/(b) → introduce `DELIVERY_HUB_DOOR`/building point distinct from payout origin → footprint solve → validators + tsc + a before/after pay sample if (b).
+### 9B-2 — Delivery Hub building ✅ COMPLETE (commit e489591)
+- **Coupling:** `DELIVERY_HUB` is a **payout origin** (`calcDeliveryPay(DELIVERY_HUB, …)`).
+- **Decision taken:** option (a) — kept the payout origin fixed at (58,−28); introduced a separate building + door.
+- **Outcome:** added a `delivery_hub` warehouse building at centre **(66,−26)**, 18×14, facing **west**, door at **(55.5,−26)**. The unchanged payout origin sits *inside* the footprint (warehouse-over-dock). Gates (clock-in/out) + ring + prompt redirected to the door; signpost reduced; "DELIVERY HUB" signage added. Road edge 2.0 m; nearest car 32 m; nearest building 31 m. **Delivery payout math unchanged** — verified.
 
-### 9B-3 — Licensing Office + license-test route (most coupled)
-- **Coupling:** the license-test **CP3 finish is at the current office door (14,−26)**; the test start gate measures distance to `LICENSING_OFFICE_POS`; `TEST_VEHICLE_SPAWN` sits beside it. Moving the office orphans the checkpoint.
-- **Decision needed:** move the office **and** re-derive CP3 + test-vehicle spawn together (a coordinated route edit), or keep the office where it is and build a tighter footprint around it.
-- **Catch:** CP0–CP2 are on-road and must NOT move; only CP3 (finish) and the spawn can follow the office. Needs the full license-test flow re-validated.
-- **Steps:** choose move-vs-stay → if move, re-solve CP3 + `TEST_VEHICLE_SPAWN` with the office → footprint + OBB spawn validation → validators + tsc + a manual license-test run.
+### 9B-3 — Licensing Office + license-test route ✅ COMPLETE (commit 9a2ffd7)
+- **Coupling:** license-test CP3 finish at the office door; start gate measures to `LICENSING_OFFICE_POS`; `TEST_VEHICLE_SPAWN` beside it.
+- **Decision taken:** moved the office and re-derived **only** the coupled finish/spawn; CP0–CP2 untouched.
+- **Outcome:** office (14,−30) → **(17,−29)** as a 10×8 DMV, facing **south**, door at **(17,−23.5)**. CP3 re-derived to **(17,−23.5)** (coincides with the door — drive-up finish). `TEST_VEHICLE_SPAWN` (13,−30) → **(11,−30)**, OBB-verified clear of all carriageways. Start gate + ring + prompt redirected to the door; signpost reduced; "DMV / AUTO SCHOOL" signage added. Updated the 5 hardcoded validator/OBB literals. **Test fee, license-grant logic, socket events unchanged.** Road edge 2.0 m; nearest car 8.6 m; nearest building 25 m.
 
 ### 9B-4 — Police Station relocation (structural)
 - **Coupling:** boxed between Medic (z=28) and Mechanic (z=−28) on the west wall; also anchors `POLICE_JAIL_CELL`, `POLICE_RELEASE_POS`, `POLICE_BOOKING_DESK_POS` (all offset from the station), and `STATION_SPAWN`/jail teleport targets in `rpPoliceService` + `gameServer`.

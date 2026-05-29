@@ -90,10 +90,10 @@ The joint solver also proposed moving the locations below, but they were **dropp
 
 | Candidate | Solver proposed | Why deferred (NOT committed) |
 |---|---|---|
-| LICENSING_OFFICE | (14,−30) → (22,−22) | License-test checkpoint **CP3 finish** sits at the current door (14,−26). Moving the office would orphan a checkpoint, which the brief says not to move yet. |
-| TEST_VEHICLE_SPAWN | (13,−30) → (22,−15) | Only moves *with* the licensing office; since the office is deferred, the spawn stays put. |
+| LICENSING_OFFICE | (14,−30) → (22,−22) | Deferred from 9A (CP3 finish coupling). **✅ Completed in Phase 9B-3** (commit 9a2ffd7): moved to **(17,−29)** as a 10×8 DMV; CP3 re-derived to the door; CP0–CP2 unchanged; test fee/license logic unchanged. |
+| TEST_VEHICLE_SPAWN | (13,−30) → (22,−15) | Moved *with* the office in **9B-3** to **(11,−30)** (OBB-verified clear of roads). |
 | TAXI_DEPOT (building) | (−30,−15) → (−22,24) | A real taxi-yard footprint forces a relocation (its origin shares City Hall's NW pocket). Deferred from 9A. **✅ Completed in Phase 9B-1** (commit bc6fc20): relocated to **(−28,16)** as a 10×8 yard; fare math unchanged. |
-| DELIVERY_HUB | (58,−28) → (66,−26) | Payout origin. Can't host a building without clipping the x=45 road or moving the origin (which changes delivery pay). Needs a payout-delta analysis first. |
+| DELIVERY_HUB | (58,−28) → (66,−26) | Deferred from 9A (payout origin). **✅ Completed in Phase 9B-2** (commit e489591): payout origin kept fixed at (58,−28); added a separate warehouse building at (66,−26) + door at (55.5,−26). Delivery pay unchanged. |
 | POLICE_STATION | (−68,14) → (−68,21) | Boxed between Medic (z=28) and Mechanic (z=−28) on the west wall; a 20-wide station can't gain clearance without overlapping them. Needs its own block. |
 | car-0 | (22,−22) → (22,−31) | Only needed if Licensing moves; Licensing deferred, so car-0 **unchanged**. |
 | car-1 | (−22,22) → (−22,15) | Only needed if the Taxi building moves; deferred, so car-1 **unchanged**. |
