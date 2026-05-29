@@ -6,11 +6,9 @@ import {
   Heart,
   Gauge,
   Car,
-  Flag,
   Compass,
 } from "lucide-react";
 import {
-  CHECKPOINTS,
   REGIONAL_ROADS,
   ROADS,
   BIOME_BOUNDS,
@@ -28,9 +26,6 @@ interface HUDProps {
   playerCount: number;
   myId: string;
   username: string;
-  raceActive: boolean;
-  raceTime: number;
-  racePassed: number[];
   playerPositionX: number;
   playerPositionZ: number;
   connected: boolean;
@@ -479,14 +474,6 @@ function Minimap({
       ctx.stroke();
     }
 
-    // Checkpoints — slightly larger now that the canvas is bigger
-    ctx.fillStyle = "#f39c12";
-    for (const cp of CHECKPOINTS) {
-      ctx.beginPath();
-      ctx.arc(toMapX(cp.x), toMapZ(cp.z), 2.6, 0, Math.PI * 2);
-      ctx.fill();
-    }
-
     // Player — directional arrow (rotated triangle) when we have a
     // recent heading, otherwise a centered dot. Halo always drawn
     // for visibility against busy biome tints.
@@ -728,9 +715,6 @@ export default function HUD({
   vehicleLabel,
   playerCount,
   username,
-  raceActive,
-  raceTime,
-  racePassed,
   playerPositionX,
   playerPositionZ,
   connected,
@@ -1043,59 +1027,6 @@ export default function HUD({
           ? "WASD DRIVE  ·  E EXIT  ·  CLICK LOOK"
           : "WASD MOVE  ·  SHIFT RUN  ·  SPACE JUMP  ·  E ENTER  ·  CLICK LOOK"}
       </div>
-
-      {/* ============================================================
-          RACE — top-center under the controls hint
-          ============================================================ */}
-      {(raceActive || racePassed.length > 0) && (
-        <div
-          style={{
-            position: "absolute",
-            top: 64,
-            left: "50%",
-            transform: "translateX(-50%)",
-            background: PANEL_BG,
-            border: "1px solid rgba(243, 156, 18, 0.55)",
-            borderRadius: PANEL_RADIUS,
-            padding: "10px 22px",
-            textAlign: "center",
-            boxShadow: PANEL_SHADOW,
-            backdropFilter: "blur(6px)",
-            WebkitBackdropFilter: "blur(6px)",
-            minWidth: 180,
-          }}
-          data-testid="hud-race"
-        >
-          <div
-            style={{
-              fontSize: 10,
-              color: "#f39c12",
-              letterSpacing: 3,
-              marginBottom: 4,
-              display: "inline-flex",
-              alignItems: "center",
-              gap: 6,
-            }}
-          >
-            <Flag size={11} color="#f39c12" />
-            CHECKPOINT RACE
-          </div>
-          <div
-            style={{
-              fontSize: 24,
-              color: "#fff",
-              fontWeight: "bold",
-              letterSpacing: 2,
-              fontVariantNumeric: "tabular-nums",
-            }}
-          >
-            {raceActive ? formatTime(raceTime) : "FINISHED"}
-          </div>
-          <div style={{ fontSize: 11, color: "#9bb", marginTop: 2, letterSpacing: 1 }}>
-            {racePassed.length} / {CHECKPOINTS.length} CHECKPOINTS
-          </div>
-        </div>
-      )}
 
       {/* ============================================================
           BOTTOM-CENTER — interaction prompt (E key card)
@@ -2713,11 +2644,3 @@ const compassLabels: Array<{ label: string; style: React.CSSProperties }> = [
   { label: "W", style: { left: 4, top: "50%", transform: "translateY(-50%)" } },
   { label: "E", style: { right: 4, top: "50%", transform: "translateY(-50%)" } },
 ];
-
-function formatTime(ms: number): string {
-  const s = Math.floor(ms / 1000);
-  const m = Math.floor(s / 60);
-  const sec = s % 60;
-  const frac = Math.floor((ms % 1000) / 10);
-  return `${m}:${String(sec).padStart(2, "0")}.${String(frac).padStart(2, "0")}`;
-}

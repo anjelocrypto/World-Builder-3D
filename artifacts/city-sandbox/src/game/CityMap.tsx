@@ -4,7 +4,6 @@ import { useFrame } from "@react-three/fiber";
 import { dayNightRuntime } from "../shared/timeOfDay";
 import {
   BUILDINGS,
-  RAMPS,
   ROADS,
   STREET_LIGHTS,
   TRAFFIC_LIGHTS,
@@ -705,28 +704,6 @@ function Props() {
 }
 
 // =============================================================
-// RAMPS
-// =============================================================
-
-function Ramps() {
-  return (
-    <group>
-      {RAMPS.map((r, i) => (
-        <group key={i} position={[r.x, 0.5, r.z]} rotation={[0, r.rotY, 0]}>
-          <mesh position={[0, 0, 0]} rotation={[-0.3, 0, 0]} castShadow receiveShadow>
-            <boxGeometry args={[8, 0.3, 6]} />
-            <meshLambertMaterial color="#666" />
-          </mesh>
-          <mesh position={[0, -0.5, 2.5]}>
-            <boxGeometry args={[8, 1, 0.4]} />
-            <meshLambertMaterial color="#555" />
-          </mesh>
-        </group>
-      ))}
-    </group>
-  );
-}
-
 // =============================================================
 // MAIN CITY MAP
 // =============================================================
@@ -748,7 +725,6 @@ export default function CityMap() {
       <StreetLamps />
       <TrafficLights />
       <Props />
-      <Ramps />
       <CentralRail />
 
       {/* Plaza point lights have moved into BiomeRender's

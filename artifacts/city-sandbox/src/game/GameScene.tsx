@@ -27,7 +27,6 @@ import CityLedgerHUD from "./CityLedgerHUD";
 import RPBuildings from "./RPBuildings";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
-import CheckpointRace from "./CheckpointRace";
 import HUD from "./HUD";
 import RPMarkers from "./RPMarkers";
 import RPHud from "./RPHud";
@@ -265,9 +264,6 @@ export default function GameScene({
     inVehicle: false,
     showInteract: false,
     vehicleLabel: "",
-    raceActive: false,
-    raceTime: 0,
-    racePassed: [] as number[],
     px: 0,
     pz: 0,
     nearOffice: false,
@@ -976,14 +972,6 @@ export default function GameScene({
             );
           })}
 
-          {/* Checkpoint race gates */}
-          <CheckpointRace
-            playerPos={playerPosRef}
-            onPass={() => {}}
-            passedIds={uiState.racePassed}
-            raceActive={uiState.raceActive}
-          />
-
           {/* Phase 9A Batch C: civic RP buildings (visual-only shells from RP_BUILDINGS). */}
           <RPBuildings />
 
@@ -1090,9 +1078,6 @@ export default function GameScene({
         playerCount={playerCount}
         myId={myId}
         username={username}
-        raceActive={uiState.raceActive}
-        raceTime={uiState.raceTime}
-        racePassed={uiState.racePassed}
         playerPositionX={uiState.px}
         playerPositionZ={uiState.pz}
         connected={connected}

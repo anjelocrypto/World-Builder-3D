@@ -1,7 +1,5 @@
 import type {
   Building,
-  RampData,
-  CheckpointData,
   VehicleState,
   VehicleVariant,
   DistrictType,
@@ -415,48 +413,9 @@ export const SPAWN_POINTS: [number, number, number][] = [
   [-15, 1, -15],
 ];
 
-// =============================================================
-// CHECKPOINTS — drive-through race gates
-// =============================================================
-
-// Checkpoints sit on road centerlines so the racing route stays on roads
-// and there is no risk of overlapping a generated building (the validator
-// below checks this). Three race routes are stitched together into one
-// flat array so the existing race UI can drive any of them in sequence.
-//
-// Forest-run gates 6–9 trace the curved forest-main polyline at its
-// vertices: bridge end (0,180), forest apex (-30,290), the segment foot
-// (50,360)→(-40,430) at z≈380, and the (-40,430) vertex. Final gate sits
-// on the spine end. Mountain-run gates 10–13 step from the spine top at
-// (0,-200) through switchback vertices (80,-240), (-80,-390), (0,-465).
-export const CHECKPOINTS: CheckpointData[] = [
-  // City race (5 gates)
-  { id: 0,  x:  0,   z: -45 },
-  { id: 1,  x:  45,  z:   0 },
-  { id: 2,  x:  0,   z:  45 },
-  { id: 3,  x: -45,  z:   0 },
-  { id: 4,  x:  0,   z: -45 },
-  // Forest run — city, bridge, forest spine (all on road centerlines)
-  { id: 5,  x:  0,   z: 130 }, // spine-south vertex
-  { id: 6,  x:  0,   z: 180 }, // bridge / forest-main junction
-  { id: 7,  x: -30,  z: 290 }, // forest-main vertex (apex)
-  { id: 8,  x:  25,  z: 380 }, // foot of perpendicular on (50,360)→(-40,430)
-  { id: 9,  x: -40,  z: 430 }, // forest-main vertex
-  // Mountain run — switchback vertices
-  { id: 10, x:  0,   z: -200 }, // spine-north / switchback junction
-  { id: 11, x:  80,  z: -240 }, // first switchback corner
-  { id: 12, x: -80,  z: -390 }, // mid-switchback corner
-  { id: 13, x:  0,   z: -465 }, // switchback exit
-];
-
-// =============================================================
-// RAMPS
-// =============================================================
-
-export const RAMPS: RampData[] = [
-  { x: 30, z: -30, rotY: Math.PI / 4 },
-  { x: -30, z: 30, rotY: (-Math.PI * 3) / 4 },
-];
+// (Old road-race CHECKPOINTS + RAMPS removed — the race/time-trial system was
+//  deleted. RP job/license/gang checkpoints live in their own systems and are
+//  unaffected.)
 
 // =============================================================
 // STREET LIGHTS — emissive lamp heads, distributed along all roads
@@ -1896,10 +1855,6 @@ function cityEdgeRejected(x: number, z: number): boolean {
     const dx = x - p.x; const dz = z - p.z;
     if (dx * dx + dz * dz < CITY_EDGE_PARKING_CLEAR * CITY_EDGE_PARKING_CLEAR) return true;
   }
-  for (const cp of CHECKPOINTS) {
-    const dx = x - cp.x; const dz = z - cp.z;
-    if (dx * dx + dz * dz < CITY_EDGE_CHECKPOINT_CLEAR * CITY_EDGE_CHECKPOINT_CLEAR) return true;
-  }
   return false;
 }
 
@@ -2291,18 +2246,6 @@ if (isViteDev) {
       issues.push(`vehicle ${v.id} at (${v.x}, ${v.z}) overlaps a static obstacle`);
     }
   }
-  for (const cp of CHECKPOINTS) {
-    if (checkBuildingCollision(cp.x, cp.z, 4)) {
-      issues.push(`checkpoint ${cp.id} at (${cp.x}, ${cp.z}) overlaps a building`);
-    }
-    if (!inBounds(cp.x, cp.z, 4)) {
-      issues.push(`checkpoint ${cp.id} at (${cp.x}, ${cp.z}) is outside WORLD bounds`);
-    }
-    if (overlapsObstacle(cp.x, cp.z, 4.0)) {
-      issues.push(`checkpoint ${cp.id} at (${cp.x}, ${cp.z}) overlaps a static obstacle`);
-    }
-  }
-
   // ---- Traffic + regional road waypoint bounds ---------------------------
   for (const route of TRAFFIC_ROUTES) {
     for (const wp of route.waypoints) {
@@ -2396,18 +2339,8 @@ if (isViteDev) {
     }
   }
 
-  // (b) Every checkpoint must be on a road carriageway.
-  let checkpointsOff = 0;
-  for (const cp of CHECKPOINTS) {
-    const nr = nearestRoadDist(cp.x, cp.z);
-    if (nr.dist > nr.halfWidth + 0.5) {
-      checkpointsOff++;
-      issues.push(
-        `checkpoint ${cp.id} (${cp.x}, ${cp.z}) ` +
-          `${(nr.dist - nr.halfWidth).toFixed(1)}m off road ${nr.id}`,
-      );
-    }
-  }
+  // (b) Old road-race checkpoints removed — no checkpoint on-road check needed.
+  const checkpointsOff = 0;
 
   // (c) Trees and rocks must clear the carriageway by ≥ SCATTER_ROAD_CLEARANCE.
   // This mirrors the generation-time rejection so we catch any drift if
@@ -3115,13 +3048,6 @@ if (isViteDev) {
         break;
       }
     }
-    for (const cp of CHECKPOINTS) {
-      const dx = cp.x - h.x; const dz = cp.z - h.z;
-      if (dx * dx + dz * dz < houseR * houseR) {
-        issues.push(`homestead ${h.id} house overlaps checkpoint ${cp.id}`);
-        break;
-      }
-    }
     for (const l of STREET_LIGHTS) {
       const dx = l.x - h.x; const dz = l.z - h.z;
       if (dx * dx + dz * dz < houseR * houseR) {
@@ -3259,8 +3185,7 @@ if (isViteDev) {
 
   const polishLine =
     `road clearances: ${totalWp - (polish.waypointsOff ?? 0)}/${totalWp} ` +
-    `traffic waypoints on-road, ${CHECKPOINTS.length - (polish.checkpointsOff ?? 0)}/` +
-    `${CHECKPOINTS.length} checkpoints on-road, ` +
+    `traffic waypoints on-road, ` +
     `${totalScatter - (polish.scatterTooClose ?? 0)}/${totalScatter} ` +
     `trees+rocks ≥ road halfWidth + ${SCATTER_ROAD_CLEARANCE.toFixed(1)}m, ` +
     `${INITIAL_VEHICLES.length - (polish.parkedFar ?? 0)}/${INITIAL_VEHICLES.length} ` +
@@ -3931,7 +3856,7 @@ if (isViteDev) {
       `[city-sandbox] world OK (${WORLD_SIZE}x${WORLD_SIZE}): ` +
         `${BUILDINGS.length} buildings across ${blockDefs.length} blocks, ` +
         `${INITIAL_VEHICLES.length} vehicles, ${SPAWN_POINTS.length} spawns, ` +
-        `${CHECKPOINTS.length} checkpoints, ${STREET_LIGHTS.length} streetlamps, ` +
+        `${STREET_LIGHTS.length} streetlamps, ` +
         `${TRAFFIC_LIGHTS.length} traffic lights, ${NPC_ROUTES.length} NPC routes, ` +
         `${TRAFFIC_ROUTES.reduce((sum, r) => sum + r.cars.length, 0)} ambient cars, ` +
         `${REGIONAL_ROADS.length} regional roads, ${STATIC_OBSTACLES.length} obstacles, ` +

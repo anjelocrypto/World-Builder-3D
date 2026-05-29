@@ -34,7 +34,6 @@ import {
 } from "../shared/rpTypes";
 import {
   SPAWN_POINTS,
-  CHECKPOINTS,
   NPC_ROUTES,
   TRAFFIC_ROUTES,
   VARIANT_DIMENSIONS,
@@ -146,9 +145,6 @@ interface LocalPlayerProps {
     inVehicle: boolean;
     showInteract: boolean;
     vehicleLabel: string;
-    raceActive: boolean;
-    raceTime: number;
-    racePassed: number[];
     px: number;
     pz: number;
     nearOffice: boolean;
@@ -351,10 +347,6 @@ export default function LocalPlayer({
   const knockback = useRef(new THREE.Vector3());
   const damageCooldown = useRef(0);
 
-  // Race state
-  const raceActive = useRef(false);
-  const raceStart = useRef(0);
-  const racePassed = useRef<number[]>([]);
   const interactCooldown = useRef(0);
   // License-test checkpoint retry state.
   // Tracks { vehicleId, nextCp, lastAttemptAt } so we can:
@@ -370,7 +362,7 @@ export default function LocalPlayer({
   // Emit timing
   const lastEmit = useRef(0);
   // Last time we pushed a HUD/UI update upstream — throttled to ~10Hz
-  // for non-state-change fields (px/pz/speed/raceTime).
+  // for non-state-change fields (px/pz/speed).
   const lastUIEmit = useRef(0);
 
   // UI state cache (avoid re-render spam)
@@ -409,9 +401,6 @@ export default function LocalPlayer({
     inVehicle: false,
     showInteract: false,
     vehicleLabel: "",
-    raceActive: false,
-    raceTime: 0,
-    racePassed: [] as number[],
     px: pos.current.x,
     pz: pos.current.z,
     nearOffice: false,
@@ -539,33 +528,8 @@ export default function LocalPlayer({
       updatePlayer(dt, keys, now);
     }
 
-    // Race checkpoint detection
-    if (racePassed.current.length < CHECKPOINTS.length) {
-      const nextCp = CHECKPOINTS.find(
-        (cp) => !racePassed.current.includes(cp.id),
-      );
-      if (nextCp) {
-        const curPos = inVehicle.current ? vehiclePos.current : pos.current;
-        const dx = curPos.x - nextCp.x;
-        const dz = curPos.z - nextCp.z;
-        if (Math.sqrt(dx * dx + dz * dz) < 8) {
-          if (
-            nextCp.id === 0 &&
-            !raceActive.current &&
-            racePassed.current.length === 0
-          ) {
-            raceActive.current = true;
-            raceStart.current = Date.now();
-          }
-          if (!racePassed.current.includes(nextCp.id)) {
-            racePassed.current = [...racePassed.current, nextCp.id];
-            if (racePassed.current.length === CHECKPOINTS.length) {
-              raceActive.current = false;
-            }
-          }
-        }
-      }
-    }
+    // (Old road-race checkpoint detection removed — RP job/license checkpoints
+    //  are handled by their own systems below.)
 
     // ── License-test checkpoint proximity — retry throttle ───────────────────
     // Retries the same nextCp every ~1000 ms while inside the 8 m radius until
@@ -801,7 +765,6 @@ export default function LocalPlayer({
     const speed = inVehicle.current
       ? vehicleSpeed.current
       : vel.current.length();
-    const raceTime = raceActive.current ? Date.now() - raceStart.current : 0;
 
     // Proximity to Licensing Office entrance (walking player only, 6m radius)
     // Phase 9B-3: measured to the DMV door (matches server start-test gate).
@@ -926,9 +889,6 @@ export default function LocalPlayer({
       inVehicle: inVehicle.current,
       showInteract,
       vehicleLabel: nearVehicle ? nearVehicle.id : "",
-      raceActive: raceActive.current,
-      raceTime,
-      racePassed: racePassed.current,
       px: curPos.x,
       pz: curPos.z,
       nearOffice,
@@ -959,8 +919,6 @@ export default function LocalPlayer({
       newUI.inVehicle !== cache.inVehicle ||
       newUI.showInteract !== cache.showInteract ||
       newUI.vehicleLabel !== cache.vehicleLabel ||
-      newUI.raceActive !== cache.raceActive ||
-      newUI.racePassed !== cache.racePassed ||
       newUI.nearOffice !== cache.nearOffice ||
       newUI.nearDealership !== cache.nearDealership ||
       newUI.nearOwnedVehicleId !== cache.nearOwnedVehicleId ||
@@ -972,11 +930,10 @@ export default function LocalPlayer({
       newUI.nearPoliceStation !== cache.nearPoliceStation ||
       newUI.nearATM !== cache.nearATM ||
       newUI.nearBookingDesk !== cache.nearBookingDesk;
-    const timeChanged = Math.abs(newUI.raceTime - cache.raceTime) > 100;
     const sinceLast = now - lastUIEmit.current;
     if (
       stateChanged ||
-      ((movedEnough || speedDelta || timeChanged) && sinceLast > 100)
+      ((movedEnough || speedDelta) && sinceLast > 100)
     ) {
       uiCache.current = newUI;
       lastUIEmit.current = now;

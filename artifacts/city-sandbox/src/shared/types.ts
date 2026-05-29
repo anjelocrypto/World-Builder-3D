@@ -156,18 +156,6 @@ export interface SkybridgeData {
   y: number;
 }
 
-export interface RampData {
-  x: number;
-  z: number;
-  rotY: number;
-}
-
-export interface CheckpointData {
-  id: number;
-  x: number;
-  z: number;
-}
-
 export interface StreetLightData {
   x: number;
   z: number;
