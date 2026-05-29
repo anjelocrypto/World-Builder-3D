@@ -24,6 +24,7 @@ import CityBudgetHUD, { type GrantablePlayer } from "./CityBudgetHUD";
 import CityProjectsHUD from "./CityProjectsHUD";
 import CityDashboardHUD from "./CityDashboardHUD";
 import CityLedgerHUD from "./CityLedgerHUD";
+import RPBuildings from "./RPBuildings";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
 import CheckpointRace from "./CheckpointRace";
@@ -980,6 +981,9 @@ export default function GameScene({
             passedIds={uiState.racePassed}
             raceActive={uiState.raceActive}
           />
+
+          {/* Phase 9A Batch C: civic RP buildings (visual-only shells from RP_BUILDINGS). */}
+          <RPBuildings />
 
           {/* RP world markers — station platform, licensing office, checkpoint rings, depot */}
           <RPMarkers
