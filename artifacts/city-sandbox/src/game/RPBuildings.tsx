@@ -1,46 +1,58 @@
 /**
- * Phase 9A Batch C: RPBuildings — readable low-poly shells for the civic RP
- * locations. Renders ONLY the 5 verified entries in the mirrored RP_BUILDINGS
- * table (City Hall, Public Works Depot, Medical Center, Mechanic Garage,
- * Dealership). Geometry is read straight from that table so it can never drift
- * from the server footprint validator (validateRpBuildings).
+ * Phase 9A Batch C (+ signage/detail polish): RPBuildings — readable low-poly
+ * shells for the civic RP locations. Renders all 9 verified entries in the
+ * mirrored RP_BUILDINGS table (City Hall, Public Works Depot, Medical Center,
+ * Mechanic Garage, Dealership, Taxi Depot, Delivery Hub, DMV/Licensing Office,
+ * Police Station). Geometry is read straight from that table so it can never
+ * drift from the server footprint validator (validateRpBuildings).
  *
- * Batch C is visual-only:
- *   - No collision/physics changes, no new interaction, no coordinate moves.
+ * VISUAL-ONLY:
+ *   - No collision/physics changes, no new interaction, no coordinate moves,
+ *     no door/desk/interaction-ring changes. All added meshes are decorative
+ *     and never enter playerHitsAnyRpWall or any gameplay gate.
  *   - The existing marker rings in RPMarkers.tsx stay; these buildings sit
  *     around/behind them as the actual "place".
  *
- * Each building is a four-wall shell with a flat roof, an open doorway on its
- * `facing` side, a colored fascia sign band, and simple emissive window strips.
- * Walls are built as four thin boxes (not a solid block) so the doorway reads
- * as an actual opening and the lobby is hollow — the player model can stand in
- * the entrance. Kept deliberately simple/low-poly for performance.
+ * Each building is a four-wall shell with a flat roof and an open doorway on
+ * its `facing` side, plus a readable front banner (sign board + dark backing
+ * panel + 1–2 lines of dynamically-sized text mounted CLEARLY below the roof
+ * and above the door), a door frame + awning, front window panels, and a small
+ * service-specific accent (police light bar, medical cross, DMV plaque, City
+ * Hall columns, …). Walls are four thin boxes so the doorway reads as a real
+ * opening and the lobby is hollow. Kept deliberately low-poly for performance.
  */
 
 import { Text } from "@react-three/drei";
 import type { RpBuildingDef, RpBuildingFacing } from "../shared/rpTypes";
 import { RP_BUILDINGS, RP_INTERIOR_BUILDING_IDS } from "../shared/rpTypes";
 
-// ── Per-building visual identity (color only — geometry comes from the table) ──
+// ── Per-building visual identity (color + signage + detail; geometry from table) ──
+
+type DetailType =
+  | "police" | "medical" | "dmv" | "cityhall"
+  | "taxi" | "delivery" | "mechanic" | "dealer" | "works";
 
 interface BuildingStyle {
   wall:      string;
   roof:      string;
-  sign:      string;   // fascia band + emissive accent
-  signText:  string;   // readable label rendered on the fascia
-  floor?:    string;   // Phase 10A: interior lobby floor (only for walk-in buildings)
+  sign:      string;          // sign-board face + emissive accent
+  signText:  string;          // single-line label (used when signLines is absent)
+  signLines?: string[];       // optional explicit multi-line label (overrides signText)
+  accent?:   string;          // service accent color (defaults to sign)
+  detailType?: DetailType;    // chooses the small front accent mesh
+  floor?:    string;          // Phase 10A: interior lobby floor (walk-in buildings only)
 }
 
 const STYLES: Record<string, BuildingStyle> = {
-  government_office: { wall: "#c9c4b4", roof: "#8a8576", sign: "#5577ee", signText: "CITY HALL", floor: "#3b4252" },
-  city_worker_depot: { wall: "#b6893f", roof: "#6e5526", sign: "#e0a93b", signText: "PUBLIC WORKS" },
-  medic_center:      { wall: "#e8e8ee", roof: "#c2c6cf", sign: "#e2554e", signText: "MEDICAL CENTER", floor: "#dfe6ea" },
-  mechanic_garage:   { wall: "#7d8893", roof: "#525a63", sign: "#e08a2b", signText: "MECHANIC" },
-  dealership:        { wall: "#d8dde4", roof: "#9aa3ad", sign: "#3aa0d8", signText: "AUTO SALES" },
-  taxi_depot:        { wall: "#d8c24a", roof: "#8a7c2e", sign: "#f1c40f", signText: "TAXI DEPOT" },
-  delivery_hub:      { wall: "#9c8a6a", roof: "#5a4a36", sign: "#cf7a33", signText: "DELIVERY HUB" },
-  licensing_office:  { wall: "#cfd6dc", roof: "#8b94a0", sign: "#3f7fbf", signText: "DMV / AUTO SCHOOL", floor: "#41484f" },
-  police_station:    { wall: "#b9c2cc", roof: "#3a4654", sign: "#2f6fd0", signText: "POLICE", floor: "#2b333d" },
+  government_office: { wall: "#c9c4b4", roof: "#8a8576", sign: "#5577ee", signText: "CITY HALL", accent: "#d9b441", detailType: "cityhall", floor: "#3b4252" },
+  city_worker_depot: { wall: "#b6893f", roof: "#6e5526", sign: "#e0a93b", signText: "PUBLIC WORKS", accent: "#f0c14b", detailType: "works" },
+  medic_center:      { wall: "#e8e8ee", roof: "#c2c6cf", sign: "#e2554e", signText: "MEDICAL CENTER", accent: "#e2554e", detailType: "medical", floor: "#dfe6ea" },
+  mechanic_garage:   { wall: "#7d8893", roof: "#525a63", sign: "#e08a2b", signText: "MECHANIC", accent: "#e08a2b", detailType: "mechanic" },
+  dealership:        { wall: "#d8dde4", roof: "#9aa3ad", sign: "#3aa0d8", signText: "AUTO SALES", accent: "#3aa0d8", detailType: "dealer" },
+  taxi_depot:        { wall: "#d8c24a", roof: "#8a7c2e", sign: "#f1c40f", signText: "TAXI DEPOT", accent: "#f1c40f", detailType: "taxi" },
+  delivery_hub:      { wall: "#9c8a6a", roof: "#5a4a36", sign: "#cf7a33", signText: "DELIVERY HUB", accent: "#cf7a33", detailType: "delivery" },
+  licensing_office:  { wall: "#cfd6dc", roof: "#8b94a0", sign: "#3f7fbf", signText: "DMV", signLines: ["DMV", "AUTO SCHOOL"], accent: "#3f7fbf", detailType: "dmv", floor: "#41484f" },
+  police_station:    { wall: "#b9c2cc", roof: "#3a4654", sign: "#2f6fd0", signText: "POLICE", accent: "#2f6fd0", detailType: "police", floor: "#2b333d" },
 };
 
 const DEFAULT_STYLE: BuildingStyle = { wall: "#bcc0c6", roof: "#80858c", sign: "#5577ee", signText: "" };
@@ -106,12 +118,69 @@ const WALL_THICKNESS  = 0.5;   // m
 const ROOF_THICKNESS  = 0.4;   // m
 const DOOR_WIDTH      = 3.0;    // m — opening on the facing wall
 const DOOR_HEIGHT     = 3.6;    // m
-const SIGN_HEIGHT     = 1.1;    // m — fascia band above the door
+
+// ── Signage band placement ───────────────────────────────────────────────────
+// The OLD fascia sat at WALL_HEIGHT + ROOF_THICKNESS/2 (= roof centre), so the
+// sign, its text, and the roof slab (which also overhangs +0.4m outward) all
+// shared one vertical band → the label was clipped/occluded by the roof. The
+// banner now sits clearly BELOW the roof and ABOVE the door header.
+const SIGN_BOARD_H    = 1.5;                 // m — taller, readable sign board
+const SIGN_CENTER_Y   = WALL_HEIGHT - 0.95;  // = 5.05 → board spans 4.30–5.80,
+                                             //   under the roof base (6.0) and
+                                             //   above the door header (3.6).
+const SIGN_FACE_OUT   = 0.18;  // m — how far the board sits proud of the wall.
 
 // Axis the entrance faces sits on: north/south → front wall is on ±Z,
 // east/west → front wall is on ±X.
 function isFacingZ(f: RpBuildingFacing): boolean {
   return f === "north" || f === "south";
+}
+
+/**
+ * Map a position given in the building's CANONICAL FRONT-FACE local frame onto
+ * world-local coordinates for a given facing. In the canonical frame:
+ *   +out  = outward from the front wall (toward the street)
+ *   +lat  = left↔right ALONG the front wall
+ *   y     = height (unchanged)
+ * For south the front wall is +Z, north −Z, east +X, west −X. This lets every
+ * decorative front mesh be authored once (door trim, awning, windows, accents,
+ * sign) and placed correctly for all four facings without per-building hacks.
+ */
+function frontPoint(
+  b: RpBuildingDef,
+  out: number,
+  lat: number,
+  y: number,
+): [number, number, number] {
+  const halfW = b.w / 2;
+  const halfD = b.d / 2;
+  switch (b.facing) {
+    case "south": return [lat, y, halfD + out];
+    case "north": return [-lat, y, -halfD - out];
+    case "east":  return [halfW + out, y, -lat];
+    case "west":  return [-halfW - out, y, lat];
+  }
+}
+
+/** Rotation.y so a flat/box mesh's local +Z faces outward along the front wall. */
+function frontRotationY(f: RpBuildingFacing): number {
+  switch (f) {
+    case "south": return 0;
+    case "north": return Math.PI;
+    case "east":  return Math.PI / 2;
+    case "west":  return -Math.PI / 2;
+  }
+}
+
+/** A box sized in the canonical front frame → [worldW, h, worldD] for a facing.
+ *  `lat` spans along the wall, `thick` is the outward depth. */
+function frontBoxArgs(
+  f: RpBuildingFacing,
+  lat: number,
+  h: number,
+  thick: number,
+): [number, number, number] {
+  return isFacingZ(f) ? [lat, h, thick] : [thick, h, lat];
 }
 
 /** One civic building shell. */
@@ -168,29 +237,20 @@ function RPBuildingMesh({ b }: { b: RpBuildingDef }) {
     return { px: frontX, py: y, pz: 0, w: t, h: lintelH, d: DOOR_WIDTH };
   })();
 
-  // Fascia sign band: a colored bar centered over the door, just below the roof.
-  const fascia = (() => {
-    const y = WALL_HEIGHT + ROOF_THICKNESS / 2;
-    const len = facingZ ? Math.min(b.w * 0.7, 12) : Math.min(b.d * 0.7, 12);
-    if (facingZ) {
-      const frontZ = sign * (halfD + 0.05);
-      return { px: 0, py: y, pz: frontZ, w: len, h: SIGN_HEIGHT, d: 0.3 };
-    }
-    const frontX = sign * (halfW + 0.05);
-    return { px: frontX, py: y, pz: 0, w: 0.3, h: SIGN_HEIGHT, d: len };
-  })();
-
-  // Readable text label on the fascia, rotated so it faces outward from the
-  // entrance wall and sits a hair in front of the sign band.
-  const label = (() => {
-    const y = fascia.py;
-    switch (b.facing) {
-      case "south": return { pos: [0, y, halfD + 0.3] as const,  ry: 0 };
-      case "north": return { pos: [0, y, -halfD - 0.3] as const, ry: Math.PI };
-      case "east":  return { pos: [halfW + 0.3, y, 0] as const,  ry: Math.PI / 2 };
-      case "west":  return { pos: [-halfW - 0.3, y, 0] as const, ry: -Math.PI / 2 };
-    }
-  })();
+  // ── Front banner: sign board + dark backing panel + dynamic 1–2 line text ──
+  // Sits below the roof, above the door header. Width tracks the front-wall
+  // length so long labels have room; text is sized to fit that width.
+  const frontLen = facingZ ? b.w : b.d;          // length of the front wall
+  const signLat = Math.min(frontLen - 1.0, 13);  // sign board length along wall
+  const signLines = s.signLines ?? (s.signText ? [s.signText] : []);
+  // Dynamic font size: fit the longest line into the board width, but also cap
+  // by line count so two lines stack inside SIGN_BOARD_H. ~0.62 = avg glyph
+  // advance / fontSize for this font; clamp to a readable range.
+  const longest = signLines.reduce((m, l) => Math.max(m, l.length), 0);
+  const widthFont = longest > 0 ? (signLat - 0.8) / (longest * 0.62) : 1;
+  const heightFont = signLines.length >= 2 ? 0.62 : 1.05;
+  const fontSize = Math.max(0.55, Math.min(1.05, widthFont, heightFont));
+  const lineGap = fontSize * 1.18;
 
   // Window strip: a thin emissive band along the two side walls.
   const sideWindows = (() => {
@@ -263,28 +323,86 @@ function RPBuildingMesh({ b }: { b: RpBuildingDef }) {
         <meshStandardMaterial color={s.roof} roughness={0.85} metalness={0.05} />
       </mesh>
 
-      {/* Fascia sign band over the entrance (emissive accent) */}
-      <mesh position={[fascia.px, fascia.py, fascia.pz]}>
-        <boxGeometry args={[fascia.w, fascia.h, fascia.d]} />
-        <meshStandardMaterial color={s.sign} emissive={s.sign} emissiveIntensity={0.6} roughness={0.4} />
+      {/* ── Front banner: emissive accent board + dark backing + label ── */}
+      {signLines.length > 0 && (
+        <group>
+          {/* Colored sign board (the accent strip) */}
+          <mesh position={frontPoint(b, SIGN_FACE_OUT, 0, SIGN_CENTER_Y)} rotation={[0, frontRotationY(b.facing), 0]}>
+            <boxGeometry args={frontBoxArgs(b.facing, signLat, SIGN_BOARD_H, 0.3)} />
+            <meshStandardMaterial color={s.sign} emissive={s.sign} emissiveIntensity={0.6} roughness={0.4} />
+          </mesh>
+          {/* Dark backing panel for text contrast, a hair proud of the board */}
+          <mesh position={frontPoint(b, SIGN_FACE_OUT + 0.16, 0, SIGN_CENTER_Y)} rotation={[0, frontRotationY(b.facing), 0]}>
+            <boxGeometry args={frontBoxArgs(b.facing, signLat - 0.5, SIGN_BOARD_H - 0.45, 0.06)} />
+            <meshStandardMaterial color="#15171c" roughness={0.6} metalness={0.1} />
+          </mesh>
+          {/* Dynamically-sized label, 1–2 lines, mounted in front of the panel.
+              renderOrder + depthOffset keep it from z-fighting the board/wall. */}
+          {signLines.map((line, li) => {
+            const yOff = signLines.length === 2 ? (li === 0 ? lineGap / 2 : -lineGap / 2) : 0;
+            return (
+              <Text
+                key={li}
+                position={frontPoint(b, SIGN_FACE_OUT + 0.26, 0, SIGN_CENTER_Y + yOff)}
+                rotation={[0, frontRotationY(b.facing), 0]}
+                fontSize={fontSize}
+                color="#ffffff"
+                anchorX="center"
+                anchorY="middle"
+                outlineWidth={0.045}
+                outlineColor="#000000"
+                renderOrder={2}
+                maxWidth={signLat - 0.5}
+              >
+                {line}
+              </Text>
+            );
+          })}
+        </group>
+      )}
+
+      {/* ── Door frame trim (two posts + header bar), a hair proud of wall ── */}
+      {[-1, 1].map((sd) => (
+        <mesh
+          key={`dpost${sd}`}
+          position={frontPoint(b, 0.08, sd * (DOOR_WIDTH / 2 + 0.12), DOOR_HEIGHT / 2)}
+          rotation={[0, frontRotationY(b.facing), 0]}
+        >
+          <boxGeometry args={frontBoxArgs(b.facing, 0.24, DOOR_HEIGHT + 0.2, 0.18)} />
+          <meshStandardMaterial color={s.accent ?? s.sign} roughness={0.5} metalness={0.15} />
+        </mesh>
+      ))}
+      <mesh
+        position={frontPoint(b, 0.08, 0, DOOR_HEIGHT + 0.1)}
+        rotation={[0, frontRotationY(b.facing), 0]}
+      >
+        <boxGeometry args={frontBoxArgs(b.facing, DOOR_WIDTH + 0.48, 0.24, 0.18)} />
+        <meshStandardMaterial color={s.accent ?? s.sign} roughness={0.5} metalness={0.15} />
       </mesh>
 
-      {/* Readable building label on the fascia (Batch D). Faces outward. */}
-      {s.signText && (
-        <Text
-          position={label.pos}
-          rotation={[0, label.ry, 0]}
-          fontSize={0.7}
-          color="#ffffff"
-          anchorX="center"
-          anchorY="middle"
-          outlineWidth={0.04}
-          outlineColor="#000000"
-          maxWidth={Math.max(fascia.w, fascia.d) - 0.5}
+      {/* ── Awning / canopy above the door (sloped slab) ── */}
+      <mesh
+        position={frontPoint(b, 0.85, 0, DOOR_HEIGHT + 0.5)}
+        rotation={[0, frontRotationY(b.facing), 0]}
+      >
+        <boxGeometry args={frontBoxArgs(b.facing, DOOR_WIDTH + 1.4, 0.16, 1.7)} />
+        <meshStandardMaterial color={s.roof} roughness={0.7} metalness={0.08} />
+      </mesh>
+
+      {/* ── Front window panels flanking the door ── */}
+      {[-1, 1].map((sd) => (
+        <mesh
+          key={`fwin${sd}`}
+          position={frontPoint(b, 0.06, sd * (DOOR_WIDTH / 2 + 1.7), WALL_HEIGHT * 0.42)}
+          rotation={[0, frontRotationY(b.facing), 0]}
         >
-          {s.signText}
-        </Text>
-      )}
+          <boxGeometry args={frontBoxArgs(b.facing, Math.min(2.2, frontLen * 0.2), 1.6, 0.08)} />
+          <meshStandardMaterial color="#bfe6ff" emissive="#9fd4ff" emissiveIntensity={0.4} roughness={0.25} metalness={0.1} />
+        </mesh>
+      ))}
+
+      {/* ── Service-specific accent ── */}
+      <FrontAccent b={b} s={s} />
 
       {/* Side window strips (emissive) */}
       {sideWindows.out.map((w, i) => (
@@ -295,6 +413,86 @@ function RPBuildingMesh({ b }: { b: RpBuildingDef }) {
       ))}
     </group>
   );
+}
+
+/** Small low-poly service accent above/around the entrance, chosen by
+ *  detailType. Visual-only; all placed via the canonical front-frame helper. */
+function FrontAccent({ b, s }: { b: RpBuildingDef; s: BuildingStyle }) {
+  const accent = s.accent ?? s.sign;
+  const ry = frontRotationY(b.facing);
+  switch (s.detailType) {
+    case "police":
+      // Blue + red light bar above the awning.
+      return (
+        <group>
+          {[-0.45, 0.45].map((lat, i) => (
+            <mesh key={i} position={frontPoint(b, 1.0, lat, DOOR_HEIGHT + 1.05)} rotation={[0, ry, 0]}>
+              <boxGeometry args={frontBoxArgs(b.facing, 0.8, 0.3, 0.3)} />
+              <meshStandardMaterial
+                color={i === 0 ? "#2f6fd0" : "#e23b3b"}
+                emissive={i === 0 ? "#2f6fd0" : "#e23b3b"}
+                emissiveIntensity={1.1}
+                roughness={0.3}
+              />
+            </mesh>
+          ))}
+        </group>
+      );
+    case "medical": {
+      // Red cross plaque (two crossed bars) above the door.
+      const y = DOOR_HEIGHT + 1.3;
+      return (
+        <group>
+          <mesh position={frontPoint(b, 0.16, 0, y)} rotation={[0, ry, 0]}>
+            <boxGeometry args={frontBoxArgs(b.facing, 0.9, 0.3, 0.12)} />
+            <meshStandardMaterial color="#e2554e" emissive="#e2554e" emissiveIntensity={0.9} roughness={0.35} />
+          </mesh>
+          <mesh position={frontPoint(b, 0.16, 0, y)} rotation={[0, ry, 0]}>
+            <boxGeometry args={frontBoxArgs(b.facing, 0.3, 0.9, 0.12)} />
+            <meshStandardMaterial color="#e2554e" emissive="#e2554e" emissiveIntensity={0.9} roughness={0.35} />
+          </mesh>
+        </group>
+      );
+    }
+    case "dmv":
+      // Blue/white service plaque beside the door.
+      return (
+        <mesh position={frontPoint(b, 0.14, DOOR_WIDTH / 2 + 2.9, WALL_HEIGHT * 0.42)} rotation={[0, ry, 0]}>
+          <boxGeometry args={frontBoxArgs(b.facing, 1.3, 1.0, 0.1)} />
+          <meshStandardMaterial color="#ffffff" emissive={accent} emissiveIntensity={0.4} roughness={0.4} />
+        </mesh>
+      );
+    case "cityhall":
+      // Two civic columns flanking the entrance + gold lintel cap.
+      return (
+        <group>
+          {[-1, 1].map((sd) => (
+            <mesh key={sd} position={frontPoint(b, 0.55, sd * (DOOR_WIDTH / 2 + 1.0), WALL_HEIGHT * 0.45)} rotation={[0, ry, 0]} castShadow>
+              <cylinderGeometry args={[0.32, 0.36, WALL_HEIGHT * 0.9, 10]} />
+              <meshStandardMaterial color="#e8e3d2" roughness={0.7} metalness={0.05} />
+            </mesh>
+          ))}
+          <mesh position={frontPoint(b, 0.55, 0, WALL_HEIGHT * 0.9)} rotation={[0, ry, 0]}>
+            <boxGeometry args={frontBoxArgs(b.facing, DOOR_WIDTH + 2.4, 0.3, 0.4)} />
+            <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={0.4} roughness={0.4} metalness={0.3} />
+          </mesh>
+        </group>
+      );
+    case "taxi":
+    case "delivery":
+    case "mechanic":
+    case "dealer":
+    case "works":
+      // Generic matching accent panel above the door.
+      return (
+        <mesh position={frontPoint(b, 0.14, 0, DOOR_HEIGHT + 1.25)} rotation={[0, ry, 0]}>
+          <boxGeometry args={frontBoxArgs(b.facing, 2.2, 0.5, 0.1)} />
+          <meshStandardMaterial color={accent} emissive={accent} emissiveIntensity={0.7} roughness={0.4} />
+        </mesh>
+      );
+    default:
+      return null;
+  }
 }
 
 /** All civic RP buildings. Visual-only; mounted alongside RPMarkers. */
