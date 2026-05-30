@@ -992,6 +992,25 @@ export const TRAIN_STATION: TrainStationData = {
   signText: "Central Loop Station",
 };
 
+// Phase 15A: second station — direct x-mirror of the east station on the west
+// loop edge (x=−110). Escalator descends OUTWARD (−X) to a ground foot, clear of
+// the inner-city-ring road and the west homestead belt.
+export const TRAIN_STATION_WEST: TrainStationData = {
+  id: "central-loop-station-west",
+  cx: -110,
+  cz: -65,
+  w: 8,
+  d: 20,
+  rotY: 0,
+  deckY: RAIL_DECK_HEIGHT,
+  stairX: -122,
+  stairZ: -65,
+  signText: "Central Loop Station West",
+};
+
+/** All boardable stations on the loop. TRAIN_STATION stays as the [0] alias. */
+export const TRAIN_STATIONS: TrainStationData[] = [TRAIN_STATION, TRAIN_STATION_WEST];
+
 // Train pause window — train slows to 0 over [pauseInS, pauseOutS] arc
 // length. Computed from station's position on the loop (s ≈ railLoop
 // arc-length at (110, -65)).

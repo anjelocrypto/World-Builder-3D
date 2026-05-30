@@ -40,6 +40,7 @@ import {
   WORLD_HALF,
 } from "../shared/cityData";
 import { EVENT_HALL, EVENT_HALL_SIT, EVENT_HALL_STAGE, isInsideEventHallStage, nearestEventHallChair } from "../shared/eventHall";
+import { railSurfaceY } from "../shared/railTransit";
 import { getVehicleGroundY, getVehicleGroundFrame } from "../shared/elevation";
 import { terrainHeightAt } from "../shared/terrain";
 import {
@@ -61,6 +62,7 @@ import {
   playerHitsAnyHallWall,
   playerHitsAnyHallChair,
   playerHitsEventHallStageSide,
+  playerHitsStationRail,
   vehicleHitsAnyBuilding,
   vehicleHitsAnyObstacle,
   npcPositionAt,
@@ -1297,6 +1299,7 @@ export default function LocalPlayer({
       playerHitsAnyHallWall(nx, pos.current.z) ||
       playerHitsAnyHallChair(nx, pos.current.z) ||
       playerHitsEventHallStageSide(nx, pos.current.z, feetY) ||
+      playerHitsStationRail(nx, pos.current.z, feetY) ||
       obstacles.some((o) =>
         circleVsObb({ x: nx, z: pos.current.z, r: PLAYER_BODY_RADIUS }, o),
       )
@@ -1313,6 +1316,7 @@ export default function LocalPlayer({
       playerHitsAnyHallWall(nx, nz) ||
       playerHitsAnyHallChair(nx, nz) ||
       playerHitsEventHallStageSide(nx, nz, feetY) ||
+      playerHitsStationRail(nx, nz, feetY) ||
       obstacles.some((o) =>
         circleVsObb({ x: nx, z: nz, r: PLAYER_BODY_RADIUS }, o),
       )
@@ -1357,6 +1361,11 @@ export default function LocalPlayer({
     if (isInsideEventHallStage(nx, nz)) {
       groundY = Math.max(groundY, EVENT_HALL_STAGE.topY);
     }
+    // Phase 15A: station platform deck + escalator ramp are walkable surfaces.
+    // railSurfaceY returns the deck/ramp height when on a station structure (else
+    // null), so the player walks up/down the ramp and stands on the platform.
+    const railY = railSurfaceY(nx, nz);
+    if (railY !== null) groundY = Math.max(groundY, railY);
     const standingY = groundY + PLAYER_HEIGHT / 2;
     if (pos.current.y <= standingY) {
       pos.current.y = standingY;

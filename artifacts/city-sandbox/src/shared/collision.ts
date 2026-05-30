@@ -14,6 +14,7 @@ import {
 } from "./cityData";
 import { RP_BUILDING_WALL_BOXES, RP_HOUSE_WALL_BOXES } from "./rpTypes";
 import { EVENT_HALL_WALL_BOXES, EVENT_HALL_CHAIR_BOXES, EVENT_HALL_EXTENTS, EVENT_HALL_STAGE } from "./eventHall";
+import { stationRailBoxes, STATION_RAIL_FEET_GATE } from "./railTransit";
 import { distancePointToPolyline } from "./roadGeom";
 
 // =====================================================
@@ -293,6 +294,25 @@ export function playerHitsAnyHallChair(
   const c: Circle = { x: px, z: pz, r };
   for (const ch of EVENT_HALL_CHAIR_BOXES) {
     if (circleVsAabb(c, { x: ch.x, z: ch.z, hw: ch.hw, hd: ch.hd })) return true;
+  }
+  return false;
+}
+
+// Phase 15A: station platform + escalator guard-rails. Computed once at module
+// load. These keep a player from falling off the platform/ramp edges, but only
+// once the player is elevated on the structure (feet above the gate) — so
+// walking on the ground past/under a station is never blocked. Player-only.
+const STATION_RAIL_BOXES = stationRailBoxes();
+export function playerHitsStationRail(
+  px: number,
+  pz: number,
+  feetY: number,
+  r = PLAYER_BODY_RADIUS,
+): boolean {
+  if (feetY < STATION_RAIL_FEET_GATE) return false; // on the ground → free
+  const c: Circle = { x: px, z: pz, r };
+  for (const b of STATION_RAIL_BOXES) {
+    if (circleVsAabb(c, { x: b.x, z: b.z, hw: b.w / 2, hd: b.d / 2 })) return true;
   }
   return false;
 }
