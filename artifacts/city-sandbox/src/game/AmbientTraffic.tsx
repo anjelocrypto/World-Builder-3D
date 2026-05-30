@@ -3,21 +3,11 @@ import { useMemo, useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import { TRAFFIC_ROUTES, VARIANT_DIMENSIONS } from "../shared/cityData";
 import { getVehicleGroundFrame } from "../shared/elevation";
+import { ambientCarStateAt } from "../shared/collision";
 import type { TrafficCarSeed, TrafficRoute } from "../shared/types";
 import { CarVisual } from "./VehicleObject";
 
 const VEHICLE_BODY_LIFT = 0.6;
-
-/**
- * Smallest signed angle from a → b on a circle. Used to interpolate
- * heading across waypoints without spinning the wrong way around.
- */
-function shortestAngleDelta(a: number, b: number): number {
-  let diff = b - a;
-  while (diff > Math.PI) diff -= 2 * Math.PI;
-  while (diff < -Math.PI) diff += 2 * Math.PI;
-  return diff;
-}
 
 interface CarEntry {
   route: TrafficRoute;
@@ -59,16 +49,10 @@ export default function AmbientTraffic() {
       if (!g) continue;
       const route = e.route;
       const seed = e.seed;
-      const progress = ((tMs / 1000) / route.cycleSeconds + seed.phase) % 1;
-      const segCount = route.waypoints.length;
-      const segProgress = progress * segCount;
-      const segIdx = Math.floor(segProgress) % segCount;
-      const segT = segProgress - Math.floor(segProgress);
-      const a = route.waypoints[segIdx];
-      const b = route.waypoints[(segIdx + 1) % segCount];
-      const x = a[0] + (b[0] - a[0]) * segT;
-      const z = a[1] + (b[1] - a[1]) * segT;
-      const rotY = a[2] + shortestAngleDelta(a[2], b[2]) * segT;
+      // Phase 15B: position + heading come from the SHARED helper so the visual
+      // car and the player's collision/damage box agree exactly. Heading is the
+      // current segment tangent (no sideways drift on straights).
+      const { x, z, rotY } = ambientCarStateAt(route, seed, tMs);
       // 4-wheel ground frame: places the car center on the average of
       // the four tire-contact ground samples and tilts it to match
       // mountain road slope (pitch on climbs, roll on switchbacks).

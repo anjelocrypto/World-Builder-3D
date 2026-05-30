@@ -425,13 +425,17 @@ export function npcPositionAt(
   return { x, z, rotY };
 }
 
-function shortestAngleDelta(a: number, b: number): number {
-  let diff = b - a;
-  while (diff > Math.PI) diff -= 2 * Math.PI;
-  while (diff < -Math.PI) diff += 2 * Math.PI;
-  return diff;
-}
-
+/**
+ * Deterministic ambient-car state at time tMs. SINGLE SOURCE OF TRUTH for both
+ * the visual cars (AmbientTraffic.tsx) and player collision/damage — they must
+ * agree on position AND heading so the hit box lines up with the visible body.
+ *
+ * Phase 15B fix: heading is the CURRENT SEGMENT TANGENT (A→B), not an
+ * interpolation of the stored waypoint headings. Interpolating across the whole
+ * segment turned the car toward the next segment early, so it visibly drove
+ * sideways on straights. The stored waypoint rotY (index 2) is now legacy/
+ * diagnostic only. rotY=0 → forward = −Z (matches LocalPlayer + npcPositionAt).
+ */
 export function ambientCarStateAt(
   route: TrafficRoute,
   seed: TrafficCarSeed,
@@ -447,12 +451,12 @@ export function ambientCarStateAt(
   const b = route.waypoints[(segIdx + 1) % segCount];
   const x = a[0] + (b[0] - a[0]) * segT;
   const z = a[1] + (b[1] - a[1]) * segT;
-  const rotA = a[2];
-  const rotB = b[2];
-  const rotY = rotA + shortestAngleDelta(rotA, rotB) * segT;
+  const dx = b[0] - a[0];
+  const dz = b[1] - a[1];
+  const rotY = Math.atan2(-dx, -dz);
 
   // Speed = segment length / time-to-traverse-segment.
-  const segLen = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const segLen = Math.hypot(dx, dz);
   const segDur = dur / segCount;
   const speed = segLen / segDur;
 

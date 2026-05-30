@@ -586,14 +586,19 @@ export const NPC_ROUTES: NpcRoute[] = blockDefs.map((b, i) => ({
 // Traffic-loop helpers
 // =============================================================
 //
-// `closedLoopRoute` walks a closed polyline once and assigns each
-// waypoint a heading aimed at the next waypoint (with wrap-around).
-// `forwardReverseRoute` turns a one-way polyline (e.g. a switchback or
-// a service spur) into a closed round-trip: forward leg, then the same
-// vertices in reverse, excluding endpoints to avoid duplicate stops.
-// At the two endpoints there is a hard 180° heading flip; the ambient
-// traffic interpolator (collision.ts → ambientCarStateAt) smooths the
-// rotation over the following segment via shortestAngleDelta.
+// `closedLoopRoute` walks a closed polyline once and stores each waypoint's
+// heading aimed at the next waypoint (with wrap-around). `forwardReverseRoute`
+// turns a one-way polyline (e.g. a switchback or a service spur) into a closed
+// round-trip: forward leg, then the same vertices in reverse, excluding
+// endpoints to avoid duplicate stops.
+//
+// Phase 15B: the stored per-waypoint rotY (index 2) is now LEGACY / DIAGNOSTIC
+// ONLY. At runtime, ambient car heading is recomputed from the CURRENT SEGMENT
+// TANGENT (collision.ts → ambientCarStateAt: rotY = atan2(−dx, −dz)), NOT by
+// interpolating the stored headings. The old whole-segment interpolation turned
+// cars toward the next segment early, so they visibly drove sideways on
+// straights. At U-turn endpoints this means a hard heading snap, which is
+// acceptable (and far less wrong than perpetual sideways driving).
 
 function closedLoopRoute(
   poly: ReadonlyArray<readonly [number, number]>,
@@ -4439,6 +4444,21 @@ if (isViteDev) {
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error("[city-sandbox] rail transit validation FAILED:", (err as Error).message);
+      }
+    })
+    .catch(() => { /* validator module unavailable — ignore in dev */ });
+
+  // Phase 15B: ambient traffic heading check (cars face their movement
+  // direction, never sideways). Dynamic import keeps cityData decoupled.
+  void import("./trafficValidator")
+    .then((m) => {
+      try {
+        const r = m.validateTrafficHeadings();
+        // eslint-disable-next-line no-console
+        console.info(`[city-sandbox] traffic headings OK (${r.segmentsChecked} segments, max err ${r.maxMotionErrDeg.toFixed(1)}°)`);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[city-sandbox] traffic heading validation FAILED:", (err as Error).message);
       }
     })
     .catch(() => { /* validator module unavailable — ignore in dev */ });
