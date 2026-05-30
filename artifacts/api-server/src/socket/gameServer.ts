@@ -54,6 +54,7 @@ const VALID_ANIM_STATES = new Set<string>([
   "attack_heavy",
   "driving",
   "talk",
+  "sit",
 ]);
 type PlayerAnimState =
   | "idle"
@@ -64,7 +65,8 @@ type PlayerAnimState =
   | "attack_light"
   | "attack_heavy"
   | "driving"
-  | "talk";
+  | "talk"
+  | "sit";
 
 // Hard cap on how much attackSeq may advance in a single packet.
 // A fair client increments by exactly 1 per attack trigger; this

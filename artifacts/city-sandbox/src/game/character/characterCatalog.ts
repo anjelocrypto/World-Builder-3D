@@ -61,6 +61,13 @@ export interface CharacterDef {
    * — they fall back to the idle pose, so "talk" is a no-op for them.
    */
   talkKey?: string;
+  /**
+   * Optional looping clip played while the player is seated on a chair
+   * (animState "sit", Phase 14C). Omit for characters without a sitting
+   * animation (Classic) — the sit action is only offered to characters that
+   * define this key.
+   */
+  sitKey?: string;
   /** One-shot attack clip keys (triggered by attackSeq, not animState). */
   attackLightKey: string;
   attackHeavyKey: string;
@@ -128,10 +135,12 @@ const SIMPLE: CharacterDef = {
     { url: `${BASE}models/simple-die.glb`, clipKey: "die" },
     { url: `${BASE}models/simple-gethit.glb`, clipKey: "gethit" },
     { url: `${BASE}models/simple-talk.glb`, clipKey: "talk" },
+    { url: `${BASE}models/simple-sitting.glb`, clipKey: "sit" },
   ],
   locomotion: { idle: "idle", walk: "walk", run: "run" },
   airborneKey: "jump",
   talkKey: "talk",
+  sitKey: "sit",
   attackLightKey: "punch",
   attackHeavyKey: "kick",
   attackLightMs: 5700, // simple-punch-combo-1.glb = 5.70s
@@ -172,5 +181,8 @@ export function locomotionClipKey(def: CharacterDef, anim: PlayerAnimState): str
   // Talk: use the talk clip when the character defines one (Simple), else fall
   // back to idle (Classic has no talk clip → renders idle, so talk is a no-op).
   if (anim === "talk" && def.talkKey) return def.talkKey;
-  return def.locomotion.idle; // idle / driving / attack_* / talk-without-clip
+  // Sit: use the sitting clip when the character defines one (Simple). The sit
+  // action is only offered to characters with a sitKey, so this never falls back.
+  if (anim === "sit" && def.sitKey) return def.sitKey;
+  return def.locomotion.idle; // idle / driving / attack_* / talk|sit-without-clip
 }

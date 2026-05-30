@@ -13,7 +13,7 @@ import {
   VARIANT_DIMENSIONS,
 } from "./cityData";
 import { RP_BUILDING_WALL_BOXES, RP_HOUSE_WALL_BOXES } from "./rpTypes";
-import { EVENT_HALL_WALL_BOXES } from "./eventHall";
+import { EVENT_HALL_WALL_BOXES, EVENT_HALL_CHAIR_BOXES, EVENT_HALL_EXTENTS } from "./eventHall";
 import { distancePointToPolyline } from "./roadGeom";
 
 // =====================================================
@@ -272,6 +272,27 @@ export function playerHitsAnyHallWall(
   const c: Circle = { x: px, z: pz, r };
   for (const w of EVENT_HALL_WALL_BOXES) {
     if (circleVsAabb(c, { x: w.x, z: w.z, hw: w.w / 2, hd: w.d / 2 })) return true;
+  }
+  return false;
+}
+
+// Phase 14C: hall audience chairs are solid (non-walkable). Gated by a quick
+// footprint test so the 200+ chair AABBs are only iterated while the player is
+// actually inside the hall — elsewhere this returns immediately.
+export function playerHitsAnyHallChair(
+  px: number,
+  pz: number,
+  r = PLAYER_BODY_RADIUS,
+): boolean {
+  if (
+    px < EVENT_HALL_EXTENTS.xMin - 2 || px > EVENT_HALL_EXTENTS.xMax + 2 ||
+    pz < EVENT_HALL_EXTENTS.zMin - 2 || pz > EVENT_HALL_EXTENTS.zMax + 2
+  ) {
+    return false;
+  }
+  const c: Circle = { x: px, z: pz, r };
+  for (const ch of EVENT_HALL_CHAIR_BOXES) {
+    if (circleVsAabb(c, { x: ch.x, z: ch.z, hw: ch.hw, hd: ch.hd })) return true;
   }
   return false;
 }

@@ -123,4 +123,5 @@ export const ANIM_STATES: readonly PlayerAnimState[] = [
   "attack_heavy",
   "driving",
   "talk",
+  "sit",
 ];

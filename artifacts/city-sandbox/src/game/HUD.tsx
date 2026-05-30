@@ -91,6 +91,10 @@ interface HUDProps {
   nearATM?: boolean;
   /** Phase 14A: true when near the Grand Plaza Hall screen. Shows E — Open Event Screen. */
   nearEventHall?: boolean;
+  /** Phase 14C: true when near a sittable chair (standing) or currently seated. */
+  nearSitChair?: boolean;
+  /** Phase 14C: true while the player is seated on a chair. */
+  isSitting?: boolean;
   /**
    * Phase 6A: current wanted stars count (0 = clean). Shown in wallet panel.
    */
@@ -736,6 +740,8 @@ export default function HUD({
   nearPoliceStation,
   nearATM,
   nearEventHall,
+  nearSitChair,
+  isSitting,
   wantedStars,
   jailUntil,
   jailReason,
@@ -1635,6 +1641,58 @@ export default function HUD({
               Open Event Screen
             </span>{" "}
             <span style={{ color: "#9bb", fontSize: 11 }}>· Google Meet</span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Grand Plaza Hall chair sit/stand (Phase 14C)
+          ============================================================ */}
+      {nearSitChair && !nearEventHall && (
+        <div
+          style={{
+            position:             "absolute",
+            bottom:               isSitting ? 100 : 130,
+            left:                 "50%",
+            transform:            "translateX(-50%)",
+            background:           PANEL_BG,
+            border:               "1px solid rgba(124, 196, 255, 0.65)",
+            borderRadius:         PANEL_RADIUS,
+            padding:              "8px 14px 8px 8px",
+            display:              "flex",
+            alignItems:           "center",
+            gap:                  12,
+            boxShadow:            `${PANEL_SHADOW}, 0 0 22px rgba(124,196,255,0.2)`,
+            backdropFilter:       "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width:          28,
+              height:         28,
+              borderRadius:   6,
+              background:     "rgba(124, 196, 255, 0.15)",
+              border:         "1px solid rgba(124, 196, 255, 0.7)",
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              fontSize:       13,
+              fontWeight:     "bold",
+              color:          "#7cc4ff",
+              boxShadow:      "inset 0 -2px 0 rgba(124,196,255,0.35)",
+            }}
+          >
+            E
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            🪑{" "}
+            <span style={{ color: "#7cc4ff", fontWeight: "bold" }}>
+              {isSitting ? "Stand Up" : "Sit Down"}
+            </span>{" "}
+            <span style={{ color: "#9bb", fontSize: 11 }}>
+              {isSitting ? "· or move" : "· take a seat"}
+            </span>
           </div>
         </div>
       )}

@@ -111,6 +111,60 @@ export function eventHallChairPositions(): [number, number][] {
   return out;
 }
 
+// ── Chair colliders + sit anchors (Phase 14C) ───────────────────────────────
+// Each chair is a small solid AABB so players can't walk through the seating.
+// CHAIR_BOX_HALF roughly matches the rendered seat (0.9×0.9) minus the player
+// body radius so a player can stand right up against a chair before sitting.
+const CHAIR_BOX_HALF = 0.45;
+
+export const EVENT_HALL_CHAIR_BOXES: ReadonlyArray<{ x: number; z: number; hw: number; hd: number }> =
+  eventHallChairPositions().map(([x, z]) => ({ x, z, hw: CHAIR_BOX_HALF, hd: CHAIR_BOX_HALF }));
+
+/**
+ * Sitting parameters (Phase 14C). Tunable in ONE place so the seated pose can be
+ * nudged to "exactly fit" the chair without hunting through the player code:
+ *   - radius:     how close (m) to a chair the player must be to get the prompt.
+ *   - yOffset:    vertical nudge (m) applied to the seated avatar root so the
+ *                 hips rest on the seat pad (raise if floating, lower if sunk).
+ *   - forward:    +Z nudge (m) onto the seat (toward the screen) if the sit pose
+ *                 sits slightly forward/back of the chair centre.
+ *   - faceY:      avatar rotation.y while seated. 0 faces +Z (the screen). Add
+ *                 Math.PI if the sit clip ends up facing away from the screen.
+ *   - standBackZ: how far north (−Z, toward the entrance/aisle gap) to place the
+ *                 player when they stand up, so they don't stand inside the chair.
+ */
+export const EVENT_HALL_SIT = {
+  radius: 1.7,
+  yOffset: 0.0,
+  forward: 0.0,
+  faceY: 0.0,
+  standBackZ: 1.3,
+} as const;
+
+// Positions are static — compute once, reuse every frame (no per-frame alloc).
+const CHAIR_POSITIONS: ReadonlyArray<readonly [number, number]> = eventHallChairPositions();
+
+/** Nearest chair to (px,pz) within `radius`, or null. Returns the seat XZ. */
+export function nearestEventHallChair(px: number, pz: number): { x: number; z: number; index: number } | null {
+  // Cheap early-out: skip the chair scan unless the player is inside the hall.
+  if (
+    px < EVENT_HALL_EXTENTS.xMin - 2 || px > EVENT_HALL_EXTENTS.xMax + 2 ||
+    pz < EVENT_HALL_EXTENTS.zMin - 2 || pz > EVENT_HALL_EXTENTS.zMax + 2
+  ) {
+    return null;
+  }
+  let best: { x: number; z: number; index: number } | null = null;
+  let bestD2 = EVENT_HALL_SIT.radius * EVENT_HALL_SIT.radius;
+  for (let i = 0; i < CHAIR_POSITIONS.length; i++) {
+    const [x, z] = CHAIR_POSITIONS[i];
+    const dx = px - x;
+    const dz = pz - z;
+    const d2 = dx * dx + dz * dz;
+    if (d2 < bestD2) { bestD2 = d2; best = { x, z, index: i }; }
+  }
+  return best;
+}
+
 // ── Pedestrian connector spur ───────────────────────────────────────────────
 // A short dirt walkway from the inner-city-ring SE corner node (100,100) up to
 // the hall entrance apron. points[0] is an existing ring graph node, so the

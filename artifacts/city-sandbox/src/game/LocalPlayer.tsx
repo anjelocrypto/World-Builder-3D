@@ -39,7 +39,7 @@ import {
   VARIANT_DIMENSIONS,
   WORLD_HALF,
 } from "../shared/cityData";
-import { EVENT_HALL } from "../shared/eventHall";
+import { EVENT_HALL, EVENT_HALL_SIT, nearestEventHallChair } from "../shared/eventHall";
 import { getVehicleGroundY, getVehicleGroundFrame } from "../shared/elevation";
 import { terrainHeightAt } from "../shared/terrain";
 import {
@@ -59,6 +59,7 @@ import {
   playerHitsAnyRpWall,
   playerHitsAnyHouse,
   playerHitsAnyHallWall,
+  playerHitsAnyHallChair,
   vehicleHitsAnyBuilding,
   vehicleHitsAnyObstacle,
   npcPositionAt,
@@ -174,6 +175,10 @@ interface LocalPlayerProps {
     nearBookingDesk: boolean;
     /** Phase 14A: true when player is within EVENT_HALL.interactRadius of the hall screen. */
     nearEventHall: boolean;
+    /** Phase 14C: true when near a sittable chair (Simple, standing) or currently seated. */
+    nearSitChair: boolean;
+    /** Phase 14C: true while the player is seated on a chair. */
+    isSitting: boolean;
   }) => void;
   playerPosRef: React.MutableRefObject<THREE.Vector3>;
   // Authoritative spawn from the server's gameState. Falls back to a
@@ -425,6 +430,10 @@ export default function LocalPlayer({
   const nearBookingDeskRef    = useRef(false);
   // Phase 14A: Grand Plaza Hall screen proximity ref — read by E key handler
   const nearEventHallRef      = useRef(false);
+  // Phase 14C: nearest sittable chair (Simple only), and the chair we're seated
+  // on (null = standing). Both read by the frame loop / E handler.
+  const nearSitChairRef       = useRef<{ x: number; z: number } | null>(null);
+  const sittingChairRef       = useRef<{ x: number; z: number } | null>(null);
   // Mirror onOpenEventHall into a ref so the useFrame closure sees the latest.
   const onOpenEventHallRef    = useRef(onOpenEventHall);
   onOpenEventHallRef.current  = onOpenEventHall;
@@ -464,6 +473,8 @@ export default function LocalPlayer({
     nearATM: false,
     nearBookingDesk: false,
     nearEventHall: false,
+    nearSitChair: false,
+    isSitting: false,
   });
 
   // Pointer lock
@@ -595,7 +606,9 @@ export default function LocalPlayer({
       }
     }
 
-    if (inVehicle.current && drivingVehicleId.current) {
+    if (sittingChairRef.current) {
+      updateSitting(dt, keys, now);
+    } else if (inVehicle.current && drivingVehicleId.current) {
       updateVehicle(dt, keys, now);
     } else {
       updatePlayer(dt, keys, now);
@@ -948,6 +961,16 @@ export default function LocalPlayer({
       ehdx * ehdx + ehdz * ehdz < EVENT_HALL.interactRadius * EVENT_HALL.interactRadius;
     nearEventHallRef.current = nearEventHall;
 
+    // Phase 14C: nearest sittable chair (Simple character, on foot, not already
+    // seated). Drives the "E — Sit" prompt and the sit action.
+    const isSitting = sittingChairRef.current !== null;
+    if (!isSitting && !inVehicle.current && charDef.id === "simple") {
+      nearSitChairRef.current = nearestEventHallChair(curPos.x, curPos.z);
+    } else {
+      nearSitChairRef.current = null;
+    }
+    const nearSitChair = isSitting || nearSitChairRef.current !== null;
+
     // Phase 3: nearest owned vehicle within 6 m (for lock/unlock prompt)
     let nearOwnedVehicleId: string | null = null;
     if (!inVehicle.current) {
@@ -985,6 +1008,8 @@ export default function LocalPlayer({
       nearATM,
       nearBookingDesk,
       nearEventHall,
+      nearSitChair,
+      isSitting,
     };
 
     // Throttled per-field UI diff. JSON.stringify on a 10-key object
@@ -1013,7 +1038,9 @@ export default function LocalPlayer({
       newUI.nearPoliceStation !== cache.nearPoliceStation ||
       newUI.nearATM !== cache.nearATM ||
       newUI.nearBookingDesk !== cache.nearBookingDesk ||
-      newUI.nearEventHall !== cache.nearEventHall;
+      newUI.nearEventHall !== cache.nearEventHall ||
+      newUI.nearSitChair !== cache.nearSitChair ||
+      newUI.isSitting !== cache.isSitting;
     const sinceLast = now - lastUIEmit.current;
     if (
       stateChanged ||
@@ -1110,6 +1137,86 @@ export default function LocalPlayer({
     tryAttack("light");
   }
 
+  // Phase 14C: while seated on a hall chair the player is locked to the seat
+  // anchor playing the "sit" loop. Pressing E (cooldown-gated) or any movement
+  // key stands the player up into the clear gap in front of the chair. Position
+  // + animState are emitted so other players see the seated avatar.
+  function updateSitting(
+    dt: number,
+    keys: ReturnType<typeof getKeys>,
+    now: number,
+  ) {
+    const chair = sittingChairRef.current;
+    if (!chair) return;
+
+    const wantsUp =
+      (keys.interact && interactCooldown.current <= 0) ||
+      keys.forward || keys.back || keys.left || keys.right || keys.jump;
+
+    if (wantsUp) {
+      // Stand into the clear gap north (−Z) of the chair, toward the aisle.
+      const standZ = chair.z - EVENT_HALL_SIT.standBackZ;
+      const groundY = getVehicleGroundY(chair.x, standZ);
+      pos.current.set(chair.x, groundY + PLAYER_HEIGHT / 2, standZ);
+      vel.current.set(0, 0, 0);
+      isGrounded.current = true;
+      sittingChairRef.current = null;
+      interactCooldown.current = 0.5;
+      playerPosRef.current.copy(pos.current);
+      return;
+    }
+
+    // Stay seated — lock the body to the seat anchor.
+    const groundY = getVehicleGroundY(chair.x, chair.z);
+    pos.current.set(chair.x, groundY + PLAYER_HEIGHT / 2, chair.z + EVENT_HALL_SIT.forward);
+    vel.current.set(0, 0, 0);
+    isGrounded.current = true;
+    playerRotY.current = EVENT_HALL_SIT.faceY;
+    playerPosRef.current.copy(pos.current);
+
+    // Avatar: seated pose. Root sits at floor + tunable yOffset so the hips rest
+    // on the seat pad; rotation faces the screen (+Z).
+    const runtime = avatarRuntimeRef.current;
+    runtime.animState = "sit";
+    runtime.speed = 0;
+    runtime.attackSeq = attackSeqRef.current;
+    runtime.attackKind = null;
+    runtime.attackStartedAt = null;
+    if (avatarGroupRef.current) {
+      avatarGroupRef.current.position.set(
+        chair.x,
+        groundY + EVENT_HALL_SIT.yOffset,
+        chair.z + EVENT_HALL_SIT.forward,
+      );
+      avatarGroupRef.current.rotation.y = EVENT_HALL_SIT.faceY;
+      avatarGroupRef.current.visible = true;
+    }
+
+    updateCamera(pos.current, dt, "walking");
+
+    if (now - lastEmit.current > EMIT_RATE) {
+      lastEmit.current = now;
+      emitPlayerUpdate({
+        id: myId,
+        username,
+        x: pos.current.x,
+        y: pos.current.y,
+        z: pos.current.z,
+        rotY: playerRotY.current,
+        isInVehicle: false,
+        vehicleId: null,
+        health: health.current,
+        isRunning: false,
+        animState: "sit",
+        attackSeq: attackSeqRef.current,
+        attackKind: null,
+        attackStartedAt: null,
+        isGrounded: true,
+        moveSpeed: 0,
+      });
+    }
+  }
+
   function updatePlayer(
     dt: number,
     keys: ReturnType<typeof getKeys>,
@@ -1181,6 +1288,7 @@ export default function LocalPlayer({
       playerHitsAnyRpWall(nx, pos.current.z) ||
       playerHitsAnyHouse(nx, pos.current.z) ||
       playerHitsAnyHallWall(nx, pos.current.z) ||
+      playerHitsAnyHallChair(nx, pos.current.z) ||
       obstacles.some((o) =>
         circleVsObb({ x: nx, z: pos.current.z, r: PLAYER_BODY_RADIUS }, o),
       )
@@ -1195,6 +1303,7 @@ export default function LocalPlayer({
       playerHitsAnyRpWall(nx, nz) ||
       playerHitsAnyHouse(nx, nz) ||
       playerHitsAnyHallWall(nx, nz) ||
+      playerHitsAnyHallChair(nx, nz) ||
       obstacles.some((o) =>
         circleVsObb({ x: nx, z: nz, r: PLAYER_BODY_RADIUS }, o),
       )
@@ -1335,6 +1444,15 @@ export default function LocalPlayer({
 
     // Enter vehicle / Licensing Office / Dealership / Lock-Unlock interact
     if (keys.interact && interactCooldown.current <= 0) {
+      // Phase 14C: sit on the nearest chair (Simple only). Highest priority —
+      // takes the E press before vehicle/building interactions and returns.
+      if (nearSitChairRef.current && charDef.id === "simple") {
+        sittingChairRef.current = { ...nearSitChairRef.current };
+        nearSitChairRef.current = null;
+        vel.current.set(0, 0, 0);
+        interactCooldown.current = 0.6;
+        return;
+      }
       const near = findNearestVehicle(pos.current);
       if (near && !near.driverId) {
         // Optimistic license gate (Phase 1B). If canDriveVehicle is not yet
