@@ -40,7 +40,7 @@ import {
   WORLD_HALF,
 } from "../shared/cityData";
 import { EVENT_HALL, EVENT_HALL_SIT, EVENT_HALL_STAGE, isInsideEventHallStage, nearestEventHallChair } from "../shared/eventHall";
-import { railSurfaceY } from "../shared/railTransit";
+import { railSurfaceAt } from "../shared/railTransit";
 import { getVehicleGroundY, getVehicleGroundFrame } from "../shared/elevation";
 import { terrainHeightAt } from "../shared/terrain";
 import {
@@ -1362,10 +1362,20 @@ export default function LocalPlayer({
       groundY = Math.max(groundY, EVENT_HALL_STAGE.topY);
     }
     // Phase 15A: station platform deck + escalator ramp are walkable surfaces.
-    // railSurfaceY returns the deck/ramp height when on a station structure (else
-    // null), so the player walks up/down the ramp and stands on the platform.
-    const railY = railSurfaceY(nx, nz);
-    if (railY !== null) groundY = Math.max(groundY, railY);
+    // The RAMP is continuous from the ground, so it always applies. The PLATFORM
+    // only applies when the player is already elevated near platform height
+    // (came up the ramp, or is jumping/falling onto it) — without this gate a
+    // ground-level player could walk under the deck and instantly snap up to the
+    // platform. The 1.0 m tolerance lets the ramp-top → platform hand-off be
+    // seamless (ramp top == platform height) while a ground player (feet ≈ 0)
+    // is ~12 m below and can never trigger the snap.
+    const rail = railSurfaceAt(nx, nz);
+    if (rail) {
+      const feetNow = pos.current.y - PLAYER_HEIGHT / 2;
+      if (rail.kind === "ramp" || feetNow > rail.y - 1.0) {
+        groundY = Math.max(groundY, rail.y);
+      }
+    }
     const standingY = groundY + PLAYER_HEIGHT / 2;
     if (pos.current.y <= standingY) {
       pos.current.y = standingY;

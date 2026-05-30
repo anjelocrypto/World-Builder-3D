@@ -122,34 +122,48 @@ export interface StationGeom {
   out: number;
   /** Platform outer edge X (top of the escalator). */
   edgeX: number;
-  /** Escalator ground-foot X. */
+  /** Escalator ground-foot X — the station's authoritative `stairX`. */
   footX: number;
+  /** Horizontal run of the ramp (= |stairX − edgeX|), derived from station data. */
+  run: number;
 }
 
 export function stationGeoms(): StationGeom[] {
   return TRAIN_STATIONS.map((s) => {
     const out = Math.sign(s.stairX - s.cx) || 1;
-    return { station: s, out, edgeX: s.cx + out * (s.w / 2), footX: s.cx + out * (s.w / 2 + ESC_RUN) };
+    const edgeX = s.cx + out * (s.w / 2);
+    const footX = s.stairX;                          // AUTHORITATIVE foot (single source of truth)
+    const run = Math.max(1, out * (footX - edgeX));  // horizontal run of the ramp
+    return { station: s, out, edgeX, footX, run };
   });
 }
 
+export type RailSurfaceKind = "ramp" | "platform";
+
 /**
- * Player-walkable rail surface height at (x,z): the platform deck when standing
- * on a platform, the linearly-interpolated ramp height when on an escalator, or
- * null when not on any station structure. LocalPlayer uses max(terrain, this).
+ * Player-walkable rail surface at (x,z): the platform deck (kind "platform"),
+ * the linearly-interpolated escalator height (kind "ramp"), or null when not on
+ * any station structure. LocalPlayer applies the RAMP unconditionally (it is
+ * continuous from the ground) but the PLATFORM only when the player is already
+ * elevated — preventing a ground-level player from snapping up under the deck.
  */
-export function railSurfaceY(x: number, z: number): number | null {
+export function railSurfaceAt(x: number, z: number): { y: number; kind: RailSurfaceKind } | null {
   for (const g of stationGeoms()) {
     const s = g.station;
     if (Math.abs(x - s.cx) <= s.w / 2 && Math.abs(z - s.cz) <= s.d / 2) {
-      return PLATFORM_TOP_Y; // on the platform deck
+      return { y: PLATFORM_TOP_Y, kind: "platform" };
     }
     if (Math.abs(z - s.cz) <= ESC_HALF_BAND) {
-      const d = g.out * (x - g.edgeX); // 0 at the platform edge, +ESC_RUN at the foot
-      if (d >= 0 && d <= ESC_RUN) return PLATFORM_TOP_Y * (1 - d / ESC_RUN);
+      const d = g.out * (x - g.edgeX); // 0 at the platform edge, +run at the foot
+      if (d >= 0 && d <= g.run) return { y: PLATFORM_TOP_Y * (1 - d / g.run), kind: "ramp" };
     }
   }
   return null;
+}
+
+/** Walkable rail surface height only (no kind). Used by the validator. */
+export function railSurfaceY(x: number, z: number): number | null {
+  return railSurfaceAt(x, z)?.y ?? null;
 }
 
 /**
@@ -178,8 +192,8 @@ export function stationRailBoxes(): { x: number; z: number; w: number; d: number
     }
     // Escalator side rails (both long sides of the ramp band), edge → foot.
     const midX = (g.edgeX + g.footX) / 2;
-    boxes.push({ x: midX, z: s.cz - ESC_HALF_BAND, w: ESC_RUN, d: t });
-    boxes.push({ x: midX, z: s.cz + ESC_HALF_BAND, w: ESC_RUN, d: t });
+    boxes.push({ x: midX, z: s.cz - ESC_HALF_BAND, w: g.run, d: t });
+    boxes.push({ x: midX, z: s.cz + ESC_HALF_BAND, w: g.run, d: t });
   }
   return boxes;
 }

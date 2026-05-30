@@ -11,7 +11,6 @@ import {
 } from "../shared/cityData";
 import {
   TRAIN,
-  ESC_RUN,
   ESC_HALF_BAND,
   PLATFORM_TOP_Y,
   stationGeoms,
@@ -157,8 +156,8 @@ function Station({ g }: { g: ReturnType<typeof stationGeoms>[number] }) {
   const canopyHeight = 3.2;
   const top = PLATFORM_TOP_Y;                 // walkable platform top
   const railRise = top;                       // ramp rise from ground (≈12.6)
-  const escSpan = Math.hypot(ESC_RUN, railRise);
-  const escAngle = Math.atan2(railRise, ESC_RUN);
+  const escSpan = Math.hypot(g.run, railRise);
+  const escAngle = Math.atan2(railRise, g.run);
   const innerX = s.cx - g.out * (s.w / 2);    // rail-side (train) edge
   const rampMidX = (g.edgeX + g.footX) / 2;
   const rampMidY = top / 2;

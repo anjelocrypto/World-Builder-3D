@@ -987,7 +987,11 @@ export const TRAIN_STATION: TrainStationData = {
   d: 20,
   rotY: 0,
   deckY: RAIL_DECK_HEIGHT,
-  stairX: 122,
+  // Phase 15A: stairX is the AUTHORITATIVE escalator ground foot. With the
+  // platform edge at x=114 and a 20 m walkable run, the foot is at x=134
+  // (was 122 for the old steep visual stair — railTransit derives the ramp from
+  // this value, so the data and the geometry now agree).
+  stairX: 134,
   stairZ: -65,
   signText: "Central Loop Station",
 };
@@ -1003,7 +1007,7 @@ export const TRAIN_STATION_WEST: TrainStationData = {
   d: 20,
   rotY: 0,
   deckY: RAIL_DECK_HEIGHT,
-  stairX: -122,
+  stairX: -134, // authoritative escalator foot (mirror of the east station)
   stairZ: -65,
   signText: "Central Loop Station West",
 };
@@ -4419,6 +4423,22 @@ if (isViteDev) {
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error("[city-sandbox] event hall validation FAILED:", (err as Error).message);
+      }
+    })
+    .catch(() => { /* validator module unavailable — ignore in dev */ });
+
+  // Phase 15A: rail transit placement check for ALL stations (east + west) +
+  // escalator lanes. Dynamic import keeps this decoupled (no cityData↔validator
+  // top-level cycle); dev-only, logs rather than throwing.
+  void import("./railTransitValidator")
+    .then((m) => {
+      try {
+        const r = m.validateRailTransit();
+        // eslint-disable-next-line no-console
+        console.info(`[city-sandbox] rail transit OK (${r.perStation.length} stations, loopClosed=${r.loopClosed})`);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[city-sandbox] rail transit validation FAILED:", (err as Error).message);
       }
     })
     .catch(() => { /* validator module unavailable — ignore in dev */ });

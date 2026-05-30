@@ -111,6 +111,10 @@ export function validateRailTransit(): RailClearanceReport {
   const GRID = 100, half = ROADS.width / 2;
   const perStation = stationGeoms().map((g) => {
     const s = g.station;
+    // stairX must agree with the canonical ramp run (one source of truth).
+    if (Math.abs(g.run - ESC_RUN) > 0.5) {
+      fail(`station "${s.id}" ramp run ${g.run.toFixed(1)} ≠ expected ${ESC_RUN} (stairX foot mismatch)`);
+    }
     const platform: Rect = { xMin: s.cx - s.w / 2, xMax: s.cx + s.w / 2, zMin: s.cz - s.d / 2, zMax: s.cz + s.d / 2 };
     const rampGround: Rect = {
       xMin: Math.min(g.edgeX, g.footX), xMax: Math.max(g.edgeX, g.footX),
