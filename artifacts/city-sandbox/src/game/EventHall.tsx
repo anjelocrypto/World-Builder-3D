@@ -19,6 +19,7 @@ import {
   EVENT_HALL,
   EVENT_HALL_EXTENTS,
   EVENT_HALL_WALL_BOXES,
+  EVENT_HALL_CHAIR,
   eventHallChairPositions,
 } from "../shared/eventHall";
 
@@ -101,15 +102,16 @@ export default function EventHall({ screenVideoTexture = null, screenVideoAspect
   const backRef = useRef<THREE.InstancedMesh>(null);
   useLayoutEffect(() => {
     const dummy = new THREE.Object3D();
+    const C = EVENT_HALL_CHAIR;
     chairs.forEach(([x, z], i) => {
       // Seat pad
-      dummy.position.set(x, 0.45, z);
+      dummy.position.set(x, C.seatY, z);
       dummy.rotation.set(0, 0, 0);
       dummy.scale.set(1, 1, 1);
       dummy.updateMatrix();
       seatRef.current?.setMatrixAt(i, dummy.matrix);
       // Backrest — on the north (−Z) side of the seat so the sitter faces +Z (screen)
-      dummy.position.set(x, 0.85, z - 0.5);
+      dummy.position.set(x, C.backY, z + C.backZOffset);
       dummy.updateMatrix();
       backRef.current?.setMatrixAt(i, dummy.matrix);
     });
@@ -284,11 +286,11 @@ export default function EventHall({ screenVideoTexture = null, screenVideoAspect
 
       {/* ── Chair rows (instanced) ── */}
       <instancedMesh ref={seatRef} args={[undefined, undefined, chairs.length]} castShadow receiveShadow>
-        <boxGeometry args={[0.9, 0.12, 0.9]} />
+        <boxGeometry args={[EVENT_HALL_CHAIR.seatW, EVENT_HALL_CHAIR.seatH, EVENT_HALL_CHAIR.seatD]} />
         <meshStandardMaterial color="#3a4256" roughness={0.7} />
       </instancedMesh>
       <instancedMesh ref={backRef} args={[undefined, undefined, chairs.length]} castShadow>
-        <boxGeometry args={[0.9, 0.8, 0.14]} />
+        <boxGeometry args={[EVENT_HALL_CHAIR.backW, EVENT_HALL_CHAIR.backH, EVENT_HALL_CHAIR.backD]} />
         <meshStandardMaterial color="#2f3647" roughness={0.7} />
       </instancedMesh>
 

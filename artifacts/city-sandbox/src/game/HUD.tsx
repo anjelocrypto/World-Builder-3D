@@ -1598,7 +1598,7 @@ export default function HUD({
       {/* ============================================================
           BOTTOM-CENTER — Grand Plaza Hall event screen (Phase 14A)
           ============================================================ */}
-      {nearEventHall && !inVehicle && !showInteract && !nearOffice && !nearDealership && !nearDepot && !nearTaxiDepot && !nearDeliveryHub && !nearMechanicGarage && !nearMedicCenter && !nearPoliceStation && !nearATM && (
+      {nearEventHall && !nearSitChair && !inVehicle && !showInteract && !nearOffice && !nearDealership && !nearDepot && !nearTaxiDepot && !nearDeliveryHub && !nearMechanicGarage && !nearMedicCenter && !nearPoliceStation && !nearATM && (
         <div
           style={{
             position:             "absolute",
@@ -1648,7 +1648,7 @@ export default function HUD({
       {/* ============================================================
           BOTTOM-CENTER — Grand Plaza Hall chair sit/stand (Phase 14C)
           ============================================================ */}
-      {nearSitChair && !nearEventHall && (
+      {nearSitChair && !inVehicle && (
         <div
           style={{
             position:             "absolute",

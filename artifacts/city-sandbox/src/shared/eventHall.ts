@@ -115,10 +115,32 @@ export function eventHallChairPositions(): [number, number][] {
 // Each chair is a small solid AABB so players can't walk through the seating.
 // CHAIR_BOX_HALF roughly matches the rendered seat (0.9×0.9) minus the player
 // body radius so a player can stand right up against a chair before sitting.
-const CHAIR_BOX_HALF = 0.45;
+// Chair proportions, sized for the 1.2 m Simple character — normal
+// conference/audience chairs. SINGLE SOURCE OF TRUTH: EventHall.tsx renders
+// from these, the collider derives from them, and the sit pose is tuned to fit.
+// Geometry order in three is [width(X), height(Y), depth(Z)].
+export const EVENT_HALL_CHAIR = {
+  // Seat pad
+  seatW: 0.62,
+  seatH: 0.10,
+  seatD: 0.58,
+  seatY: 0.38,          // seat-pad centre height (top ≈ 0.43)
+  // Backrest
+  backW: 0.62,
+  backH: 0.56,
+  backD: 0.10,
+  backY: 0.70,          // backrest centre height (top ≈ 0.98)
+  backZOffset: -0.36,   // behind the sitter (−Z, the seat's back edge)
+  // Collider half-extents — deliberately SMALLER than the visual seat so the
+  // chairs block walking without being huge invisible boxes.
+  colliderHalfX: 0.32,
+  colliderHalfZ: 0.30,
+} as const;
 
 export const EVENT_HALL_CHAIR_BOXES: ReadonlyArray<{ x: number; z: number; hw: number; hd: number }> =
-  eventHallChairPositions().map(([x, z]) => ({ x, z, hw: CHAIR_BOX_HALF, hd: CHAIR_BOX_HALF }));
+  eventHallChairPositions().map(([x, z]) => ({
+    x, z, hw: EVENT_HALL_CHAIR.colliderHalfX, hd: EVENT_HALL_CHAIR.colliderHalfZ,
+  }));
 
 /**
  * Sitting parameters (Phase 14C). Tunable in ONE place so the seated pose can be
@@ -136,9 +158,9 @@ export const EVENT_HALL_CHAIR_BOXES: ReadonlyArray<{ x: number; z: number; hw: n
 export const EVENT_HALL_SIT = {
   radius: 1.7,
   yOffset: 0.0,
-  forward: 0.0,
+  forward: -0.05,
   faceY: 0.0,
-  standBackZ: 1.3,
+  standBackZ: 1.1,
 } as const;
 
 // Positions are static — compute once, reuse every frame (no per-frame alloc).
