@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useSocket } from "../hooks/useSocket";
 import { useRpSocket } from "../hooks/useRpSocket";
+import { useProximityVoice } from "../hooks/useProximityVoice";
 import GameScene from "../game/GameScene";
 
 interface GameProps {
@@ -98,7 +99,21 @@ export default function Game({ username, character = "classic" }: GameProps) {
     emitBuyHouse,
     emitEnterHouse,
     emitExitHouse,
+    globalMessages,
+    emitGlobalChat,
   } = useRpSocket(socket);
+
+  // Phase comms: proximity voice. getSelfPos / getPeerPos read live positions
+  // from the authoritative gameState so the volume-falloff loop tracks movement.
+  const getSelfPos = () => {
+    const me = gameState.players[myId];
+    return me ? { x: me.x, z: me.z } : { x: 0, z: 0 };
+  };
+  const getPeerPos = (peerId: string) => {
+    const p = gameState.players[peerId];
+    return p ? { x: p.x, z: p.z } : null;
+  };
+  const { micOn, toggleMic } = useProximityVoice(socket, myId, getPeerPos, getSelfPos);
 
   const [ready, setReady] = useState(false);
 
@@ -211,6 +226,10 @@ export default function Game({ username, character = "classic" }: GameProps) {
       emitBuyHouse={emitBuyHouse}
       emitEnterHouse={emitEnterHouse}
       emitExitHouse={emitExitHouse}
+      globalMessages={globalMessages}
+      emitGlobalChat={emitGlobalChat}
+      micOn={micOn}
+      toggleMic={toggleMic}
     />
   );
 }

@@ -1622,13 +1622,14 @@ export default function HUD({
               display:        "flex",
               alignItems:     "center",
               justifyContent: "center",
-              fontSize:       13,
+              fontSize:       11,
               fontWeight:     "bold",
               color:          "#ffaa44",
               boxShadow:      "inset 0 -2px 0 rgba(204,102,0,0.4)",
+              whiteSpace:     "nowrap",
             }}
           >
-            K
+            ⇧K
           </div>
           <div style={{ fontSize: 13, color: "#fff", letterSpacing: 0.5 }}>
             <span style={{ color: "#ffaa44", fontWeight: "bold" }}>
@@ -1938,6 +1939,62 @@ export default function HUD({
             </div>
           )}
 
+          {/* Phase comms: T — Global Chat hint */}
+          <div
+            style={{
+              display:       "flex",
+              alignItems:    "center",
+              gap:           5,
+              fontSize:      11,
+              color:         "#445",
+              letterSpacing: 0.5,
+            }}
+          >
+            <span
+              style={{
+                background:    "rgba(255,255,255,0.07)",
+                border:        "1px solid rgba(255,255,255,0.12)",
+                borderRadius:  4,
+                padding:       "1px 5px",
+                fontSize:      10,
+                color:         "#667",
+                fontWeight:    "bold",
+                fontFamily:    "'Courier New', monospace",
+              }}
+            >
+              T
+            </span>
+            <span style={{ color: "#334" }}>Global Chat</span>
+          </div>
+
+          {/* Phase comms: K — Voice Mic toggle hint */}
+          <div
+            style={{
+              display:       "flex",
+              alignItems:    "center",
+              gap:           5,
+              fontSize:      11,
+              color:         "#445",
+              letterSpacing: 0.5,
+            }}
+          >
+            <span
+              style={{
+                background:    "rgba(255,255,255,0.07)",
+                border:        "1px solid rgba(255,255,255,0.12)",
+                borderRadius:  4,
+                padding:       "1px 5px",
+                fontSize:      10,
+                color:         "#667",
+                fontWeight:    "bold",
+                fontFamily:    "'Courier New', monospace",
+              }}
+            >
+              K
+            </span>
+            <span style={{ color: "#334" }}>Voice Mic</span>
+          </div>
+
           {/* Phase 7C: F7 — Dev Faction Admin hint (dev only, not in production) */}
           {import.meta.env.DEV && !showFactionAdmin && (
             <div
@@ -2120,13 +2177,14 @@ export default function HUD({
                 display:        "flex",
                 alignItems:     "center",
                 justifyContent: "center",
-                fontSize:       13,
+                fontSize:       11,
                 fontWeight:     "bold",
                 color:          "#ccaa44",
                 boxShadow:      "inset 0 -2px 0 rgba(200,170,68,0.3)",
+                whiteSpace:     "nowrap",
               }}
             >
-              T
+              ⇧T
             </div>
             <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
               💰{" "}
@@ -2446,13 +2504,14 @@ export default function HUD({
               display:        "flex",
               alignItems:     "center",
               justifyContent: "center",
-              fontSize:       13,
+              fontSize:       11,
               fontWeight:     "bold",
               color:          "#ff4444",
               boxShadow:      "inset 0 -2px 0 rgba(255,68,68,0.35)",
+              whiteSpace:     "nowrap",
             }}
           >
-            K
+            ⇧K
           </div>
           <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
             🚔{" "}

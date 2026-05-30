@@ -16,6 +16,7 @@ import VehicleShopHUD from "./VehicleShopHUD";
 import ATMHUD from "./ATMHUD";
 import { IssueFinePanel, PendingFineOverlay } from "./FineHUD";
 import FactionChatHUD from "./FactionChatHUD";
+import GlobalChatHUD from "./GlobalChatHUD";
 import FactionAdminHUD from "./FactionAdminHUD";
 import GangHUD from "./GangHUD";
 import { GangMissionHUD } from "./GangMissionHUD";
@@ -217,6 +218,14 @@ interface GameSceneProps {
   emitEnterHouse: (slug: string) => void;
   /** Phase 12A: Emit rp:exitHouse — leave the house the player is inside. */
   emitExitHouse: () => void;
+  /** Phase comms: rolling global chat messages (from useRpSocket). */
+  globalMessages: import("../shared/rpTypes").RpGlobalMessage[];
+  /** Phase comms: emit rp:globalChat — send to everyone online. */
+  emitGlobalChat: (msg: string) => void;
+  /** Phase comms: whether the local mic is currently live. */
+  micOn: boolean;
+  /** Phase comms: toggle mic on/off (requests permission on first enable). */
+  toggleMic: () => void;
 }
 
 export default function GameScene({
@@ -302,6 +311,10 @@ export default function GameScene({
   emitBuyHouse,
   emitEnterHouse,
   emitExitHouse,
+  globalMessages,
+  emitGlobalChat,
+  micOn,
+  toggleMic,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -388,6 +401,13 @@ export default function GameScene({
   const [showIDCard, setShowIDCard] = useState(false);
   const showIDCardRef = useRef(showIDCard);
   showIDCardRef.current = showIDCard;
+  // Phase comms: global chat panel visibility (T key, anywhere).
+  const [showGlobalChat, setShowGlobalChat] = useState(false);
+  const showGlobalChatRef = useRef(showGlobalChat);
+  showGlobalChatRef.current = showGlobalChat;
+  // Phase comms: stable ref for the mic toggle (read inside the empty-deps handler).
+  const toggleMicRef = useRef(toggleMic);
+  toggleMicRef.current = toggleMic;
   // Phase 11C: inventory HUD visibility (O key, anywhere).
   const [showInventory, setShowInventory] = useState(false);
   const showInventoryRef = useRef(showInventory);
@@ -563,9 +583,11 @@ export default function GameScene({
   const emitPoliceInspectIDRef = useRef(emitPoliceInspectID);
   emitPoliceInspectIDRef.current = emitPoliceInspectID;
 
-  // Phase 6A/6B: J/K police action keys.
-  // J = Issue 1★ warrant against the nearest player within POLICE_WARRANT_RADIUS.
-  // K = Arrest the nearest WANTED player within POLICE_ARREST_RADIUS.
+  // Phase 6A/6B + comms: J/K/T/Y action keys.
+  // J       = Issue 1★ warrant against the nearest player within POLICE_WARRANT_RADIUS.
+  // K       = Toggle the proximity-voice MIC (universal). SHIFT+K = police arrest.
+  // T       = Toggle the GLOBAL chat panel (universal). SHIFT+T = Mayor tax panel.
+  // Y       = Faction chat (unchanged).
   // Safety guards: ignore repeated events, ignore while typing, ignore while modal is open.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -614,7 +636,8 @@ export default function GameScene({
         showIDCardRef.current ||
         showInventoryRef.current ||
         receivedIDOpenRef.current ||
-        showHouseBuyRef.current;
+        showHouseBuyRef.current ||
+        showGlobalChatRef.current;
 
       // Phase 7C: F7 toggles faction admin panel (dev-only).
       // Opens only when no other modal is open; always allowed to close itself.
@@ -650,6 +673,28 @@ export default function GameScene({
         } else if (!anyModalOpen) {
           emitGetInventoryRef.current();
           setShowInventory(true);
+        }
+        return;
+      }
+
+      // Phase comms: plain K toggles the proximity-voice MIC (universal, any
+      // player). Shift+K is reserved for the police arrest below, so plain-K
+      // returns here and Shift+K falls through. The mic permission prompt is
+      // triggered from this keypress (a user gesture) inside toggleMic().
+      if (e.code === "KeyK" && !e.shiftKey) {
+        toggleMicRef.current();
+        return;
+      }
+
+      // Phase comms: plain T toggles the GLOBAL chat panel (universal). Close is
+      // always allowed; open only when no other modal is blocking. Shift+T is
+      // reserved for the Mayor tax panel below, so plain-T returns here and
+      // Shift+T falls through.
+      if (e.code === "KeyT" && !e.shiftKey) {
+        if (showGlobalChatRef.current) {
+          setShowGlobalChat(false);
+        } else if (!anyModalOpen) {
+          setShowGlobalChat(true);
         }
         return;
       }
@@ -711,9 +756,10 @@ export default function GameScene({
         // fall through — let LocalPlayer handle E for other interactions.
       }
 
-      // Phase 8B: T at Government Office — Mayor opens City Tax Rate panel.
-      // Close is always allowed; open requires Mayor + near gov office + no other modal.
-      if (e.code === "KeyT") {
+      // Phase 8B: SHIFT+T at Government Office — Mayor opens City Tax Rate panel.
+      // (Plain T is the global chat toggle, handled above.) Close is always
+      // allowed; open requires Mayor + near gov office + no other modal.
+      if (e.code === "KeyT" && e.shiftKey) {
         if (showCityTaxHUDRef.current) {
           setShowCityTaxHUD(false);
           return;
@@ -815,7 +861,9 @@ export default function GameScene({
         return;
       }
 
-      if (e.code === "KeyK") {
+      // SHIFT+K — police arrest of the nearest wanted player. (Plain K is the
+      // mic toggle, handled universally above before the on-duty gate.)
+      if (e.code === "KeyK" && e.shiftKey) {
         let nearestId: string | null = null;
         let nearestDist = Infinity;
         const wanted = wantedByPlayerIdRef.current;
@@ -1337,6 +1385,57 @@ export default function GameScene({
           onSend={(msg) => emitFactionChat(msg)}
           onClose={() => setShowFactionChat(false)}
         />
+      )}
+
+      {/* Phase comms: Global chat panel (bottom-left). Toggle with plain T. */}
+      {showGlobalChat && (
+        <GlobalChatHUD
+          messages={globalMessages}
+          onSend={(msg) => emitGlobalChat(msg)}
+          onClose={() => setShowGlobalChat(false)}
+        />
+      )}
+
+      {/* Phase comms: proximity-voice mic indicator. Shown only while the mic is
+          live (toggled with plain K). Purely a status badge — no ids/peers. */}
+      {micOn && (
+        <div
+          style={{
+            position: "fixed",
+            top: 16,
+            left: "50%",
+            transform: "translateX(-50%)",
+            zIndex: 2300,
+            display: "flex",
+            alignItems: "center",
+            gap: 7,
+            padding: "5px 12px",
+            borderRadius: 999,
+            background: "rgba(8, 14, 28, 0.92)",
+            border: "1px solid rgba(76, 217, 100, 0.5)",
+            boxShadow: "0 4px 14px rgba(0,0,0,0.5), 0 0 10px rgba(76,217,100,0.25)",
+            fontFamily: "'Courier New', monospace",
+            fontSize: 11,
+            fontWeight: "bold",
+            letterSpacing: 1,
+            color: "#4cd964",
+            userSelect: "none",
+            pointerEvents: "none",
+          }}
+        >
+          <span
+            style={{
+              width: 9,
+              height: 9,
+              borderRadius: "50%",
+              background: "#4cd964",
+              boxShadow: "0 0 8px #4cd964",
+              animation: "micPulse 1.2s ease-in-out infinite",
+            }}
+          />
+          🎙 MIC LIVE · K to mute
+          <style>{`@keyframes micPulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }`}</style>
+        </div>
       )}
 
       {/* Phase 7C: Faction admin panel — DEV ONLY; FactionAdminHUD returns null in production */}

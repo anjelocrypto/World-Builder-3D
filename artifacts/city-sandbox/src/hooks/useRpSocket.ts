@@ -15,7 +15,7 @@
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import type { Socket } from "socket.io-client";
-import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard, CityLedger, ReceivedIDCard, PlayerInventory, HouseInfo } from "../shared/rpTypes";
+import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, RpGlobalMessage, FactionSummary, OnlinePlayerFactionSummary, GangStatus, GangPresenceEvent, GangJoinRequest, GangJoinResult, GangJoinRequestSent, GangRosterMember, ActiveGangMission, GangTerritoryStatus, CityAnnouncement, CityConfig, ActiveCityProject, CityDashboard, CityLedger, ReceivedIDCard, PlayerInventory, HouseInfo } from "../shared/rpTypes";
 import { canDriveVehicleClient, GROVE_TAG_COOLDOWN_MS, CITY_TAX_DEFAULT } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
@@ -44,6 +44,8 @@ export function useRpSocket(socket: Socket | null) {
    * Transient client state — not persisted across reconnects.
    */
   const [factionMessages, setFactionMessages] = useState<RpFactionMessage[]>([]);
+  /** Phase comms: last 40 GLOBAL chat messages (transient, in-memory). */
+  const [globalMessages, setGlobalMessages] = useState<RpGlobalMessage[]>([]);
 
   /**
    * Phase 7C: List of all seeded factions, populated by rp:factionsListed.
@@ -407,6 +409,19 @@ export function useRpSocket(socket: Socket | null) {
       ]);
     };
 
+    // Phase comms: rp:globalChat — someone sent a global message. Payload is
+    // public-safe only (fromName, msg, createdAt).
+    const onGlobalChat = (data: { fromName?: unknown; msg?: unknown; createdAt?: unknown }) => {
+      const fromName = data?.fromName;
+      const msg = data?.msg;
+      if (typeof fromName !== "string" || typeof msg !== "string") return;
+      const createdAt = typeof data?.createdAt === "number" ? data.createdAt : Date.now();
+      setGlobalMessages((prev) => [
+        ...prev.slice(-39), // rolling last 40
+        { id: Date.now() + Math.random(), fromName, msg, createdAt },
+      ]);
+    };
+
     socket.on("rp:profile",              onProfile);
     socket.on("rp:profileUpdate",        onProfileUpdate);
     socket.on("rp:toast",                onToast);
@@ -418,6 +433,7 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:fineResolved",         onFineResolved);
     socket.on("rp:fineExpired",          onFineExpired);
     socket.on("rp:factionChat",          onFactionChat);
+    socket.on("rp:globalChat",           onGlobalChat);
     socket.on("rp:factionsListed",       onFactionsListed);
     socket.on("rp:onlinePlayersListed",  onOnlinePlayersListed);
     socket.on("rp:factionAssigned",      onFactionAssigned);
@@ -455,6 +471,7 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:fineResolved",         onFineResolved);
       socket.off("rp:fineExpired",          onFineExpired);
       socket.off("rp:factionChat",          onFactionChat);
+      socket.off("rp:globalChat",           onGlobalChat);
       socket.off("rp:factionsListed",       onFactionsListed);
       socket.off("rp:onlinePlayersListed",  onOnlinePlayersListed);
       socket.off("rp:factionAssigned",      onFactionAssigned);
@@ -666,6 +683,14 @@ export function useRpSocket(socket: Socket | null) {
     [socket],
   );
 
+  /** Phase comms: emit rp:globalChat — sends a message to everyone online. */
+  const emitGlobalChat = useCallback(
+    (msg: string) => {
+      socket?.emit("rp:globalChat", { msg });
+    },
+    [socket],
+  );
+
   /** Phase 7C: emit rp:listFactions — requests the full faction list from the server. */
   const emitListFactions = useCallback(() => {
     socket?.emit("rp:listFactions");
@@ -717,6 +742,8 @@ export function useRpSocket(socket: Socket | null) {
     cuffedPlayers,
     pendingFine,
     factionMessages,
+    globalMessages,
+    emitGlobalChat,
     factions,
     onlineFactionPlayers,
     emitInteract,

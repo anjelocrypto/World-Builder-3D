@@ -187,6 +187,19 @@ export interface RpFactionMessage {
   createdAt:    number;
 }
 
+/**
+ * Phase comms: one GLOBAL chat message received via rp:globalChat. The server
+ * payload is public-safe only — no socket id, DB playerId/UUID, coords, or
+ * private state. `id` is a client-assigned key for React lists.
+ */
+export interface RpGlobalMessage {
+  id:        number;
+  fromName:  string;
+  msg:       string;
+  /** Unix ms — server createdAt */
+  createdAt: number;
+}
+
 // ── Phase 7D: Gang types ──────────────────────────────────────────────────
 
 /**

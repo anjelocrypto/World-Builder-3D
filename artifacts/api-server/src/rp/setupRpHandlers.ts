@@ -41,6 +41,8 @@ import {
 } from "./rpIdentityService";
 import { handleGetInventory } from "./rpInventoryService";
 import { handleGetHouses, handleBuyHouse, handleEnterHouse, handleExitHouse } from "./rpHouseService";
+import { handleGlobalChat } from "./rpGlobalService";
+import { handleVoiceSetEnabled, handleVoiceOffer, handleVoiceAnswer, handleVoiceIce } from "./rpVoiceService";
 import {
   issueFine,
   respondFine,
@@ -443,6 +445,43 @@ export function setupRpHandlers(
       handleFactionChat(socket, ctx, data?.msg);
     },
   );
+
+  // ── rp:globalChat (Phase: comms) ──────────────────────────────────────────
+  // In-memory global text chat. Server validates + trims + length-caps + rate-
+  // limits, then broadcasts ONLY { fromName, msg, createdAt } to everyone. No
+  // ids/coords/private fields in the payload; no DB write; no contents logged.
+  socket.on("rp:globalChat", (data: { msg?: unknown } | null | undefined) => {
+    try {
+      handleGlobalChat(socket, ctx, data?.msg);
+    } catch (err) {
+      logger.error({ err }, "[rp] handleGlobalChat threw");
+    }
+  });
+
+  // ── voice:* (Phase: proximity voice) ──────────────────────────────────────
+  // Socket.IO is SIGNALING ONLY; audio is peer-to-peer WebRTC. The server
+  // tracks mic-on state, tells each speaker its nearby mic-on peers, and
+  // forwards offer/answer/ICE ONLY between peers it re-validates as within
+  // VOICE_RADIUS (authoritative positions). No SDP/ICE/ids are logged.
+  socket.on("voice:setEnabled", (data: { enabled?: unknown } | null | undefined) => {
+    try {
+      handleVoiceSetEnabled(socket, ctx, data?.enabled);
+    } catch (err) {
+      logger.error({ err }, "[rp] voice:setEnabled threw");
+    }
+  });
+  socket.on("voice:offer", (data: { to?: unknown; payload?: unknown } | null | undefined) => {
+    try { handleVoiceOffer(socket, ctx, data?.to, data?.payload); }
+    catch (err) { logger.error({ err }, "[rp] voice:offer threw"); }
+  });
+  socket.on("voice:answer", (data: { to?: unknown; payload?: unknown } | null | undefined) => {
+    try { handleVoiceAnswer(socket, ctx, data?.to, data?.payload); }
+    catch (err) { logger.error({ err }, "[rp] voice:answer threw"); }
+  });
+  socket.on("voice:ice", (data: { to?: unknown; payload?: unknown } | null | undefined) => {
+    try { handleVoiceIce(socket, ctx, data?.to, data?.payload); }
+    catch (err) { logger.error({ err }, "[rp] voice:ice threw"); }
+  });
 
   // ── rp:listFactions ───────────────────────────────────────────────────────
   // Phase 7C: read-only. Returns all seeded factions (slug, name, type, color).

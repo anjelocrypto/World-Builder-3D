@@ -31,6 +31,8 @@ import { cleanupPendingGangRequest, cleanupGangMission } from "../rp/rpFactionSe
 import { clearIdShareForPlayer } from "../rp/rpIdentityService";
 import { clearInventoryFetchForPlayer, ensureStarterInventoryForPlayer } from "../rp/rpInventoryService";
 import { ensureHousesSeeded, handleGetHouses } from "../rp/rpHouseService";
+import { clearGlobalChatForPlayer } from "../rp/rpGlobalService";
+import { clearVoiceForSocket } from "../rp/rpVoiceService";
 
 // Clamp a horizontal world coordinate so a hacked client cannot push a
 // player or vehicle outside the playable map. The margin keeps the
@@ -589,8 +591,12 @@ export function setupGameServer(httpServer: HttpServer) {
         if (leavingEntry) {
           clearIdShareForPlayer(leavingEntry.playerId);
           clearInventoryFetchForPlayer(leavingEntry.playerId);
+          clearGlobalChatForPlayer(leavingEntry.playerId);
         }
       }
+      // Phase comms: drop voice mic state + tell peers this socket left so they
+      // tear down the peer connection.
+      clearVoiceForSocket(socket, ctx);
 
       // Clear RP cache (after test cleanup).
       rpCache.delete(socket.id);
