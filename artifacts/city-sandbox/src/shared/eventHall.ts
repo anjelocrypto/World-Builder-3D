@@ -158,7 +158,7 @@ export const EVENT_HALL_CHAIR_BOXES: ReadonlyArray<{ x: number; z: number; hw: n
 export const EVENT_HALL_SIT = {
   radius: 1.7,
   yOffset: 0.0,
-  forward: -0.05,
+  forward: 0.18,
   faceY: 0.0,
   standBackZ: 1.1,
 } as const;
