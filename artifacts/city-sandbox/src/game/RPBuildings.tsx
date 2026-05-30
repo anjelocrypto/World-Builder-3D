@@ -172,15 +172,23 @@ function frontRotationY(f: RpBuildingFacing): number {
   }
 }
 
-/** A box sized in the canonical front frame → [worldW, h, worldD] for a facing.
- *  `lat` spans along the wall, `thick` is the outward depth. */
+/**
+ * Box dimensions in the CANONICAL front frame, where local +X runs along the
+ * wall (`lat`) and local +Z points outward (`thick`). Every front mesh is
+ * already rotated by frontRotationY(facing), which maps this canonical frame
+ * onto the world for each facing — so the args stay canonical `[lat, h, thick]`
+ * for ALL facings. (The previous east/west branch `[thick, h, lat]`
+ * double-compensated for the rotation and made the long dimension stick OUTWARD
+ * from the wall instead of running along the facade.) The `f` param is kept for
+ * call-site symmetry/readability but no longer branches.
+ */
 function frontBoxArgs(
-  f: RpBuildingFacing,
+  _f: RpBuildingFacing,
   lat: number,
   h: number,
   thick: number,
 ): [number, number, number] {
-  return isFacingZ(f) ? [lat, h, thick] : [thick, h, lat];
+  return [lat, h, thick];
 }
 
 /** One civic building shell. */
@@ -336,8 +344,11 @@ function RPBuildingMesh({ b }: { b: RpBuildingDef }) {
             <boxGeometry args={frontBoxArgs(b.facing, signLat - 0.5, SIGN_BOARD_H - 0.45, 0.06)} />
             <meshStandardMaterial color="#15171c" roughness={0.6} metalness={0.1} />
           </mesh>
-          {/* Dynamically-sized label, 1–2 lines, mounted in front of the panel.
-              renderOrder + depthOffset keep it from z-fighting the board/wall. */}
+          {/* Dynamically-sized label, 1–2 lines. Z-fighting is avoided purely by
+              geometry: the text sits 0.10 m proud of the backing panel (which is
+              itself 0.16 m proud of the sign board), so there is real depth
+              separation — no polygonOffset needed. renderOrder=2 just keeps the
+              draw order stable against the transparent text material. */}
           {signLines.map((line, li) => {
             const yOff = signLines.length === 2 ? (li === 0 ? lineGap / 2 : -lineGap / 2) : 0;
             return (
