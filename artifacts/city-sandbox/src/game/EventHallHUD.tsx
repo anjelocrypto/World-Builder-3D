@@ -20,6 +20,12 @@ const ACCENT = "#2bd4ff";
 
 interface EventHallHUDProps {
   onClose: () => void;
+  /** Phase 14B: begin a local screen-share onto the in-world hall screen (user gesture). */
+  onShare: () => void;
+  /** Phase 14B: stop the active screen-share and restore the static screen. */
+  onStopShare: () => void;
+  /** Phase 14B: whether a screen-share is currently live. */
+  sharing: boolean;
 }
 
 /** True only for a well-formed absolute http/https URL. */
@@ -34,7 +40,7 @@ function isSafeUrl(raw: string): boolean {
   }
 }
 
-export default function EventHallHUD({ onClose }: EventHallHUDProps) {
+export default function EventHallHUD({ onClose, onShare, onStopShare, sharing }: EventHallHUDProps) {
   const [url, setUrl] = useState(DEFAULT_URL);
   const inputRef = useRef<HTMLInputElement>(null);
 
@@ -163,8 +169,58 @@ export default function EventHallHUD({ onClose }: EventHallHUDProps) {
           ↗ OPEN GOOGLE MEET (NEW TAB)
         </button>
 
+        {/* Phase 14B: local screen-share onto the in-world hall screen */}
+        <div style={{ height: 1, background: "rgba(255,255,255,0.08)", margin: "16px 0 12px" }} />
+        <div style={{ fontSize: 10, color: "#7fb4cc", letterSpacing: 1, marginBottom: 6 }}>
+          PRESENT ON THE HALL SCREEN
+        </div>
+        {!sharing ? (
+          <button
+            onClick={onShare}
+            style={{
+              width: "100%",
+              padding: "10px 0",
+              borderRadius: 8,
+              border: "1px solid #4cd964",
+              background: "rgba(76,217,100,0.14)",
+              color: "#4cd964",
+              fontFamily: "'Courier New', monospace",
+              fontSize: 13,
+              fontWeight: "bold",
+              letterSpacing: 1,
+              cursor: "pointer",
+            }}
+          >
+            🖥 SHARE TO HALL SCREEN
+          </button>
+        ) : (
+          <button
+            onClick={onStopShare}
+            style={{
+              width: "100%",
+              padding: "10px 0",
+              borderRadius: 8,
+              border: "1px solid #ff6b6b",
+              background: "rgba(255,107,107,0.14)",
+              color: "#ff8a8a",
+              fontFamily: "'Courier New', monospace",
+              fontSize: 13,
+              fontWeight: "bold",
+              letterSpacing: 1,
+              cursor: "pointer",
+            }}
+          >
+            ■ STOP SHARING
+          </button>
+        )}
+        <div style={{ fontSize: 10, color: "#9fc6dd", marginTop: 8, lineHeight: 1.5 }}>
+          {sharing
+            ? "You are sharing to your own hall screen. Other players don't see it yet — networked broadcast is a later phase."
+            : "Pick your Google Meet tab/window in the browser's screen picker. It maps to the big screen for you (local preview)."}
+        </div>
+
         <div style={{ fontSize: 9, color: "#46637a", textAlign: "center", marginTop: 12 }}>
-          ENTER to open · ESC to close · Live screen-share coming later
+          ENTER to open Meet · ESC to close · screen-share is a local preview
         </div>
       </div>
     </div>

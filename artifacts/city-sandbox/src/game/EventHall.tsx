@@ -73,7 +73,14 @@ function useTextTexture(
   }, [lines.join("|"), opts.w, opts.h, opts.bg, opts.fg, opts.accent]);
 }
 
-export default function EventHall() {
+interface EventHallProps {
+  /** Phase 14B: live presenter screen-share texture, or null for the static screen. */
+  screenVideoTexture?: THREE.VideoTexture | null;
+  /** Captured video aspect (w/h) used to letterbox/pillarbox onto the 24×7 screen. */
+  screenVideoAspect?: number;
+}
+
+export default function EventHall({ screenVideoTexture = null, screenVideoAspect = 16 / 9 }: EventHallProps) {
   const cx = EVENT_HALL.x;
   const cz = EVENT_HALL.z;
   const { xMin, xMax, zMin, zMax } = EVENT_HALL_EXTENTS;
@@ -203,15 +210,39 @@ export default function EventHall() {
         const halfH = 3.5;            // 7/2
         const bar = 0.5;              // frame bar thickness
         const yc = 5.4;
+        // Phase 14B: when a screen-share is active, show the live video on a
+        // sub-plane sized to PRESERVE the captured aspect ratio (contain →
+        // letterbox/pillarbox) within the 24×7 screen, over a dark backing.
+        // Otherwise show the static branded canvas texture full-bleed.
+        const SCREEN_W = 24, SCREEN_H = 7;
+        const aspect = screenVideoAspect > 0 ? screenVideoAspect : 16 / 9;
+        let vidW = Math.min(SCREEN_W, SCREEN_H * aspect);
+        let vidH = vidW / aspect;
+        if (vidH > SCREEN_H) { vidH = SCREEN_H; vidW = vidH * aspect; }
         return (
           <group>
             {/* Screen content */}
-            <mesh position={[cx, yc, screenZ]} rotation={[0, Math.PI, 0]}>
-              <planeGeometry args={[24, 7]} />
-              {screenTex
-                ? <meshBasicMaterial map={screenTex} toneMapped={false} />
-                : <meshBasicMaterial color="#0a1830" toneMapped={false} />}
-            </mesh>
+            {screenVideoTexture ? (
+              <>
+                {/* Dark backing fills the screen behind the letterboxed video */}
+                <mesh position={[cx, yc, screenZ]} rotation={[0, Math.PI, 0]}>
+                  <planeGeometry args={[SCREEN_W, SCREEN_H]} />
+                  <meshBasicMaterial color="#000000" toneMapped={false} />
+                </mesh>
+                {/* Live capture, aspect-preserved, slightly proud of the backing */}
+                <mesh position={[cx, yc, screenZ - 0.02]} rotation={[0, Math.PI, 0]}>
+                  <planeGeometry args={[vidW, vidH]} />
+                  <meshBasicMaterial map={screenVideoTexture} toneMapped={false} />
+                </mesh>
+              </>
+            ) : (
+              <mesh position={[cx, yc, screenZ]} rotation={[0, Math.PI, 0]}>
+                <planeGeometry args={[SCREEN_W, SCREEN_H]} />
+                {screenTex
+                  ? <meshBasicMaterial map={screenTex} toneMapped={false} />
+                  : <meshBasicMaterial color="#0a1830" toneMapped={false} />}
+              </mesh>
+            )}
             {/* Four-piece border frame (top / bottom / left / right) */}
             <mesh position={[cx, yc + halfH + bar / 2, frameZ]}>
               <boxGeometry args={[24 + bar * 2, bar, 0.4]} />

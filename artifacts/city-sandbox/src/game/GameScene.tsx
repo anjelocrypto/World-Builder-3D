@@ -33,6 +33,7 @@ import RPBuildings from "./RPBuildings";
 import RPHouses from "./RPHouses";
 import EventHall from "./EventHall";
 import EventHallHUD from "./EventHallHUD";
+import { useHallScreenShare } from "../hooks/useHallScreenShare";
 import HouseBuyModal from "./HouseBuyModal";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
@@ -348,6 +349,8 @@ export default function GameScene({
   // Phase 5F: ATM panel visibility
   const [showATM, setShowATM] = useState(false);
   const [showEventHall, setShowEventHall] = useState(false);
+  // Phase 14B: local presenter screen-share onto the hall's giant screen.
+  const hallShare = useHallScreenShare();
   // Phase 6E: Issue Fine panel visibility (officer side)
   const [showFinePanel, setShowFinePanel] = useState(false);
 
@@ -1238,8 +1241,12 @@ export default function GameScene({
           {/* Phase 12A: starter player houses (sealed shells + door markers). */}
           <RPHouses />
 
-          {/* Phase 14A: Grand Plaza Hall event venue (SE peri-city). */}
-          <EventHall />
+          {/* Phase 14A: Grand Plaza Hall event venue (SE peri-city).
+              Phase 14B: live presenter screen-share maps onto the giant screen. */}
+          <EventHall
+            screenVideoTexture={hallShare.videoTexture}
+            screenVideoAspect={hallShare.videoAspect}
+          />
 
           {/* RP world markers — station platform, licensing office, checkpoint rings, depot */}
           <RPMarkers
@@ -1320,7 +1327,12 @@ export default function GameScene({
 
       {/* Phase 14A: Grand Plaza Hall event-screen panel */}
       {showEventHall && (
-        <EventHallHUD onClose={() => setShowEventHall(false)} />
+        <EventHallHUD
+          onClose={() => setShowEventHall(false)}
+          onShare={hallShare.startShare}
+          onStopShare={hallShare.stopShare}
+          sharing={hallShare.sharing}
+        />
       )}
 
       {/* Phase 6E: Issue Fine panel (officer side) */}
