@@ -55,6 +55,12 @@ export interface CharacterDef {
    * pose, preserving the original Classic behavior.
    */
   airborneKey?: string;
+  /**
+   * Optional looping clip played while the player is speaking into the mic
+   * (animState "talk"). Omit for characters without a talk animation (Classic)
+   * — they fall back to the idle pose, so "talk" is a no-op for them.
+   */
+  talkKey?: string;
   /** One-shot attack clip keys (triggered by attackSeq, not animState). */
   attackLightKey: string;
   attackHeavyKey: string;
@@ -102,9 +108,10 @@ const CLASSIC: CharacterDef = {
 // ── Simple (10 GLBs, one shared 24-joint rig) ────────────────────────────
 // Clip durations (measured): idle 10.0s, walk 1.07s, run 0.5s, jump 1.93s,
 // punch-combo 5.70s, leg-kick 2.73s, block 2.57s, die 2.27s,
-// gethit 1.27s, talk 4.0s. block/die/gethit/talk are LOADED (so they're
-// ready) but intentionally left unbound — there is no block / death /
-// hit-reaction / talk game mechanic yet, so nothing triggers them.
+// gethit 1.27s, talk 4.0s. talk is now BOUND to animState "talk" (played
+// while the player speaks into the proximity-voice mic via talkKey below).
+// block/die/gethit remain LOADED + ready but unbound — no block / death /
+// hit-reaction game mechanic yet, so nothing triggers them.
 const SIMPLE: CharacterDef = {
   id: "simple",
   label: "Simple",
@@ -124,6 +131,7 @@ const SIMPLE: CharacterDef = {
   ],
   locomotion: { idle: "idle", walk: "walk", run: "run" },
   airborneKey: "jump",
+  talkKey: "talk",
   attackLightKey: "punch",
   attackHeavyKey: "kick",
   attackLightMs: 5700, // simple-punch-combo-1.glb = 5.70s
@@ -161,5 +169,8 @@ export function locomotionClipKey(def: CharacterDef, anim: PlayerAnimState): str
   // Airborne: use the jump/fall clip when the character defines one, else the
   // idle base pose (Classic has no jump clip → unchanged idle fallback).
   if ((anim === "jump" || anim === "fall") && def.airborneKey) return def.airborneKey;
-  return def.locomotion.idle; // idle / driving / attack_* / airborne-without-clip
+  // Talk: use the talk clip when the character defines one (Simple), else fall
+  // back to idle (Classic has no talk clip → renders idle, so talk is a no-op).
+  if (anim === "talk" && def.talkKey) return def.talkKey;
+  return def.locomotion.idle; // idle / driving / attack_* / talk-without-clip
 }

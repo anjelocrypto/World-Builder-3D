@@ -50,6 +50,14 @@ export interface AnimResolveInput {
   /** Horizontal speed magnitude in m/s. */
   horizSpeed: number;
   /**
+   * True when the player is actively speaking into the mic (proximity voice).
+   * Lowest-priority intent: only surfaces as "talk" when grounded and basically
+   * idle — driving, attacks, jump/fall, and walk/run all override it, so the
+   * player never sticks in a full-body talk pose while moving. Optional/back-
+   * compat: omitted → never talks.
+   */
+  speaking?: boolean;
+  /**
    * Character-specific attack clip duration (ms) for the active attackKind.
    * MUST match the real GLB clip length (Classic light=2500, Simple
    * light=5700, etc.). When omitted, falls back to the Classic globals for
@@ -72,7 +80,9 @@ export interface AnimResolveInput {
  *      walk/run takes over smoothly instead of the character staying stuck
  *      in the attack pose for the whole (possibly multi-second) clip.
  *   3. airborne            → "jump" (rising) or "fall"
- *   4. ground horiz speed  → "run" | "walk" | "idle"
+ *   4. ground horiz speed  → "run" | "walk"
+ *   5. speaking (mic)      → "talk"  (only when grounded + below walk speed)
+ *   6. otherwise           → "idle"
  */
 export function resolveAnimState(i: AnimResolveInput): PlayerAnimState {
   if (i.inVehicle) return "driving";
@@ -96,6 +106,9 @@ export function resolveAnimState(i: AnimResolveInput): PlayerAnimState {
   if (!i.grounded) return i.velY > 0 ? "jump" : "fall";
   if (i.horizSpeed > RUN_THRESH) return "run";
   if (i.horizSpeed > WALK_THRESH) return "walk";
+  // Grounded and basically still: a speaking player plays the talk loop.
+  // Placed AFTER walk/run so locomotion always wins (no sliding talk pose).
+  if (i.speaking) return "talk";
   return "idle";
 }
 
@@ -109,4 +122,5 @@ export const ANIM_STATES: readonly PlayerAnimState[] = [
   "attack_light",
   "attack_heavy",
   "driving",
+  "talk",
 ];

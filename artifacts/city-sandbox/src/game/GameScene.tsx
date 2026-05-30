@@ -226,6 +226,8 @@ interface GameSceneProps {
   micOn: boolean;
   /** Phase comms: toggle mic on/off (requests permission on first enable). */
   toggleMic: () => void;
+  /** Phase comms: true while the local mic is carrying speech (drives Simple talk anim). */
+  voiceSpeaking: boolean;
 }
 
 export default function GameScene({
@@ -315,6 +317,7 @@ export default function GameScene({
   emitGlobalChat,
   micOn,
   toggleMic,
+  voiceSpeaking,
 }: GameSceneProps) {
   const [uiState, setUIState] = useState({
     health: 100,
@@ -1264,6 +1267,7 @@ export default function GameScene({
             suppressVehicleLockKey={suppressVehicleLockKey}
             houseTeleportRef={houseTeleportRef}
             characterId={character}
+            voiceSpeaking={voiceSpeaking}
           />
 
           <PerfMonitor />

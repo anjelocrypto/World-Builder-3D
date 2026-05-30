@@ -113,7 +113,7 @@ export default function Game({ username, character = "classic" }: GameProps) {
     const p = gameState.players[peerId];
     return p ? { x: p.x, z: p.z } : null;
   };
-  const { micOn, toggleMic } = useProximityVoice(socket, myId, getPeerPos, getSelfPos);
+  const { micOn, speaking, toggleMic } = useProximityVoice(socket, myId, getPeerPos, getSelfPos);
 
   const [ready, setReady] = useState(false);
 
@@ -230,6 +230,7 @@ export default function Game({ username, character = "classic" }: GameProps) {
       emitGlobalChat={emitGlobalChat}
       micOn={micOn}
       toggleMic={toggleMic}
+      voiceSpeaking={speaking}
     />
   );
 }

@@ -84,7 +84,7 @@ export default function PlaceholderCharacter({
 
     // --- Phase advance (walk / run / idle bob) ---
     const cycleSpeed =
-      s === "run" ? 10 : s === "walk" ? 6 : s === "idle" ? 1.5 : 0;
+      s === "run" ? 10 : s === "walk" ? 6 : s === "idle" || s === "talk" ? 1.5 : 0;
     phaseRef.current += delta * cycleSpeed;
     const ph = phaseRef.current;
 
@@ -116,8 +116,9 @@ export default function PlaceholderCharacter({
       rightLegX = 0.4;
       leftArmX = 0.5;
       rightArmX = 0.5;
-    } else if (s === "idle") {
-      // Subtle breathing.
+    } else if (s === "idle" || s === "talk") {
+      // Subtle breathing. The placeholder (Suspense fallback) has no talk
+      // animation, so a speaking player reads as a calm idle here.
       bodyY = 0.7 + Math.sin(ph) * 0.012;
       headY = bodyY + 0.5;
     }

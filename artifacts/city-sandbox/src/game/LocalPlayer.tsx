@@ -259,6 +259,13 @@ interface LocalPlayerProps {
   houseTeleportRef?: React.MutableRefObject<[number, number, number] | null>;
   /** Which selectable character the local player chose in the lobby. */
   characterId?: CharacterId;
+  /**
+   * Phase comms: true while the local mic is carrying speech. For the Simple
+   * character this surfaces as the "talk" animation when the player is grounded
+   * and basically idle (movement/combat/driving all override it). No-op for
+   * Classic (no talk clip → falls back to idle).
+   */
+  voiceSpeaking?: boolean;
 }
 
 export default function LocalPlayer({
@@ -288,6 +295,7 @@ export default function LocalPlayer({
   suppressVehicleLockKey,
   houseTeleportRef,
   characterId,
+  voiceSpeaking,
 }: LocalPlayerProps) {
   const { camera, gl } = useThree();
   const [, getKeys] = useKeyboardControls<Controls>();
@@ -417,6 +425,12 @@ export default function LocalPlayer({
   // reads the latest value (the loop closes over props captured at mount).
   const suppressVehicleLockKeyRef = useRef(!!suppressVehicleLockKey);
   suppressVehicleLockKeyRef.current = !!suppressVehicleLockKey;
+
+  // Phase comms: mirror voiceSpeaking into a ref so the useFrame loop (which
+  // closes over props captured at mount) reads the latest value, same pattern
+  // as suppressVehicleLockKey above.
+  const voiceSpeakingRef = useRef(!!voiceSpeaking);
+  voiceSpeakingRef.current = !!voiceSpeaking;
 
   const uiCache = useRef({
     health: 100,
@@ -1270,6 +1284,9 @@ export default function LocalPlayer({
       horizSpeed,
       attackDurationMs:
         attackKindRef.current === "heavy" ? attackHeavyDurMs : attackLightDurMs,
+      // Talk animation is Simple-only; Classic has no talk clip (falls back to
+      // idle). Lowest priority — driving/attack/jump/fall/walk/run all win.
+      speaking: charDef.id === "simple" && voiceSpeakingRef.current,
     });
     const runtime = avatarRuntimeRef.current;
     runtime.animState = animState;

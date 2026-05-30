@@ -15,7 +15,8 @@ export type PlayerAnimState =
   | "fall"
   | "attack_light"
   | "attack_heavy"
-  | "driving";
+  | "driving"
+  | "talk";
 
 export interface PlayerState {
   id: string;
