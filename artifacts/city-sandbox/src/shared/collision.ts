@@ -13,7 +13,7 @@ import {
   VARIANT_DIMENSIONS,
 } from "./cityData";
 import { RP_BUILDING_WALL_BOXES, RP_HOUSE_WALL_BOXES } from "./rpTypes";
-import { EVENT_HALL_WALL_BOXES, EVENT_HALL_CHAIR_BOXES, EVENT_HALL_EXTENTS } from "./eventHall";
+import { EVENT_HALL_WALL_BOXES, EVENT_HALL_CHAIR_BOXES, EVENT_HALL_EXTENTS, EVENT_HALL_STAGE } from "./eventHall";
 import { distancePointToPolyline } from "./roadGeom";
 
 // =====================================================
@@ -295,6 +295,24 @@ export function playerHitsAnyHallChair(
     if (circleVsAabb(c, { x: ch.x, z: ch.z, hw: ch.hw, hd: ch.hd })) return true;
   }
   return false;
+}
+
+// Phase 14D: the raised stage blocks walk-in from the floor (its sides) but lets
+// the player onto its TOP. We block only when the player's feet are below the
+// mount height — i.e. trying to enter from ground level. Once airborne (jumping)
+// or already standing on top, the feet are high enough and the sides pass, so
+// the ground-resolution step can stand the player on the stage surface.
+export function playerHitsEventHallStageSide(
+  px: number,
+  pz: number,
+  feetY: number,
+  r = PLAYER_BODY_RADIUS,
+): boolean {
+  if (feetY >= EVENT_HALL_STAGE.mountFeetY) return false; // high enough → allow onto top
+  return circleVsAabb(
+    { x: px, z: pz, r },
+    { x: EVENT_HALL_STAGE.x, z: EVENT_HALL_STAGE.z, hw: EVENT_HALL_STAGE.w / 2, hd: EVENT_HALL_STAGE.d / 2 },
+  );
 }
 
 // =====================================================

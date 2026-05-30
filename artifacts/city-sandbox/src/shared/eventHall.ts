@@ -111,6 +111,31 @@ export function eventHallChairPositions(): [number, number][] {
   return out;
 }
 
+// ── Raised stage (Phase 14D) ────────────────────────────────────────────────
+// A solid raised platform at the south end. Its SIDES block walk-in from the
+// floor; its TOP is a standable surface you reach by jumping. Base sits at y=0,
+// so topY === h. Rendered from these constants by EventHall.tsx.
+export const EVENT_HALL_STAGE = {
+  x: EVENT_HALL.stage[0],
+  z: EVENT_HALL.stage[1],
+  w: 32,
+  d: 9,
+  h: 1,
+  /** Top standable surface height (= h, base at y=0). */
+  topY: 1,
+  /** Feet at/above this height may pass the sides (jumped on / already on top);
+   *  below it, the sides block walk-in from the floor. */
+  mountFeetY: 0.82,
+} as const;
+
+/** True if (px,pz) is within the stage footprint, optionally expanded by margin. */
+export function isInsideEventHallStage(px: number, pz: number, margin = 0): boolean {
+  return (
+    Math.abs(px - EVENT_HALL_STAGE.x) <= EVENT_HALL_STAGE.w / 2 + margin &&
+    Math.abs(pz - EVENT_HALL_STAGE.z) <= EVENT_HALL_STAGE.d / 2 + margin
+  );
+}
+
 // ── Chair colliders + sit anchors (Phase 14C) ───────────────────────────────
 // Each chair is a small solid AABB so players can't walk through the seating.
 // CHAIR_BOX_HALF roughly matches the rendered seat (0.9×0.9) minus the player
@@ -150,6 +175,10 @@ export const EVENT_HALL_CHAIR_BOXES: ReadonlyArray<{ x: number; z: number; hw: n
  *                 hips rest on the seat pad (raise if floating, lower if sunk).
  *   - forward:    +Z nudge (m) onto the seat (toward the screen) if the sit pose
  *                 sits slightly forward/back of the chair centre.
+ *   - lateral:    X nudge (m) to centre the sit pose on the seat. +X moves the
+ *                 seated avatar to the viewer's LEFT when looking at its front
+ *                 (the seated player faces +Z). Flip the sign if it drifts the
+ *                 wrong way.
  *   - faceY:      avatar rotation.y while seated. 0 faces +Z (the screen). Add
  *                 Math.PI if the sit clip ends up facing away from the screen.
  *   - standBackZ: how far north (−Z, toward the entrance/aisle gap) to place the
@@ -158,7 +187,8 @@ export const EVENT_HALL_CHAIR_BOXES: ReadonlyArray<{ x: number; z: number; hw: n
 export const EVENT_HALL_SIT = {
   radius: 1.7,
   yOffset: 0.0,
-  forward: 0.18,
+  forward: 0.36,
+  lateral: 0.12,
   faceY: 0.0,
   standBackZ: 1.1,
 } as const;

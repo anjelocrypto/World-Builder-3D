@@ -16,6 +16,7 @@
 import {
   EVENT_HALL,
   EVENT_HALL_EXTENTS,
+  EVENT_HALL_STAGE,
   EVENT_HALL_CONNECTOR,
   EVENT_HALL_CONNECTOR_WIDTH,
   eventHallChairPositions,
@@ -93,6 +94,7 @@ export interface HallClearanceReport {
   nearestTrafficRoute: number;
   connectorNearestObstacle: number;
   nearestTree: number;
+  nearestChairToStage: number;
 }
 
 /** Hall keepout = footprint expanded by this margin (must match the tree generator). */
@@ -253,10 +255,35 @@ export function validateEventHall(): HallClearanceReport {
     }
   }
 
+  // 14. Stage (Phase 14D) — footprint inside the hall, topY matches height, and
+  //     it does not overlap the chair rows (so seating stays clear of the riser).
+  const stageRect: Rect = {
+    xMin: EVENT_HALL_STAGE.x - EVENT_HALL_STAGE.w / 2,
+    xMax: EVENT_HALL_STAGE.x + EVENT_HALL_STAGE.w / 2,
+    zMin: EVENT_HALL_STAGE.z - EVENT_HALL_STAGE.d / 2,
+    zMax: EVENT_HALL_STAGE.z + EVENT_HALL_STAGE.d / 2,
+  };
+  if (
+    stageRect.xMin < EVENT_HALL_EXTENTS.xMin || stageRect.xMax > EVENT_HALL_EXTENTS.xMax ||
+    stageRect.zMin < EVENT_HALL_EXTENTS.zMin || stageRect.zMax > EVENT_HALL_EXTENTS.zMax
+  ) {
+    fail(`stage footprint extends outside the hall footprint`);
+  }
+  if (EVENT_HALL_STAGE.topY !== EVENT_HALL_STAGE.h) {
+    fail(`stage topY (${EVENT_HALL_STAGE.topY}) must equal its height (${EVENT_HALL_STAGE.h})`);
+  }
+  let nearestChairToStage = Infinity;
+  for (const [cx, cz] of chairs) {
+    const d = rectToPoint(stageRect, cx, cz);
+    if (d < nearestChairToStage) nearestChairToStage = d;
+  }
+  if (nearestChairToStage <= 0) fail(`a chair overlaps the stage footprint`);
+
   return {
     nearestRoad, nearestBuilding, nearestRpBuilding, nearestRpHouse, nearestObstacle,
     nearestCar, nearestSpawn, nearestRail, nearestStation, nearestSkybridge,
     nearestNpcRoute, nearestTrafficRoute, connectorNearestObstacle, nearestTree,
+    nearestChairToStage,
   };
 }
 

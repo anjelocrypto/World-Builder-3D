@@ -39,7 +39,7 @@ import {
   VARIANT_DIMENSIONS,
   WORLD_HALF,
 } from "../shared/cityData";
-import { EVENT_HALL, EVENT_HALL_SIT, nearestEventHallChair } from "../shared/eventHall";
+import { EVENT_HALL, EVENT_HALL_SIT, EVENT_HALL_STAGE, isInsideEventHallStage, nearestEventHallChair } from "../shared/eventHall";
 import { getVehicleGroundY, getVehicleGroundFrame } from "../shared/elevation";
 import { terrainHeightAt } from "../shared/terrain";
 import {
@@ -60,6 +60,7 @@ import {
   playerHitsAnyHouse,
   playerHitsAnyHallWall,
   playerHitsAnyHallChair,
+  playerHitsEventHallStageSide,
   vehicleHitsAnyBuilding,
   vehicleHitsAnyObstacle,
   npcPositionAt,
@@ -1166,9 +1167,11 @@ export default function LocalPlayer({
       return;
     }
 
-    // Stay seated — lock the body to the seat anchor.
+    // Stay seated — lock the body to the seat anchor (with lateral/forward nudge).
+    const seatX = chair.x + EVENT_HALL_SIT.lateral;
+    const seatZ = chair.z + EVENT_HALL_SIT.forward;
     const groundY = getVehicleGroundY(chair.x, chair.z);
-    pos.current.set(chair.x, groundY + PLAYER_HEIGHT / 2, chair.z + EVENT_HALL_SIT.forward);
+    pos.current.set(seatX, groundY + PLAYER_HEIGHT / 2, seatZ);
     vel.current.set(0, 0, 0);
     isGrounded.current = true;
     playerRotY.current = EVENT_HALL_SIT.faceY;
@@ -1281,6 +1284,10 @@ export default function LocalPlayer({
 
     const obstacles = gatherVehicleObbs(VEHICLE_PLAYER_MARGIN);
 
+    // Phase 14D: current feet height — lets the raised stage block walk-in from
+    // the floor while allowing a jumping/standing player onto its top.
+    const feetY = pos.current.y - PLAYER_HEIGHT / 2;
+
     // Try X first
     if (
       playerHitsAnyBuilding(nx, pos.current.z) ||
@@ -1289,6 +1296,7 @@ export default function LocalPlayer({
       playerHitsAnyHouse(nx, pos.current.z) ||
       playerHitsAnyHallWall(nx, pos.current.z) ||
       playerHitsAnyHallChair(nx, pos.current.z) ||
+      playerHitsEventHallStageSide(nx, pos.current.z, feetY) ||
       obstacles.some((o) =>
         circleVsObb({ x: nx, z: pos.current.z, r: PLAYER_BODY_RADIUS }, o),
       )
@@ -1304,6 +1312,7 @@ export default function LocalPlayer({
       playerHitsAnyHouse(nx, nz) ||
       playerHitsAnyHallWall(nx, nz) ||
       playerHitsAnyHallChair(nx, nz) ||
+      playerHitsEventHallStageSide(nx, nz, feetY) ||
       obstacles.some((o) =>
         circleVsObb({ x: nx, z: nz, r: PLAYER_BODY_RADIUS }, o),
       )
@@ -1340,7 +1349,14 @@ export default function LocalPlayer({
     // Ground — sample the mountain road elevation system so the player
     // stands on the slope when walking onto an elevated road. Returns
     // 0 outside mountain country, falling back to flat-ground behaviour.
-    const groundY = getVehicleGroundY(nx, nz);
+    let groundY = getVehicleGroundY(nx, nz);
+    // Phase 14D: inside the stage footprint the standable surface is the stage
+    // TOP. The side collision prevents entering at floor level, so being inside
+    // the footprint means the player jumped on — snap them to the stage top, and
+    // walking off the edge drops them back to floor height cleanly next frame.
+    if (isInsideEventHallStage(nx, nz)) {
+      groundY = Math.max(groundY, EVENT_HALL_STAGE.topY);
+    }
     const standingY = groundY + PLAYER_HEIGHT / 2;
     if (pos.current.y <= standingY) {
       pos.current.y = standingY;

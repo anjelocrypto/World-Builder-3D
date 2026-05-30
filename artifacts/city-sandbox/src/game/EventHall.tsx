@@ -20,6 +20,7 @@ import {
   EVENT_HALL_EXTENTS,
   EVENT_HALL_WALL_BOXES,
   EVENT_HALL_CHAIR,
+  EVENT_HALL_STAGE,
   eventHallChairPositions,
 } from "../shared/eventHall";
 
@@ -187,14 +188,15 @@ export default function EventHall({ screenVideoTexture = null, screenVideoAspect
         </mesh>
       ))}
 
-      {/* ── Stage (raised platform at the south end) ── */}
-      <mesh position={[EVENT_HALL.stage[0], 0.5, EVENT_HALL.stage[1]]} castShadow receiveShadow>
-        <boxGeometry args={[32, 1, 9]} />
+      {/* ── Stage (raised platform at the south end) — solid sides + standable top.
+            Rendered from EVENT_HALL_STAGE so visuals match the collider exactly. */}
+      <mesh position={[EVENT_HALL_STAGE.x, EVENT_HALL_STAGE.h / 2, EVENT_HALL_STAGE.z]} castShadow receiveShadow>
+        <boxGeometry args={[EVENT_HALL_STAGE.w, EVENT_HALL_STAGE.h, EVENT_HALL_STAGE.d]} />
         <meshStandardMaterial color={STAGE_COLOR} roughness={0.6} metalness={0.2} />
       </mesh>
-      {/* Stage gold lip */}
-      <mesh position={[EVENT_HALL.stage[0], 1.0, EVENT_HALL.stage[1] - 4.4]}>
-        <boxGeometry args={[32, 0.12, 0.3]} />
+      {/* Stage gold lip along the front (audience) edge */}
+      <mesh position={[EVENT_HALL_STAGE.x, EVENT_HALL_STAGE.topY, EVENT_HALL_STAGE.z - EVENT_HALL_STAGE.d / 2 + 0.1]}>
+        <boxGeometry args={[EVENT_HALL_STAGE.w, 0.12, 0.3]} />
         <meshStandardMaterial color={TRIM_COLOR} emissive={TRIM_COLOR} emissiveIntensity={0.3} metalness={0.6} roughness={0.3} />
       </mesh>
 
