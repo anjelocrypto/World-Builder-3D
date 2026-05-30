@@ -14,6 +14,7 @@ import {
   ESC_HALF_BAND,
   PLATFORM_TOP_Y,
   stationGeoms,
+  stationRailSideSegments,
   trainCarArcs,
 } from "../shared/railTransit";
 
@@ -174,14 +175,22 @@ function Station({ g }: { g: ReturnType<typeof stationGeoms>[number] }) {
         <planeGeometry args={[0.3, s.d - 0.6]} />
         <meshBasicMaterial color="#f5c542" />
       </mesh>
-      {/* Platform perimeter guard-rails (visual; collision is in railTransit) */}
+      {/* Platform short-end guard-rails (visual; collision is in railTransit) */}
       {[
         { p: [s.cx, top + 0.55, s.cz - s.d / 2], s: [s.w, 1.1, 0.1] },
         { p: [s.cx, top + 0.55, s.cz + s.d / 2], s: [s.w, 1.1, 0.1] },
-        { p: [innerX, top + 0.55, s.cz], s: [0.1, 1.1, s.d] },
       ].map((b, i) => (
         <mesh key={`prail-${i}`} position={b.p as [number, number, number]}>
           <boxGeometry args={b.s as [number, number, number]} />
+          <meshLambertMaterial color={STATION_TRIM} />
+        </mesh>
+      ))}
+      {/* Rail-side (train-side) guard — SEGMENTED with a wide central opening so
+          the train arrives alongside an open edge (no wall on the track). Shared
+          geometry with the collision boxes via stationRailSideSegments(). */}
+      {stationRailSideSegments(g).map((seg, i) => (
+        <mesh key={`railside-${i}`} position={[seg.x, top + 0.55, seg.z]}>
+          <boxGeometry args={[seg.w, 1.1, seg.d]} />
           <meshLambertMaterial color={STATION_TRIM} />
         </mesh>
       ))}

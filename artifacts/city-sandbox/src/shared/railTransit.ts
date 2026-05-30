@@ -200,24 +200,47 @@ export function canAttachToRailSurface(
   return feetY > rail.y - RAIL_PLATFORM_GATE_Y;
 }
 
+/** Rail thickness (m) for station guard-rail boxes (shared by collision + render). */
+export const RAIL_BOX_T = 0.16;
+/** Length (m) of each short rail-side guard segment near a platform end. */
+export const RAIL_SIDE_END_SEG = 3;
+
 /**
- * Guard-rail collider boxes (XZ AABBs): platform perimeter (minus the escalator
- * opening + the rail-side boarding edge handled in 15A-2) and the escalator side
- * rails. Collision.ts iterates these gated by STATION_RAIL_FEET_GATE so they only
- * block once the player is elevated on the structure — ground walking is free.
+ * Rail-side (train-side) guard: TWO short segments near the platform ends with a
+ * wide CENTRAL OPENING where the train arrives + its doors open — so the train
+ * never appears to drive through a wall, and exit/boarding lands in the gap.
+ * SINGLE SOURCE OF TRUTH for both stationRailBoxes() (collision) and CentralRail
+ * (visual). For d=20 the opening is ~14 m wide (z ∈ [cz−7, cz+7]).
+ */
+export function stationRailSideSegments(g: StationGeom): { x: number; z: number; w: number; d: number }[] {
+  const s = g.station;
+  const innerX = s.cx - g.out * (s.w / 2);        // rail-side edge X
+  const off = s.d / 2 - RAIL_SIDE_END_SEG / 2;    // segment centre offset from cz
+  return [
+    { x: innerX, z: s.cz - off, w: RAIL_BOX_T, d: RAIL_SIDE_END_SEG },
+    { x: innerX, z: s.cz + off, w: RAIL_BOX_T, d: RAIL_SIDE_END_SEG },
+  ];
+}
+
+/**
+ * Guard-rail collider boxes (XZ AABBs): platform short ends, the SEGMENTED
+ * rail-side edge (central opening for boarding), the outer-edge segments beside
+ * the escalator opening, and the escalator side rails. Collision.ts iterates
+ * these gated by STATION_RAIL_FEET_GATE so they only block once the player is
+ * elevated on the structure — ground walking is free.
  */
 export function stationRailBoxes(): { x: number; z: number; w: number; d: number }[] {
-  const t = 0.16;
+  const t = RAIL_BOX_T;
   const boxes: { x: number; z: number; w: number; d: number }[] = [];
   for (const g of stationGeoms()) {
     const s = g.station;
-    const hw = s.w / 2;
     const hd = s.d / 2;
     // Platform short ends (full width).
     boxes.push({ x: s.cx, z: s.cz - hd, w: s.w, d: t });
     boxes.push({ x: s.cx, z: s.cz + hd, w: s.w, d: t });
-    // Inner (rail-side) long edge — a guard for 15A-1; boarding opens it in 15A-2.
-    boxes.push({ x: s.cx - g.out * hw, z: s.cz, w: t, d: s.d });
+    // Inner (rail-side / train-side) long edge — SEGMENTED with a wide central
+    // OPENING so the train arrives alongside an open edge (no wall on the track).
+    boxes.push(...stationRailSideSegments(g));
     // Outer long edge segments either side of the escalator opening.
     const segLen = hd - ESC_HALF_BAND;
     if (segLen > 0.05) {

@@ -32,6 +32,9 @@ import {
   railSurfaceAt,
   canAttachToRailSurface,
   stationBoardPoint,
+  stationRailBoxes,
+  stationRailSideSegments,
+  RAIL_SIDE_END_SEG,
   PLATFORM_TOP_Y,
   ESC_RUN,
   ESC_HALF_BAND,
@@ -216,6 +219,40 @@ export function validateRailTransit(): RailClearanceReport {
         fail(`station "${g.station.id}" uphill walk breaks at d=${d.toFixed(1)} (rail y=${surf.y.toFixed(2)} not reachable from feet ${feetY.toFixed(2)})`);
       }
       feetY = surf.y; // step onto it, then continue from here
+    }
+  }
+
+  // Rail-side (train-side) opening: every station must have a wide central
+  // opening on the track edge — no full-length wall where the train arrives, and
+  // the board/exit point must sit in that opening clear of any remaining rail.
+  const allRailBoxes = stationRailBoxes();
+  for (let i = 0; i < stationGeoms().length; i++) {
+    const g = stationGeoms()[i];
+    const s = g.station;
+    const innerX = s.cx - g.out * (s.w / 2);
+    const segs = stationRailSideSegments(g);
+    // (a) central opening exists and is wide enough for boarding.
+    const opening = s.d - 2 * RAIL_SIDE_END_SEG;
+    if (opening < 8) fail(`station "${s.id}" rail-side opening only ${opening} m wide`);
+    // (b) no rail-side segment spans the door/board centre (z = cz).
+    for (const seg of segs) {
+      if (Math.abs(seg.z - s.cz) - seg.d / 2 < 0) fail(`station "${s.id}" rail-side segment covers the boarding centre`);
+    }
+    // (c) no collision box on the rail-side edge spans the full platform length.
+    for (const b of allRailBoxes) {
+      if (Math.abs(b.x - innerX) < 0.2 && b.d > RAIL_SIDE_END_SEG + 1) {
+        fail(`station "${s.id}" has a full-length rail-side wall (d=${b.d})`);
+      }
+    }
+    // (d) the board/exit point lies in the opening, clear of every rail box.
+    const bp = stationBoardPoint(i);
+    if (!bp) fail(`station "${s.id}" has no board point`);
+    const bx = bp ? bp.x : 0;
+    const bz = bp ? bp.z : 0;
+    for (const b of allRailBoxes) {
+      const dx = Math.max(Math.abs(bx - b.x) - b.w / 2, 0);
+      const dz = Math.max(Math.abs(bz - b.z) - b.d / 2, 0);
+      if (Math.hypot(dx, dz) < 0.45) fail(`station "${s.id}" board point [${bx.toFixed(1)}, ${bz.toFixed(1)}] is inside/too close to a rail box`);
     }
   }
 
