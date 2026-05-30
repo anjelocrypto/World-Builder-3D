@@ -32,6 +32,9 @@ const STAGE_COLOR = "#1b1410";
 const CURTAIN_COLOR = "#7a1020";
 const SCREEN_FRAME = "#0a0c12";
 const CLEAR_BLUE = "#2bd4ff";
+const WARM_BULB = "#ffe6b8";    // marquee / bollard bulb glow
+const GLASS_BLUE = "#1c4f96";   // translucent facade glass panels
+const GRAPHITE = "#262a36";     // premium dark structural members
 
 /** Build a canvas-texture with centered text (no font asset dependency). */
 function useTextTexture(
@@ -127,6 +130,37 @@ export default function EventHall({ screenVideoTexture = null, screenVideoAspect
     return out;
   }, [zFront, zBack]);
 
+  // ── Phase 14E: grand marquee canopy + facade detail (visual only) ──
+  const marqueeTex = useTextTexture(["GRAND PLAZA HALL", "LIVE EVENTS · CONFERENCE · STREAM"], {
+    w: 1024, h: 320, bg: "#0c1326", fg: "#ffe9c0", accent: CLEAR_BLUE,
+  });
+  const MARQUEE = useMemo(() => ({
+    y: 6.7,                 // canopy slab height
+    depth: 5,               // projection north over the apron
+    halfW: 9,               // half-width
+    thick: 0.5,
+    frontZ: zFront - 5,     // front fascia line (well clear of the entrance gap below)
+  }), [zFront]);
+  // Marquee bulb row: front edge + the two side edges of the canopy.
+  const marqueeBulbs = useMemo(() => {
+    const pts: [number, number, number][] = [];
+    const fz = MARQUEE.frontZ;
+    const y = MARQUEE.y - 0.35;
+    for (let x = cx - 8.4; x <= cx + 8.4 + 1e-6; x += 1.3) pts.push([x, y, fz - 0.05]);
+    for (let z = fz + 1.2; z <= zFront - 1; z += 1.4) { pts.push([cx - 8.7, y, z]); pts.push([cx + 8.7, y, z]); }
+    return pts;
+  }, [cx, zFront, MARQUEE]);
+  const bulbsRef = useRef<THREE.InstancedMesh>(null);
+  useLayoutEffect(() => {
+    const d = new THREE.Object3D();
+    marqueeBulbs.forEach((p, i) => {
+      d.position.set(p[0], p[1], p[2]);
+      d.updateMatrix();
+      bulbsRef.current?.setMatrixAt(i, d.matrix);
+    });
+    if (bulbsRef.current) bulbsRef.current.instanceMatrix.needsUpdate = true;
+  }, [marqueeBulbs]);
+
   return (
     <group>
       {/* ── Floor ── */}
@@ -187,6 +221,118 @@ export default function EventHall({ screenVideoTexture = null, screenVideoAspect
           <meshStandardMaterial color={TRIM_COLOR} emissive={TRIM_COLOR} emissiveIntensity={0.18} roughness={0.4} metalness={0.5} />
         </mesh>
       ))}
+
+      {/* ════════ Phase 14E — GRAND EXTERIOR FACADE (visual only) ════════
+          All within the footprint/apron, north of the entrance wall, raised so
+          nothing blocks the doorway. No collision is added here. */}
+
+      {/* Gold vertical fins / pilasters flanking the entrance (facade depth) */}
+      {[142, 147, 152, 178, 183, 188].map((x, i) => (
+        <group key={`fin-${i}`}>
+          <mesh position={[x, 4.2, zFront - 0.35]} castShadow>
+            <boxGeometry args={[0.5, 8.4, 0.7]} />
+            <meshStandardMaterial color="#3a3527" metalness={0.5} roughness={0.4} />
+          </mesh>
+          <mesh position={[x, 4.2, zFront - 0.72]}>
+            <boxGeometry args={[0.16, 7.6, 0.06]} />
+            <meshStandardMaterial color={CLEAR_BLUE} emissive={CLEAR_BLUE} emissiveIntensity={0.85} toneMapped={false} />
+          </mesh>
+        </group>
+      ))}
+
+      {/* Translucent blue glass facade panels between fin groups */}
+      {[149.5, 180.5].map((x, i) => (
+        <mesh key={`glassfront-${i}`} position={[x, 4.4, zFront - 0.55]}>
+          <boxGeometry args={[4.4, 6.2, 0.1]} />
+          <meshStandardMaterial color={GLASS_BLUE} emissive={GLASS_BLUE} emissiveIntensity={0.4} transparent opacity={0.5} metalness={0.3} roughness={0.2} />
+        </mesh>
+      ))}
+
+      {/* Cyan LED outline around the entrance opening (on the wall face) */}
+      {[
+        { p: [cx - EVENT_HALL.entranceGapWidth / 2 - 0.5, 3.2, zFront - 0.42], s: [0.18, 6, 0.12] },
+        { p: [cx + EVENT_HALL.entranceGapWidth / 2 + 0.5, 3.2, zFront - 0.42], s: [0.18, 6, 0.12] },
+        { p: [cx, 6.1, zFront - 0.42], s: [EVENT_HALL.entranceGapWidth + 1.2, 0.18, 0.12] },
+      ].map((b, i) => (
+        <mesh key={`entryled-${i}`} position={b.p as [number, number, number]}>
+          <boxGeometry args={b.s as [number, number, number]} />
+          <meshStandardMaterial color={CLEAR_BLUE} emissive={CLEAR_BLUE} emissiveIntensity={1.0} toneMapped={false} />
+        </mesh>
+      ))}
+
+      {/* Marquee canopy slab + warm gold underside */}
+      <mesh position={[cx, MARQUEE.y, zFront - MARQUEE.depth / 2]} castShadow>
+        <boxGeometry args={[MARQUEE.halfW * 2, MARQUEE.thick, MARQUEE.depth]} />
+        <meshStandardMaterial color="#23262f" metalness={0.4} roughness={0.6} />
+      </mesh>
+      <mesh position={[cx, MARQUEE.y - 0.29, zFront - MARQUEE.depth / 2]}>
+        <boxGeometry args={[MARQUEE.halfW * 2 - 0.5, 0.08, MARQUEE.depth - 0.5]} />
+        <meshStandardMaterial color={TRIM_COLOR} emissive={TRIM_COLOR} emissiveIntensity={0.3} metalness={0.6} roughness={0.3} />
+      </mesh>
+      {/* Canopy front fascia carrying the big illuminated sign */}
+      <mesh position={[cx, MARQUEE.y + 0.95, MARQUEE.frontZ]}>
+        <boxGeometry args={[MARQUEE.halfW * 2, 2.5, 0.3]} />
+        <meshStandardMaterial color="#0c1326" metalness={0.3} roughness={0.6} />
+      </mesh>
+      {marqueeTex && (
+        <mesh position={[cx, MARQUEE.y + 0.95, MARQUEE.frontZ - 0.18]} rotation={[0, Math.PI, 0]}>
+          <planeGeometry args={[MARQUEE.halfW * 2 - 0.6, 2.1]} />
+          <meshBasicMaterial map={marqueeTex} toneMapped={false} />
+        </mesh>
+      )}
+      {/* Two slim diagonal support struts under the canopy front corners */}
+      {[cx - MARQUEE.halfW + 0.8, cx + MARQUEE.halfW - 0.8].map((x, i) => (
+        <mesh key={`strut-${i}`} position={[x, MARQUEE.y - 1.6, zFront - MARQUEE.depth + 0.6]} rotation={[Math.PI / 5, 0, 0]}>
+          <boxGeometry args={[0.16, 3.6, 0.16]} />
+          <meshStandardMaterial color={GRAPHITE} metalness={0.6} roughness={0.4} />
+        </mesh>
+      ))}
+
+      {/* Marquee bulb row (instanced emissive — no real lights) */}
+      <instancedMesh ref={bulbsRef} args={[undefined, undefined, marqueeBulbs.length]}>
+        <sphereGeometry args={[0.13, 8, 8]} />
+        <meshStandardMaterial color="#2a2410" emissive={WARM_BULB} emissiveIntensity={1.6} toneMapped={false} />
+      </instancedMesh>
+
+      {/* Roof crown — cyan edge trim around the roof slab perimeter */}
+      {[
+        { p: [cx, H + 0.66, zMin - 0.5], s: [EVENT_HALL.w + 1.6, 0.16, 0.16] },
+        { p: [cx, H + 0.66, zMax + 0.5], s: [EVENT_HALL.w + 1.6, 0.16, 0.16] },
+        { p: [xMin - 0.5, H + 0.66, cz], s: [0.16, 0.16, EVENT_HALL.d + 1.6] },
+        { p: [xMax + 0.5, H + 0.66, cz], s: [0.16, 0.16, EVENT_HALL.d + 1.6] },
+      ].map((b, i) => (
+        <mesh key={`crown-${i}`} position={b.p as [number, number, number]}>
+          <boxGeometry args={b.s as [number, number, number]} />
+          <meshStandardMaterial color={CLEAR_BLUE} emissive={CLEAR_BLUE} emissiveIntensity={0.9} toneMapped={false} />
+        </mesh>
+      ))}
+      {/* Angled roof crown over the marquee (halo trim) */}
+      <mesh position={[cx, H + 0.4, zFront - 1.2]} rotation={[-Math.PI / 7, 0, 0]}>
+        <boxGeometry args={[EVENT_HALL.w * 0.6, 0.3, 2.4]} />
+        <meshStandardMaterial color={GRAPHITE} metalness={0.5} roughness={0.5} />
+      </mesh>
+
+      {/* Arrival path guide bollards on the apron (flank the path, clear the gap) */}
+      {[156, 174].flatMap((x, xi) =>
+        [128, 124.5, 121.5].map((z, zi) => (
+          <group key={`bollard-${xi}-${zi}`}>
+            <mesh position={[x, 0.5, z]}>
+              <cylinderGeometry args={[0.12, 0.16, 1, 8]} />
+              <meshStandardMaterial color="#1a1d25" metalness={0.5} roughness={0.5} />
+            </mesh>
+            <mesh position={[x, 1.06, z]}>
+              <sphereGeometry args={[0.14, 8, 8]} />
+              <meshStandardMaterial color="#2a2410" emissive={WARM_BULB} emissiveIntensity={1.3} toneMapped={false} />
+            </mesh>
+          </group>
+        )),
+      )}
+
+      {/* Exterior real lights — 4 max: 2 facade uplights + marquee wash + path wash */}
+      <pointLight position={[cx - 7, 0.7, zFront - 1.3]} color="#ffcaa0" intensity={9} distance={14} decay={2} />
+      <pointLight position={[cx + 7, 0.7, zFront - 1.3]} color="#ffcaa0" intensity={9} distance={14} decay={2} />
+      <pointLight position={[cx, 5.6, MARQUEE.frontZ - 0.6]} color="#ffe6c0" intensity={8} distance={16} decay={2} />
+      <pointLight position={[cx, 1.3, zFront - 7]} color="#bfe6ff" intensity={6} distance={15} decay={2} />
 
       {/* ── Stage (raised platform at the south end) — solid sides + standable top.
             Rendered from EVENT_HALL_STAGE so visuals match the collider exactly. */}
@@ -345,6 +491,119 @@ export default function EventHall({ screenVideoTexture = null, screenVideoAspect
         <mesh key={`spot-${i}`} position={[x, H - 0.9, zBack - 7]} rotation={[Math.PI / 5, 0, 0]}>
           <cylinderGeometry args={[0.35, 0.5, 0.7, 10]} />
           <meshStandardMaterial color="#0c0e14" emissive="#fff0c0" emissiveIntensity={0.5} />
+        </mesh>
+      ))}
+
+      {/* ════════ Phase 14E — RICHER INTERIOR ARCHITECTURE (visual only) ════════ */}
+
+      {/* Proscenium arch framing the stage/screen opening (columns + top beam).
+          Sits just IN FRONT of the stage front edge (z≈157.8), clear of chairs
+          (z≤156) and the screen (z≈168), with the audience walking between the
+          columns to reach the stage. */}
+      {[150, 180].map((x, i) => (
+        <group key={`pros-${i}`}>
+          <mesh position={[x, 4.2, 157.8]} castShadow>
+            <boxGeometry args={[0.85, 8.4, 0.95]} />
+            <meshStandardMaterial color={GRAPHITE} metalness={0.4} roughness={0.5} />
+          </mesh>
+          <mesh position={[x, 4.2, 157.3]}>
+            <boxGeometry args={[0.2, 7.8, 0.08]} />
+            <meshStandardMaterial color={TRIM_COLOR} emissive={TRIM_COLOR} emissiveIntensity={0.45} toneMapped={false} />
+          </mesh>
+        </group>
+      ))}
+      <mesh position={[cx, 8.05, 157.8]} castShadow>
+        <boxGeometry args={[31, 0.95, 1.05]} />
+        <meshStandardMaterial color={GRAPHITE} metalness={0.4} roughness={0.5} />
+      </mesh>
+      <mesh position={[cx, 7.55, 157.3]}>
+        <boxGeometry args={[30, 0.16, 0.08]} />
+        <meshStandardMaterial color={TRIM_COLOR} emissive={TRIM_COLOR} emissiveIntensity={0.45} toneMapped={false} />
+      </mesh>
+
+      {/* Premium screen bezel — cyan LED outline LARGER than the frame (sits just
+          behind the frame bars, so it never covers the 24×7 content) */}
+      {(() => {
+        const yc = 5.4, z = zBack - 0.5, hw = 13, hh = 4.3, t = 0.14;
+        const bez = (p: [number, number, number], s: [number, number, number], k: string) => (
+          <mesh key={k} position={p}>
+            <boxGeometry args={s} />
+            <meshStandardMaterial color="#0a0c12" emissive={CLEAR_BLUE} emissiveIntensity={0.95} toneMapped={false} />
+          </mesh>
+        );
+        return (
+          <group>
+            {bez([cx, yc + hh, z], [hw * 2, t, 0.1], "bz-t")}
+            {bez([cx, yc - hh, z], [hw * 2, t, 0.1], "bz-b")}
+            {bez([cx - hw, yc, z], [t, hh * 2, 0.1], "bz-l")}
+            {bez([cx + hw, yc, z], [t, hh * 2, 0.1], "bz-r")}
+          </group>
+        );
+      })()}
+
+      {/* Stage truss across the front + downward emissive spot cans */}
+      <mesh position={[cx, 7.4, 159.5]}>
+        <boxGeometry args={[30, 0.4, 0.4]} />
+        <meshStandardMaterial color="#15171d" metalness={0.6} roughness={0.4} />
+      </mesh>
+      {[cx - 11, cx - 5.5, cx, cx + 5.5, cx + 11].map((x, i) => (
+        <mesh key={`truss-can-${i}`} position={[x, 7.05, 159.5]} rotation={[Math.PI / 4, 0, 0]}>
+          <cylinderGeometry args={[0.18, 0.26, 0.5, 8]} />
+          <meshStandardMaterial color="#0c0e14" emissive="#bfe0ff" emissiveIntensity={0.7} toneMapped={false} />
+        </mesh>
+      ))}
+
+      {/* Layered acoustic panels along the side walls (depth + texture) */}
+      {[xMin + 0.35, xMax - 0.35].flatMap((x, wi) =>
+        [138, 144, 150, 156, 162].map((z, si) => (
+          <mesh key={`acou-${wi}-${si}`} position={[x + (wi === 0 ? 0.3 : -0.3), 5, z]}>
+            <boxGeometry args={[0.5, 4, 1.1]} />
+            <meshStandardMaterial color="#21242e" metalness={0.2} roughness={0.95} />
+          </mesh>
+        )),
+      )}
+
+      {/* VIP balcony illusion — a lit ledge + gold railing high on each side wall */}
+      {[xMin + 0.4, xMax - 0.4].map((x, wi) => {
+        const lx = x + (wi === 0 ? 0.5 : -0.5);
+        const rx = x + (wi === 0 ? 0.95 : -0.95);
+        return (
+          <group key={`vip-${wi}`}>
+            <mesh position={[lx, 4.6, cz]}>
+              <boxGeometry args={[1.0, 0.3, 10]} />
+              <meshStandardMaterial color={GRAPHITE} metalness={0.3} roughness={0.6} />
+            </mesh>
+            <mesh position={[lx, 4.42, cz]}>
+              <boxGeometry args={[1.0, 0.06, 9.6]} />
+              <meshStandardMaterial color="#0a0c12" emissive={CLEAR_BLUE} emissiveIntensity={0.5} toneMapped={false} />
+            </mesh>
+            {[-4, -2, 0, 2, 4].map((dz, pi) => (
+              <mesh key={`rail-${pi}`} position={[rx, 5.1, cz + dz]}>
+                <boxGeometry args={[0.06, 0.7, 0.06]} />
+                <meshStandardMaterial color={TRIM_COLOR} metalness={0.6} roughness={0.4} />
+              </mesh>
+            ))}
+            <mesh position={[rx, 5.45, cz]}>
+              <boxGeometry args={[0.08, 0.08, 10]} />
+              <meshStandardMaterial color={TRIM_COLOR} metalness={0.6} roughness={0.4} />
+            </mesh>
+          </group>
+        );
+      })}
+
+      {/* Longitudinal ceiling ribs — cross the transverse beams to read as coffers */}
+      {[cx - 9, cx, cx + 9].map((x, i) => (
+        <mesh key={`rib-${i}`} position={[x, H - 0.5, cz]}>
+          <boxGeometry args={[0.3, 0.3, EVENT_HALL.d - 6]} />
+          <meshStandardMaterial color="#1a1d25" roughness={1} />
+        </mesh>
+      ))}
+
+      {/* Extra transverse aisle light strips (more event atmosphere) */}
+      {[zFront + 10, cz, zBack - 16].map((z, i) => (
+        <mesh key={`xaisle-${i}`} position={[cx, 0.06, z]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[EVENT_HALL.w - 14, 0.4]} />
+          <meshStandardMaterial color="#0a0c12" emissive="#ffd27a" emissiveIntensity={0.55} toneMapped={false} />
         </mesh>
       ))}
     </group>
