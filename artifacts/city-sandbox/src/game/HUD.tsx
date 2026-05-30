@@ -16,6 +16,7 @@ import {
   WORLD_SIZE,
 } from "../shared/cityData";
 import { CITY_PROJECT_DEFS_CLIENT } from "../shared/rpTypes";
+import { MINIMAP_POIS } from "./minimapPois";
 
 interface HUDProps {
   health: number;
@@ -485,6 +486,41 @@ function Minimap({
       }
       ctx.stroke();
     }
+
+    // POI blips (GTA-style) — drawn UNDER the player marker. MINIMAP_POIS is a
+    // module constant pre-sorted by ascending priority, so important markers
+    // (police/medic/city hall) paint last and win the overlap in the dense
+    // downtown cluster. Each blip = a soft dark halo + a colored disc + the
+    // emoji glyph, so it reads against both biome tints and roads.
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    for (const poi of MINIMAP_POIS) {
+      const mx = toMapX(poi.x);
+      const mz = toMapZ(poi.z);
+      const r = poi.size / 2;
+
+      // Contrast halo
+      ctx.beginPath();
+      ctx.arc(mx, mz, r + 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fill();
+
+      // Colored disc + outline (the blip frame)
+      ctx.beginPath();
+      ctx.arc(mx, mz, r, 0, Math.PI * 2);
+      ctx.fillStyle = poi.color;
+      ctx.fill();
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = poi.stroke ?? "rgba(255,255,255,0.85)";
+      ctx.stroke();
+
+      // Emoji glyph (slightly smaller than the disc so the colored frame shows)
+      ctx.font = `${Math.round(poi.size * 0.82)}px sans-serif`;
+      ctx.fillText(poi.icon, mx, mz + 0.5);
+    }
+    // Reset text alignment defaults for any later canvas text.
+    ctx.textAlign = "start";
+    ctx.textBaseline = "alphabetic";
 
     // Player — directional arrow (rotated triangle) when we have a
     // recent heading, otherwise a centered dot. Halo always drawn
