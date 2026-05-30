@@ -29,6 +29,17 @@ const MAX_VOICE_PEERS = 6;
 /** socket ids with mic currently enabled. In-memory only. */
 const micEnabled = new Set<string>();
 
+/**
+ * Last peer set emitted to each socket (as a stable joined key), so we only emit
+ * voice:peers when a player's set actually changes — avoids spamming the channel
+ * on every movement tick. In-memory only; holds socket ids as internal handles.
+ */
+const lastPeerSets = new Map<string, string>();
+
+/** Movement-driven refresh runs at most this often (ms), regardless of tick rate. */
+const REFRESH_THROTTLE_MS = 400;
+let lastRefreshAt = 0;
+
 function dist2(ax: number, az: number, bx: number, bz: number): number {
   const dx = ax - bx;
   const dz = az - bz;
@@ -45,23 +56,61 @@ function peersInRange(ctx: LicenseContext, aId: string, bId: string): boolean {
   return dist2(a.x, a.z, b.x, b.z) <= VOICE_RADIUS2;
 }
 
-/** Send each mic-on player its current nearby mic-on peer set (≤ MAX_VOICE_PEERS). */
-function pushPeerSets(ctx: LicenseContext): void {
+/** Compute a player's nearest mic-on peers within range (≤ MAX_VOICE_PEERS). */
+function peersFor(ctx: LicenseContext, aId: string): string[] {
+  const aPos = ctx.players.get(aId);
+  if (!aPos) return [];
+  const near: { id: string; d2: number }[] = [];
+  for (const bId of micEnabled) {
+    if (bId === aId) continue;
+    const bPos = ctx.players.get(bId);
+    if (!bPos) continue;
+    const d2 = dist2(aPos.x, aPos.z, bPos.x, bPos.z);
+    if (d2 <= VOICE_RADIUS2) near.push({ id: bId, d2 });
+  }
+  near.sort((p, q) => p.d2 - q.d2);
+  return near.slice(0, MAX_VOICE_PEERS).map((p) => p.id);
+}
+
+/**
+ * Recompute every mic-on player's peer set and emit voice:peers ONLY to those
+ * whose set changed since last emit. `force` always re-emits (used on mic
+ * toggle / disconnect, where membership itself changed). Returns nothing and
+ * logs nothing — no ids/positions are ever logged.
+ */
+function emitPeerSetsIfChanged(ctx: LicenseContext, force: boolean): void {
+  // Prune remembered sets for sockets that are no longer mic-on.
+  for (const id of lastPeerSets.keys()) {
+    if (!micEnabled.has(id)) lastPeerSets.delete(id);
+  }
   for (const aId of micEnabled) {
-    const aPos = ctx.players.get(aId);
-    if (!aPos) continue;
-    const near: { id: string; d2: number }[] = [];
-    for (const bId of micEnabled) {
-      if (bId === aId) continue;
-      const bPos = ctx.players.get(bId);
-      if (!bPos) continue;
-      const d2 = dist2(aPos.x, aPos.z, bPos.x, bPos.z);
-      if (d2 <= VOICE_RADIUS2) near.push({ id: bId, d2 });
-    }
-    near.sort((p, q) => p.d2 - q.d2);
-    const peers = near.slice(0, MAX_VOICE_PEERS).map((p) => p.id);
+    if (!ctx.players.get(aId)) continue;
+    const peers = peersFor(ctx, aId);
+    const key = peers.join(",");
+    if (!force && lastPeerSets.get(aId) === key) continue; // unchanged — skip
+    lastPeerSets.set(aId, key);
     ctx.io.to(aId).emit("voice:peers", { peers });
   }
+}
+
+/** Send each mic-on player its current nearby mic-on peer set (≤ MAX_VOICE_PEERS). */
+function pushPeerSets(ctx: LicenseContext): void {
+  emitPeerSetsIfChanged(ctx, true);
+}
+
+/**
+ * Movement-driven refresh: recompute peer sets as players walk in/out of the
+ * radius. Safe to call on every playerUpdate — it self-throttles to at most one
+ * recompute per REFRESH_THROTTLE_MS and only emits to clients whose set changed,
+ * so a peer leaving range gets a fresh (smaller) voice:peers and the client
+ * tears that connection down. No-op when fewer than two mics are live.
+ */
+export function refreshVoicePeers(ctx: LicenseContext): void {
+  if (micEnabled.size < 2) return;
+  const now = Date.now();
+  if (now - lastRefreshAt < REFRESH_THROTTLE_MS) return;
+  lastRefreshAt = now;
+  emitPeerSetsIfChanged(ctx, false);
 }
 
 /** voice:setEnabled — player toggles mic. Recomputes everyone's peer sets. */

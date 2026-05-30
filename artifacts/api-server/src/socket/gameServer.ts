@@ -32,7 +32,7 @@ import { clearIdShareForPlayer } from "../rp/rpIdentityService";
 import { clearInventoryFetchForPlayer, ensureStarterInventoryForPlayer } from "../rp/rpInventoryService";
 import { ensureHousesSeeded, handleGetHouses } from "../rp/rpHouseService";
 import { clearGlobalChatForPlayer } from "../rp/rpGlobalService";
-import { clearVoiceForSocket } from "../rp/rpVoiceService";
+import { clearVoiceForSocket, refreshVoicePeers } from "../rp/rpVoiceService";
 
 // Clamp a horizontal world coordinate so a hacked client cannot push a
 // player or vehicle outside the playable map. The margin keeps the
@@ -454,6 +454,11 @@ export function setupGameServer(httpServer: HttpServer) {
       const updated: PlayerState = { ...player, ...data, id: socket.id, character: player.character };
       players.set(socket.id, updated);
       socket.broadcast.emit("playerMoved", updated);
+
+      // Phase comms: keep proximity-voice peer sets fresh as players walk in/out
+      // of range. Self-throttled and change-detected inside (no-op unless ≥2
+      // mics are live); never logs ids or positions.
+      refreshVoicePeers(ctx);
     });
 
     socket.on("vehicleUpdate", (data: Partial<VehicleState> & { id: string }) => {
