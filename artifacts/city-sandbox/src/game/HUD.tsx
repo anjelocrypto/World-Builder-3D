@@ -411,16 +411,25 @@ function RestrainedOverlay({ cuffedUntil }: { cuffedUntil: number }) {
 
 // ────────────────────────────────────────────────────────────────────────────
 
+/** Zoom mode shows this many metres of world half-extent around the player
+ *  (so a 2× this = 180 m square). Tuned so the downtown civic cluster — which
+ *  spans roughly x[-68,68], z[-72,64] — separates cleanly (~1.1 px/m → civic
+ *  buildings land 18-44 px apart instead of overlapping at full-world zoom). */
+const MINIMAP_ZOOM_RADIUS = 90;
+
 function Minimap({
   px,
   pz,
   heading,
   phaseColor,
+  zoomed,
 }: {
   px: number;
   pz: number;
   heading: number; // radians, 0 = looking +X (east) on the minimap
   phaseColor: string;
+  /** false = full-world (north-up, fixed). true = player-centered close-up. */
+  zoomed: boolean;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -432,10 +441,17 @@ function Minimap({
 
     const W = canvas.width;
     const H = canvas.height;
-    // 1000-unit map covers the canvas; world x/z [-500..500] → [0..W].
-    const SCALE = W / WORLD_SIZE;
-    const toMapX = (wx: number) => (wx + WORLD_HALF) * SCALE;
-    const toMapZ = (wz: number) => (wz + WORLD_HALF) * SCALE;
+    // Two north-up projections sharing the same draw code:
+    //   full-world: 1000-unit world [-500..500] → [0..W].
+    //   zoom:       a 2·MINIMAP_ZOOM_RADIUS window centered on the player, who
+    //               stays pinned at the canvas center.
+    const SCALE = zoomed ? W / (2 * MINIMAP_ZOOM_RADIUS) : W / WORLD_SIZE;
+    const toMapX = zoomed
+      ? (wx: number) => (wx - px) * SCALE + W / 2
+      : (wx: number) => (wx + WORLD_HALF) * SCALE;
+    const toMapZ = zoomed
+      ? (wz: number) => (wz - pz) * SCALE + H / 2
+      : (wz: number) => (wz + WORLD_HALF) * SCALE;
 
     ctx.clearRect(0, 0, W, H);
     ctx.fillStyle = "rgba(2, 6, 18, 0.92)";
@@ -495,6 +511,16 @@ function Minimap({
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
     for (const poi of MINIMAP_POIS) {
+      // In zoom mode, HIDE blips outside the player-centered window (don't
+      // clamp them to the edge — that would lie about their position). A small
+      // margin keeps a blip whose center is just off-screen partially visible.
+      if (
+        zoomed &&
+        (Math.abs(poi.x - px) > MINIMAP_ZOOM_RADIUS + 6 ||
+          Math.abs(poi.z - pz) > MINIMAP_ZOOM_RADIUS + 6)
+      ) {
+        continue;
+      }
       const mx = toMapX(poi.x);
       const mz = toMapZ(poi.z);
       const r = poi.size / 2;
@@ -555,7 +581,7 @@ function Minimap({
     ctx.strokeStyle = phaseColor + "55";
     ctx.lineWidth = 1;
     ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
-  }, [px, pz, heading, phaseColor]);
+  }, [px, pz, heading, phaseColor, zoomed]);
 
   return (
     <canvas
@@ -813,6 +839,30 @@ export default function HUD({
 }: HUDProps) {
   const phaseColor = PHASE_COLOR[clockPhase] ?? "#ffd55c";
 
+  // Minimap zoom toggle (M): false = full-world map, true = player-centered
+  // close-up so the dense downtown POIs separate. Display-only HUD state — it
+  // never touches movement/camera. Mirrors GameScene's typing guard so pressing
+  // M while typing in chat / a panel input doesn't flip the map.
+  const [mapZoomed, setMapZoomed] = useState(false);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.code !== "KeyM" || e.repeat) return;
+      const a = document.activeElement as HTMLElement | null;
+      if (
+        a &&
+        (a.tagName === "INPUT" ||
+          a.tagName === "TEXTAREA" ||
+          a.tagName === "SELECT" ||
+          a.isContentEditable)
+      ) {
+        return;
+      }
+      setMapZoomed((z) => !z);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   // Player heading for the minimap arrow. Derived from successive
   // position deltas in a ref so we don't store it in React state
   // (the parent already updates px/pz at HUD-throttle rate). Heading
@@ -997,7 +1047,21 @@ export default function HUD({
         >
           <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
             <Compass size={12} color={ACCENT} />
-            MAP
+            {mapZoomed ? "ZOOM" : "MAP"}
+            {/* Non-interactive key hint; brightens when zoom is active. */}
+            <span
+              style={{
+                marginLeft: 2,
+                padding: "0 4px",
+                borderRadius: 3,
+                border: `1px solid ${mapZoomed ? ACCENT : "rgba(0,229,255,0.3)"}`,
+                color: mapZoomed ? ACCENT : "#9bb",
+                fontSize: 8,
+                lineHeight: "12px",
+              }}
+            >
+              M
+            </span>
           </span>
           <span style={{ color: "#556", fontVariantNumeric: "tabular-nums" }}>
             {Math.round(playerPositionX)}, {Math.round(playerPositionZ)}
@@ -1018,6 +1082,7 @@ export default function HUD({
             pz={playerPositionZ}
             heading={headingRef.current}
             phaseColor={phaseColor}
+            zoomed={mapZoomed}
           />
           {/* Compass labels — N/E/S/W around the minimap edge */}
           {compassLabels.map(({ label, style }) => (
