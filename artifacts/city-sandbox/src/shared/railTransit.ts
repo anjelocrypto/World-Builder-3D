@@ -222,6 +222,32 @@ export function stationRailSideSegments(g: StationGeom): { x: number; z: number;
   ];
 }
 
+/** Half-width (m) of the train slot cut into each short-end rail (train passes here). */
+export const TRACK_SLOT_HALF_X = TRAIN.carWidth / 2 + 0.8;
+
+/**
+ * Short-end guard rails (z = cz ± d/2) SPLIT around the train path (x = cx), so
+ * the train passes through a central slot at the platform ends instead of
+ * driving through a full-width wall. Returns left/right segments for BOTH ends.
+ * SINGLE SOURCE OF TRUTH for stationRailBoxes() (collision) + CentralRail
+ * (visual). The slot is TRAIN.carWidth + 1.6 m wide, centred on x = cx.
+ */
+export function stationShortEndRailSegments(g: StationGeom): { x: number; z: number; w: number; d: number }[] {
+  const s = g.station;
+  const xMin = s.cx - s.w / 2;
+  const xMax = s.cx + s.w / 2;
+  const slotMin = s.cx - TRACK_SLOT_HALF_X;
+  const slotMax = s.cx + TRACK_SLOT_HALF_X;
+  const leftW = slotMin - xMin;   // segment toward −X
+  const rightW = xMax - slotMax;  // segment toward +X
+  const out: { x: number; z: number; w: number; d: number }[] = [];
+  for (const z of [s.cz - s.d / 2, s.cz + s.d / 2]) {
+    if (leftW > 0.05) out.push({ x: (xMin + slotMin) / 2, z, w: leftW, d: RAIL_BOX_T });
+    if (rightW > 0.05) out.push({ x: (slotMax + xMax) / 2, z, w: rightW, d: RAIL_BOX_T });
+  }
+  return out;
+}
+
 /**
  * Guard-rail collider boxes (XZ AABBs): platform short ends, the SEGMENTED
  * rail-side edge (central opening for boarding), the outer-edge segments beside
@@ -235,9 +261,9 @@ export function stationRailBoxes(): { x: number; z: number; w: number; d: number
   for (const g of stationGeoms()) {
     const s = g.station;
     const hd = s.d / 2;
-    // Platform short ends (full width).
-    boxes.push({ x: s.cx, z: s.cz - hd, w: s.w, d: t });
-    boxes.push({ x: s.cx, z: s.cz + hd, w: s.w, d: t });
+    // Platform short ends — SPLIT around the train path (x=cx) so the train
+    // passes through a central slot instead of a full-width wall.
+    boxes.push(...stationShortEndRailSegments(g));
     // Inner (rail-side / train-side) long edge — SEGMENTED with a wide central
     // OPENING so the train arrives alongside an open edge (no wall on the track).
     boxes.push(...stationRailSideSegments(g));

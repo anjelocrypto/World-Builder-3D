@@ -27,6 +27,7 @@ import {
 import { RP_BUILDINGS, RP_HOUSES, STATION_SPAWN, STATION_SPAWN_JITTER_X, STATION_SPAWN_JITTER_Z } from "./rpTypes";
 import { EVENT_HALL_EXTENTS } from "./eventHall";
 import {
+  TRAIN,
   stationGeoms,
   railSurfaceY,
   railSurfaceAt,
@@ -34,7 +35,9 @@ import {
   stationBoardPoint,
   stationRailBoxes,
   stationRailSideSegments,
+  stationShortEndRailSegments,
   RAIL_SIDE_END_SEG,
+  TRACK_SLOT_HALF_X,
   PLATFORM_TOP_Y,
   ESC_RUN,
   ESC_HALF_BAND,
@@ -253,6 +256,28 @@ export function validateRailTransit(): RailClearanceReport {
       const dx = Math.max(Math.abs(bx - b.x) - b.w / 2, 0);
       const dz = Math.max(Math.abs(bz - b.z) - b.d / 2, 0);
       if (Math.hypot(dx, dz) < 0.45) fail(`station "${s.id}" board point [${bx.toFixed(1)}, ${bz.toFixed(1)}] is inside/too close to a rail box`);
+    }
+
+    // (e) v3: SHORT-END rails must have a central train slot around x=cx, wide
+    //     enough for the train, and NO rail box may overlap the train's swept
+    //     corridor (the train runs along x=cx, moving in Z, through both ends).
+    const slotW = 2 * TRACK_SLOT_HALF_X;
+    if (slotW < TRAIN.carWidth + 1.0) fail(`station "${s.id}" short-end track slot only ${slotW.toFixed(1)} m (need ≥ ${(TRAIN.carWidth + 1).toFixed(1)})`);
+    // No short-end segment may cover the track centre (x = cx).
+    for (const seg of stationShortEndRailSegments(g)) {
+      if (Math.abs(seg.x - s.cx) - seg.w / 2 < 0) fail(`station "${s.id}" short-end rail segment covers the track centre`);
+    }
+    // Train swept corridor — no rail box may intrude.
+    const cl = 0.3;
+    const corr = {
+      xMin: s.cx - TRAIN.carWidth / 2 - cl, xMax: s.cx + TRAIN.carWidth / 2 + cl,
+      zMin: s.cz - s.d / 2 - 0.2, zMax: s.cz + s.d / 2 + 0.2,
+    };
+    for (const b of allRailBoxes) {
+      const overlap =
+        b.x + b.w / 2 > corr.xMin && b.x - b.w / 2 < corr.xMax &&
+        b.z + b.d / 2 > corr.zMin && b.z - b.d / 2 < corr.zMax;
+      if (overlap) fail(`station "${s.id}" rail box at [${b.x.toFixed(1)}, ${b.z.toFixed(1)}] intrudes the train swept corridor`);
     }
   }
 

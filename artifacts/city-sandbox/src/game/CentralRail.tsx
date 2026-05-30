@@ -15,6 +15,7 @@ import {
   PLATFORM_TOP_Y,
   stationGeoms,
   stationRailSideSegments,
+  stationShortEndRailSegments,
   trainCarArcs,
 } from "../shared/railTransit";
 
@@ -175,13 +176,12 @@ function Station({ g }: { g: ReturnType<typeof stationGeoms>[number] }) {
         <planeGeometry args={[0.3, s.d - 0.6]} />
         <meshBasicMaterial color="#f5c542" />
       </mesh>
-      {/* Platform short-end guard-rails (visual; collision is in railTransit) */}
-      {[
-        { p: [s.cx, top + 0.55, s.cz - s.d / 2], s: [s.w, 1.1, 0.1] },
-        { p: [s.cx, top + 0.55, s.cz + s.d / 2], s: [s.w, 1.1, 0.1] },
-      ].map((b, i) => (
-        <mesh key={`prail-${i}`} position={b.p as [number, number, number]}>
-          <boxGeometry args={b.s as [number, number, number]} />
+      {/* Platform short-end guard-rails — SPLIT around the train path (x=cx) so
+          the train passes through the central slot, not a wall. Shared geometry
+          with the collision boxes via stationShortEndRailSegments(). */}
+      {stationShortEndRailSegments(g).map((seg, i) => (
+        <mesh key={`endrail-${i}`} position={[seg.x, top + 0.55, seg.z]}>
+          <boxGeometry args={[seg.w, 1.1, seg.d]} />
           <meshLambertMaterial color={STATION_TRIM} />
         </mesh>
       ))}
