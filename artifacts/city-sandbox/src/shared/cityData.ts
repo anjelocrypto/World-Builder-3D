@@ -1284,6 +1284,13 @@ export const REGIONAL_ROADS: RoadPath[] = [
   { id: "drv-hs-w1", points: [[-100, -50], [-119, -50]], width: 4, type: "dirt" },
   { id: "drv-hs-w2", points: [[-100,  30], [-122,  30]], width: 4, type: "dirt" },
   { id: "drv-hs-w3", points: [[-100,  75], [-124,  75]], width: 4, type: "dirt" },
+
+  // Phase 14A: pedestrian connector from the inner-ring SE corner node (100,100)
+  // up to the Grand Plaza Hall entrance apron. points[0] is an existing ring
+  // graph node, so the road-graph validator treats it as a connected spur (like
+  // the homestead driveways). Coordinates mirror EVENT_HALL_CONNECTOR in
+  // shared/eventHall.ts (kept inline to avoid a cityData↔eventHall import cycle).
+  { id: "path-grand-plaza-hall", points: [[100, 100], [130, 116], [160, 128]], width: 5, type: "dirt" },
 ];
 
 // =============================================================
@@ -4338,4 +4345,20 @@ if (isViteDev) {
     // eslint-disable-next-line no-console
     console.info(`[city-sandbox] ${centerCityLine}`);
   }
+
+  // Phase 14A: Grand Plaza Hall placement check. Dynamic import keeps this fully
+  // decoupled (no cityData↔eventHallValidator top-level import cycle); it runs
+  // after both modules finish loading. Dev-only; logs rather than throwing.
+  void import("./eventHallValidator")
+    .then((m) => {
+      try {
+        m.validateEventHall();
+        // eslint-disable-next-line no-console
+        console.info("[city-sandbox] event hall placement OK (Grand Plaza Hall)");
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[city-sandbox] event hall validation FAILED:", (err as Error).message);
+      }
+    })
+    .catch(() => { /* validator module unavailable — ignore in dev */ });
 }

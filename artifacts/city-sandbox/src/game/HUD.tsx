@@ -89,6 +89,8 @@ interface HUDProps {
    * Shows an E — Open ATM prompt.
    */
   nearATM?: boolean;
+  /** Phase 14A: true when near the Grand Plaza Hall screen. Shows E — Open Event Screen. */
+  nearEventHall?: boolean;
   /**
    * Phase 6A: current wanted stars count (0 = clean). Shown in wallet panel.
    */
@@ -733,6 +735,7 @@ export default function HUD({
   nearMedicCenter,
   nearPoliceStation,
   nearATM,
+  nearEventHall,
   wantedStars,
   jailUntil,
   jailReason,
@@ -1582,6 +1585,56 @@ export default function HUD({
               Open ATM
             </span>{" "}
             <span style={{ color: "#9bb", fontSize: 11 }}>· Bank / Withdraw</span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Grand Plaza Hall event screen (Phase 14A)
+          ============================================================ */}
+      {nearEventHall && !inVehicle && !showInteract && !nearOffice && !nearDealership && !nearDepot && !nearTaxiDepot && !nearDeliveryHub && !nearMechanicGarage && !nearMedicCenter && !nearPoliceStation && !nearATM && (
+        <div
+          style={{
+            position:             "absolute",
+            bottom:               130,
+            left:                 "50%",
+            transform:            "translateX(-50%)",
+            background:           PANEL_BG,
+            border:               "1px solid rgba(43, 212, 255, 0.65)",
+            borderRadius:         PANEL_RADIUS,
+            padding:              "8px 14px 8px 8px",
+            display:              "flex",
+            alignItems:           "center",
+            gap:                  12,
+            boxShadow:            `${PANEL_SHADOW}, 0 0 24px rgba(43,212,255,0.22)`,
+            backdropFilter:       "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width:          28,
+              height:         28,
+              borderRadius:   6,
+              background:     "rgba(43, 212, 255, 0.15)",
+              border:         "1px solid rgba(43, 212, 255, 0.7)",
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              fontSize:       13,
+              fontWeight:     "bold",
+              color:          "#2bd4ff",
+              boxShadow:      "inset 0 -2px 0 rgba(43,212,255,0.35)",
+            }}
+          >
+            E
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            🎬{" "}
+            <span style={{ color: "#2bd4ff", fontWeight: "bold" }}>
+              Open Event Screen
+            </span>{" "}
+            <span style={{ color: "#9bb", fontSize: 11 }}>· Google Meet</span>
           </div>
         </div>
       )}

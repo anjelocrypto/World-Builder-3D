@@ -31,6 +31,8 @@ import ReceivedIDHUD from "./ReceivedIDHUD";
 import InventoryHUD from "./InventoryHUD";
 import RPBuildings from "./RPBuildings";
 import RPHouses from "./RPHouses";
+import EventHall from "./EventHall";
+import EventHallHUD from "./EventHallHUD";
 import HouseBuyModal from "./HouseBuyModal";
 import RemotePlayer from "./RemotePlayer";
 import VehicleObject from "./VehicleObject";
@@ -338,12 +340,14 @@ export default function GameScene({
     nearPoliceStation: false,
     nearATM: false,
     nearBookingDesk: false,
+    nearEventHall: false,
   });
 
   // Phase 3: dealership shop panel visibility
   const [showShop, setShowShop] = useState(false);
   // Phase 5F: ATM panel visibility
   const [showATM, setShowATM] = useState(false);
+  const [showEventHall, setShowEventHall] = useState(false);
   // Phase 6E: Issue Fine panel visibility (officer side)
   const [showFinePanel, setShowFinePanel] = useState(false);
 
@@ -353,6 +357,8 @@ export default function GameScene({
   showShopRef.current = showShop;
   const showATMRef = useRef(showATM);
   showATMRef.current = showATM;
+  const showEventHallRef = useRef(showEventHall);
+  showEventHallRef.current = showEventHall;
   const showFinePanelRef = useRef(showFinePanel);
   showFinePanelRef.current = showFinePanel;
   // Phase 7A: faction chat panel visibility
@@ -640,7 +646,8 @@ export default function GameScene({
         showInventoryRef.current ||
         receivedIDOpenRef.current ||
         showHouseBuyRef.current ||
-        showGlobalChatRef.current;
+        showGlobalChatRef.current ||
+        showEventHallRef.current;
 
       // Phase 7C: F7 toggles faction admin panel (dev-only).
       // Opens only when no other modal is open; always allowed to close itself.
@@ -1231,6 +1238,9 @@ export default function GameScene({
           {/* Phase 12A: starter player houses (sealed shells + door markers). */}
           <RPHouses />
 
+          {/* Phase 14A: Grand Plaza Hall event venue (SE peri-city). */}
+          <EventHall />
+
           {/* RP world markers — station platform, licensing office, checkpoint rings, depot */}
           <RPMarkers
             activeTest={rpProfile?.activeTest ?? null}
@@ -1259,6 +1269,7 @@ export default function GameScene({
             emitToggleLock={emitToggleLock}
             onOpenShop={() => setShowShop(true)}
             onOpenATM={() => setShowATM(true)}
+            onOpenEventHall={() => setShowEventHall(true)}
             activeJob={rpProfile?.activeJob ?? null}
             emitToggleDuty={emitToggleDuty}
             emitJobCheckpoint={emitJobCheckpoint}
@@ -1305,6 +1316,11 @@ export default function GameScene({
           onWithdraw={(amount) => { emitBankWithdraw(amount); }}
           onClose={() => setShowATM(false)}
         />
+      )}
+
+      {/* Phase 14A: Grand Plaza Hall event-screen panel */}
+      {showEventHall && (
+        <EventHallHUD onClose={() => setShowEventHall(false)} />
       )}
 
       {/* Phase 6E: Issue Fine panel (officer side) */}
@@ -1355,6 +1371,7 @@ export default function GameScene({
         nearMedicCenter={uiState.nearMedicCenter}
         nearPoliceStation={uiState.nearPoliceStation}
         nearATM={uiState.nearATM}
+        nearEventHall={uiState.nearEventHall}
         wantedStars={rpProfile?.wantedStars}
         jailUntil={rpProfile?.jailUntil}
         jailReason={rpProfile?.jailReason}

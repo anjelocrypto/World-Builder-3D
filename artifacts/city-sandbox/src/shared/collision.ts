@@ -13,6 +13,7 @@ import {
   VARIANT_DIMENSIONS,
 } from "./cityData";
 import { RP_BUILDING_WALL_BOXES, RP_HOUSE_WALL_BOXES } from "./rpTypes";
+import { EVENT_HALL_WALL_BOXES } from "./eventHall";
 import { distancePointToPolyline } from "./roadGeom";
 
 // =====================================================
@@ -250,6 +251,26 @@ export function playerHitsAnyHouse(
 ): boolean {
   const c: Circle = { x: px, z: pz, r };
   for (const w of RP_HOUSE_WALL_BOXES) {
+    if (circleVsAabb(c, { x: w.x, z: w.z, hw: w.w / 2, hd: w.d / 2 })) return true;
+  }
+  return false;
+}
+
+// =====================================================
+// Phase 14A: Grand Plaza Hall shell (player-only)
+// =====================================================
+//
+// Four solid shell walls with a wide open doorway gap in the north wall (the
+// gap has no collider, so the entrance stays walkable). Player-only, like the
+// RP civic-building walls; vehicles are unaffected (the hall sits ≥24 m off any
+// road carriageway, so driving is never blocked).
+export function playerHitsAnyHallWall(
+  px: number,
+  pz: number,
+  r = PLAYER_BODY_RADIUS,
+): boolean {
+  const c: Circle = { x: px, z: pz, r };
+  for (const w of EVENT_HALL_WALL_BOXES) {
     if (circleVsAabb(c, { x: w.x, z: w.z, hw: w.w / 2, hd: w.d / 2 })) return true;
   }
   return false;

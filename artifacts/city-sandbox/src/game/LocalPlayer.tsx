@@ -39,6 +39,7 @@ import {
   VARIANT_DIMENSIONS,
   WORLD_HALF,
 } from "../shared/cityData";
+import { EVENT_HALL } from "../shared/eventHall";
 import { getVehicleGroundY, getVehicleGroundFrame } from "../shared/elevation";
 import { terrainHeightAt } from "../shared/terrain";
 import {
@@ -57,6 +58,7 @@ import {
   playerHitsAnyObstacle,
   playerHitsAnyRpWall,
   playerHitsAnyHouse,
+  playerHitsAnyHallWall,
   vehicleHitsAnyBuilding,
   vehicleHitsAnyObstacle,
   npcPositionAt,
@@ -170,6 +172,8 @@ interface LocalPlayerProps {
     nearATM: boolean;
     /** Phase 6D: true when walking player is within POLICE_BOOKING_RADIUS of the Booking Desk. */
     nearBookingDesk: boolean;
+    /** Phase 14A: true when player is within EVENT_HALL.interactRadius of the hall screen. */
+    nearEventHall: boolean;
   }) => void;
   playerPosRef: React.MutableRefObject<THREE.Vector3>;
   // Authoritative spawn from the server's gameState. Falls back to a
@@ -259,6 +263,8 @@ interface LocalPlayerProps {
   houseTeleportRef?: React.MutableRefObject<[number, number, number] | null>;
   /** Which selectable character the local player chose in the lobby. */
   characterId?: CharacterId;
+  /** Phase 14A: open the Grand Plaza Hall event-screen HUD (E near the screen). */
+  onOpenEventHall?: () => void;
   /**
    * Phase comms: true while the local mic is carrying speech. For the Simple
    * character this surfaces as the "talk" animation when the player is grounded
@@ -295,6 +301,7 @@ export default function LocalPlayer({
   suppressVehicleLockKey,
   houseTeleportRef,
   characterId,
+  onOpenEventHall,
   voiceSpeaking,
 }: LocalPlayerProps) {
   const { camera, gl } = useThree();
@@ -416,6 +423,11 @@ export default function LocalPlayer({
   const nearATMRef            = useRef(false);
   // Phase 6D: Booking Desk proximity ref (walk-up; for officer prompt)
   const nearBookingDeskRef    = useRef(false);
+  // Phase 14A: Grand Plaza Hall screen proximity ref — read by E key handler
+  const nearEventHallRef      = useRef(false);
+  // Mirror onOpenEventHall into a ref so the useFrame closure sees the latest.
+  const onOpenEventHallRef    = useRef(onOpenEventHall);
+  onOpenEventHallRef.current  = onOpenEventHall;
   // Phase 4: job checkpoint retry state (same pattern as license-test cpRetryRef)
   const jobCpRetryRef = useRef<{ nextCp: number; lastAttemptAt: number } | null>(null);
   // Phase 7G: gang mission tag-point checkpoint retry (walking only, 1s throttle)
@@ -451,6 +463,7 @@ export default function LocalPlayer({
     nearPoliceStation: false,
     nearATM: false,
     nearBookingDesk: false,
+    nearEventHall: false,
   });
 
   // Pointer lock
@@ -926,6 +939,15 @@ export default function LocalPlayer({
       bddx * bddx + bddz * bddz < POLICE_BOOKING_RADIUS * POLICE_BOOKING_RADIUS;
     nearBookingDeskRef.current = nearBookingDesk;
 
+    // Phase 14A: Grand Plaza Hall — near the giant screen (walk-up only).
+    const [ehX, ehZ] = EVENT_HALL.screen;
+    const ehdx = curPos.x - ehX;
+    const ehdz = curPos.z - ehZ;
+    const nearEventHall =
+      !inVehicle.current &&
+      ehdx * ehdx + ehdz * ehdz < EVENT_HALL.interactRadius * EVENT_HALL.interactRadius;
+    nearEventHallRef.current = nearEventHall;
+
     // Phase 3: nearest owned vehicle within 6 m (for lock/unlock prompt)
     let nearOwnedVehicleId: string | null = null;
     if (!inVehicle.current) {
@@ -962,6 +984,7 @@ export default function LocalPlayer({
       nearPoliceStation,
       nearATM,
       nearBookingDesk,
+      nearEventHall,
     };
 
     // Throttled per-field UI diff. JSON.stringify on a 10-key object
@@ -989,7 +1012,8 @@ export default function LocalPlayer({
       newUI.nearMedicCenter !== cache.nearMedicCenter ||
       newUI.nearPoliceStation !== cache.nearPoliceStation ||
       newUI.nearATM !== cache.nearATM ||
-      newUI.nearBookingDesk !== cache.nearBookingDesk;
+      newUI.nearBookingDesk !== cache.nearBookingDesk ||
+      newUI.nearEventHall !== cache.nearEventHall;
     const sinceLast = now - lastUIEmit.current;
     if (
       stateChanged ||
@@ -1156,6 +1180,7 @@ export default function LocalPlayer({
       playerHitsAnyObstacle(nx, pos.current.z) ||
       playerHitsAnyRpWall(nx, pos.current.z) ||
       playerHitsAnyHouse(nx, pos.current.z) ||
+      playerHitsAnyHallWall(nx, pos.current.z) ||
       obstacles.some((o) =>
         circleVsObb({ x: nx, z: pos.current.z, r: PLAYER_BODY_RADIUS }, o),
       )
@@ -1169,6 +1194,7 @@ export default function LocalPlayer({
       playerHitsAnyObstacle(nx, nz) ||
       playerHitsAnyRpWall(nx, nz) ||
       playerHitsAnyHouse(nx, nz) ||
+      playerHitsAnyHallWall(nx, nz) ||
       obstacles.some((o) =>
         circleVsObb({ x: nx, z: nz, r: PLAYER_BODY_RADIUS }, o),
       )
@@ -1365,6 +1391,10 @@ export default function LocalPlayer({
         } else if (nearDealershipRef.current) {
           // Phase 3: open dealership shop.
           onOpenShop?.();
+          interactCooldown.current = 0.5;
+        } else if (nearEventHallRef.current) {
+          // Phase 14A: open the Grand Plaza Hall event-screen HUD.
+          onOpenEventHallRef.current?.();
           interactCooldown.current = 0.5;
         }
       }
