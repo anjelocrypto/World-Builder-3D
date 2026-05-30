@@ -207,27 +207,31 @@ function Station({ g }: { g: ReturnType<typeof stationGeoms>[number] }) {
         <meshBasicMaterial color={STATION_SIGN_COLOR} />
       </mesh>
 
-      {/* ── Two escalator lanes (one walkable ramp band, visually split) ── */}
+      {/* ── Two escalator lanes (one walkable ramp band, visually split) ──
+          Rotation is −g.out*escAngle so the HIGH end attaches to the platform
+          edge (edgeX) and the LOW end lands at the ground foot (footX), matching
+          railSurfaceAt() physics (platform edge high, stairX foot low) on both
+          the east (+X) and west (−X) stations. */}
       {/* Ramp deck (full band, walkable) */}
-      <mesh position={[rampMidX, rampMidY, s.cz]} rotation={[0, 0, g.out * escAngle]} castShadow receiveShadow>
+      <mesh position={[rampMidX, rampMidY, s.cz]} rotation={[0, 0, -g.out * escAngle]} castShadow receiveShadow>
         <boxGeometry args={[escSpan, 0.2, ESC_HALF_BAND * 2]} />
         <meshLambertMaterial color={STATION_COLOR} />
       </mesh>
       {/* Centre divider rail (between UP / DOWN lanes) */}
-      <mesh position={[rampMidX, rampMidY + 0.55, s.cz]} rotation={[0, 0, g.out * escAngle]}>
+      <mesh position={[rampMidX, rampMidY + 0.55, s.cz]} rotation={[0, 0, -g.out * escAngle]}>
         <boxGeometry args={[escSpan, 1.0, 0.12]} />
         <meshLambertMaterial color={STATION_TRIM} />
       </mesh>
       {/* Side guard rails (both long edges of the ramp band) */}
       {[-ESC_HALF_BAND, ESC_HALF_BAND].map((dz, i) => (
-        <mesh key={`erail-${i}`} position={[rampMidX, rampMidY + 0.55, s.cz + dz]} rotation={[0, 0, g.out * escAngle]}>
+        <mesh key={`erail-${i}`} position={[rampMidX, rampMidY + 0.55, s.cz + dz]} rotation={[0, 0, -g.out * escAngle]}>
           <boxGeometry args={[escSpan, 1.0, 0.1]} />
           <meshLambertMaterial color={STATION_TRIM} />
         </mesh>
       ))}
       {/* Direction arrow / tread strips: cyan UP lane, amber DOWN lane */}
       {([[-ESC_HALF_BAND / 2, "#39d0ff"], [ESC_HALF_BAND / 2, "#ffb347"]] as const).map(([dz, col], i) => (
-        <mesh key={`tread-${i}`} position={[rampMidX, rampMidY + 0.12, s.cz + dz]} rotation={[0, 0, g.out * escAngle]}>
+        <mesh key={`tread-${i}`} position={[rampMidX, rampMidY + 0.12, s.cz + dz]} rotation={[0, 0, -g.out * escAngle]}>
           <boxGeometry args={[escSpan - 0.4, 0.05, ESC_HALF_BAND - 0.4]} />
           <meshBasicMaterial color={col} />
         </mesh>

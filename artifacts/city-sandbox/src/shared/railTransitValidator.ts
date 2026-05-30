@@ -24,11 +24,12 @@ import {
   railLoopArcLengths,
   railLoopPointAt,
 } from "./cityData";
-import { RP_BUILDINGS, RP_HOUSES } from "./rpTypes";
+import { RP_BUILDINGS, RP_HOUSES, STATION_SPAWN, STATION_SPAWN_JITTER_X, STATION_SPAWN_JITTER_Z } from "./rpTypes";
 import { EVENT_HALL_EXTENTS } from "./eventHall";
 import {
   stationGeoms,
   railSurfaceY,
+  railSurfaceAt,
   stationBoardPoint,
   PLATFORM_TOP_Y,
   ESC_RUN,
@@ -72,6 +73,7 @@ export interface RailClearanceReport {
     footNearestCar: number;
     footNearestSpawn: number;
   }>;
+  spawnSamplesOnStructure: number;
 }
 
 const MARGIN = 1.5;
@@ -164,13 +166,18 @@ export function validateRailTransit(): RailClearanceReport {
       if (d < MARGIN) fail(`station "${s.id}" foot within ${d.toFixed(1)} m of a spawn`);
     }
 
-    // Surface endpoints + continuity.
+    // Surface endpoints + continuity (also proves the ramp DIRECTION: high at the
+    // platform edge, low at the foot — which the CentralRail visual mirrors via
+    // its −g.out*escAngle rotation).
     const yPlatform = railSurfaceY(s.cx, s.cz);
     if (yPlatform === null || Math.abs(yPlatform - PLATFORM_TOP_Y) > 1e-6) fail(`station "${s.id}" platform surface height wrong`);
-    const yEdge = railSurfaceY(g.edgeX + g.out * 0.2, s.cz); // just onto the ramp from the platform edge
-    if (yEdge === null || Math.abs(yEdge - PLATFORM_TOP_Y) > 0.3) fail(`station "${s.id}" ramp-top height does not meet the platform`);
-    const yFoot = railSurfaceY(g.footX - g.out * 0.2, s.cz); // just up from the foot
-    if (yFoot === null || yFoot > 0.4) fail(`station "${s.id}" ramp foot does not reach the ground`);
+    const edgeSurf = railSurfaceAt(g.edgeX + g.out * 0.2, s.cz); // just onto the ramp from the platform edge
+    if (!edgeSurf || edgeSurf.kind !== "ramp" || Math.abs(edgeSurf.y - PLATFORM_TOP_Y) > 0.3) fail(`station "${s.id}" ramp-top height does not meet the platform`);
+    const footSurf = railSurfaceAt(g.footX - g.out * 0.2, s.cz); // just up from the foot
+    if (!footSurf || footSurf.kind !== "ramp" || footSurf.y > 0.4) fail(`station "${s.id}" ramp foot does not reach the ground`);
+    const edgeY = edgeSurf ? edgeSurf.y : 0;
+    const footY = footSurf ? footSurf.y : 0;
+    if (!(edgeY > footY + 1)) fail(`station "${s.id}" ramp direction inverted (edge ${edgeY.toFixed(1)} ≤ foot ${footY.toFixed(1)})`);
 
     // Board/exit point lies on the platform.
     const bp = stationBoardPoint(0); // index irrelevant for shape check below
@@ -181,7 +188,23 @@ export function validateRailTransit(): RailClearanceReport {
     return { id: s.id, platformNearestStructure, rampNearestStructure, footNearestRoad, footNearestCar, footNearestSpawn };
   });
 
-  return { loopClosed, trainNearestBuilding, perStation };
+  // Station spawn: the FULL jitter box must not land on any platform/escalator
+  // surface (railSurfaceAt === null everywhere in the box).
+  let spawnSamplesOnStructure = 0;
+  const sx0 = STATION_SPAWN[0] - STATION_SPAWN_JITTER_X;
+  const sx1 = STATION_SPAWN[0] + STATION_SPAWN_JITTER_X;
+  const sz0 = STATION_SPAWN[2] - STATION_SPAWN_JITTER_Z;
+  const sz1 = STATION_SPAWN[2] + STATION_SPAWN_JITTER_Z;
+  for (let x = sx0; x <= sx1 + 1e-6; x += 1) {
+    for (let z = sz0; z <= sz1 + 1e-6; z += 1) {
+      if (railSurfaceAt(x, z) !== null) {
+        spawnSamplesOnStructure++;
+        fail(`STATION_SPAWN jitter box sample [${x.toFixed(0)}, ${z.toFixed(0)}] lands on a station ramp/platform surface`);
+      }
+    }
+  }
+
+  return { loopClosed, trainNearestBuilding, perStation, spawnSamplesOnStructure };
 }
 
 const isMain = typeof process !== "undefined" && process.argv?.[1]?.includes("railTransitValidator");

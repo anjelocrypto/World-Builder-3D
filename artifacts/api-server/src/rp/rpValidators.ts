@@ -447,6 +447,31 @@ export function validateRpHouses(
  * Phase 2: wire in the server-side static obstacle list when available.
  */
 export function validateRpMarkers(obstacles: StaticObstacle[]): void {
+  // Phase 15A hotfix: the FULL station spawn jitter box must clear the Central
+  // Loop Station's walkable escalator ramp + platform corridor (east side), so a
+  // spawned player never lands on/inside the ramp. Corridor AABBs mirror the
+  // client railTransit geometry (platform 8×20 @ x=110,z=−65 → x[106,114]
+  // z[−75,−55]; ramp band x[edge114→foot134], z=cz±2.7 → x[114,134] z[−67.7,−62.3]).
+  {
+    const sx0 = STATION_SPAWN[0] - STATION_SPAWN_JITTER_X;
+    const sx1 = STATION_SPAWN[0] + STATION_SPAWN_JITTER_X;
+    const sz0 = STATION_SPAWN[2] - STATION_SPAWN_JITTER_Z;
+    const sz1 = STATION_SPAWN[2] + STATION_SPAWN_JITTER_Z;
+    const corridors: Array<{ name: string; x0: number; x1: number; z0: number; z1: number }> = [
+      { name: "station platform", x0: 106, x1: 114, z0: -75, z1: -55 },
+      { name: "station escalator ramp", x0: 114, x1: 134, z0: -67.7, z1: -62.3 },
+    ];
+    for (const c of corridors) {
+      const overlap = sx1 > c.x0 && sx0 < c.x1 && sz1 > c.z0 && sz0 < c.z1;
+      if (overlap) {
+        throw new Error(
+          `[rp] STATION_SPAWN jitter box [${sx0}, ${sx1}]×[${sz0}, ${sz1}] overlaps the ${c.name} corridor`,
+        );
+      }
+    }
+    console.info(`[rp] STATION_SPAWN jitter box clears the station ramp/platform corridor`);
+  }
+
   // Build delivery slot entries from DELIVERY_SLOT_OFFSETS
   const deliverySlotMarkers = DELIVERY_SLOT_OFFSETS.map(([dx, dz], i) => ({
     label: `DELIVERY_SLOT_${i}`,
@@ -455,7 +480,7 @@ export function validateRpMarkers(obstacles: StaticObstacle[]): void {
   }));
 
   const OFF_ROAD = [
-    { label: "STATION_SPAWN",           x: 128,                       z: -65 },
+    { label: "STATION_SPAWN",           x: STATION_SPAWN[0],          z: STATION_SPAWN[2] },
     // Phase 9B-3: licensing office/spawn/CP3 relocated (mirror cityData.ts).
     { label: "LICENSING_OFFICE_POS",    x:  17,                       z: -29 },
     { label: "TEST_VEHICLE_SPAWN",      x:  11,                       z: -30 },
@@ -615,7 +640,7 @@ export function validateRpMarkerVehicleClearance(vehicles: VehiclePos[]): void {
     // Phase 9B-3: licensing office/spawn relocated (mirror cityData.ts).
     { label: "LICENSING_OFFICE_POS",    x:  17,                       z: -29 },
     { label: "TEST_VEHICLE_SPAWN",      x:  11,                       z: -30 },
-    { label: "STATION_SPAWN",           x: 128,                       z: -65 },
+    { label: "STATION_SPAWN",           x: STATION_SPAWN[0],          z: STATION_SPAWN[2] },
     // Phase 3 — dealership entrance + all delivery slots
     { label: "DEALERSHIP_POS",          x: DEALERSHIP_POS[0],         z: DEALERSHIP_POS[2] },
     ...deliverySlotMarkers,

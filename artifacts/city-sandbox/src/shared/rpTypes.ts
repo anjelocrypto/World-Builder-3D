@@ -289,15 +289,18 @@ export interface GangRosterMember {
 // All positions are [x, y, z] in world-space. rotY convention: 0 = front
 // toward −Z (matches vehicleObb + LocalPlayer updateVehicle forward axis).
 
-/** Platform center of Central Loop Station exterior (ground level). */
-export const STATION_MARKER_POS: [number, number, number] = [132, 0, -65];
+/** Ground-level arrival forecourt SOUTH of the Central Loop Station (visual marker). */
+export const STATION_MARKER_POS: [number, number, number] = [132, 0, -82];
 
 /**
- * Primary player spawn — ground-level exterior east of the Central Loop
- * Station stair foot (x=122). Validated against all buildings, roads, parked
- * cars, and static obstacles. See NEMOVERSE_RP_PLAN.md §5.3 + §5.4.
+ * Primary player spawn — a ground-level forecourt south-east of the Central Loop
+ * Station, clear of the new walkable escalator ramp (band x≈[114,134],
+ * z≈[−67.7,−62.3]) and the elevated platform (x≈[106,114], z≈[−75,−55]). With
+ * ±4/±3 jitter the box x∈[128,136], z∈[−85,−79] clears the ramp by ~11 m, all
+ * buildings, roads, parked cars, and obstacles. (Was [128,1,−65], which sat
+ * partly inside the east ramp corridor.)
  */
-export const STATION_SPAWN: [number, number, number] = [128, 1, -65];
+export const STATION_SPAWN: [number, number, number] = [132, 1, -82];
 
 /** Random jitter applied per-spawn: X ∈ [−JITTER_X, +JITTER_X]. */
 export const STATION_SPAWN_JITTER_X = 4;

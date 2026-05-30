@@ -74,15 +74,17 @@ export const SPAWN_POINTS: [number, number, number][] = [
 // Positions validated against buildings, roads, cars, and obstacles in
 // NEMOVERSE_RP_PLAN.md §5.3–§5.4.
 
-/** Platform center of Central Loop Station exterior (visual marker position). */
-export const STATION_MARKER_POS: [number, number, number] = [132, 0, -65];
+/** Ground-level arrival forecourt SOUTH of the Central Loop Station (visual marker). */
+export const STATION_MARKER_POS: [number, number, number] = [132, 0, -82];
 
 /**
- * Primary spawn point — ground-level exterior east of the station stair foot
- * at x=122. Both jitter extremes (x ∈ [124, 132], z ∈ [−68, −62]) clear
- * all buildings, roads, and parked cars.
+ * Primary spawn point — a ground-level forecourt south-east of the Central Loop
+ * Station, clear of the walkable escalator ramp corridor (band x≈[114,134],
+ * z≈[−67.7,−62.3]) and the elevated platform. With ±4/±3 jitter the box
+ * x ∈ [128,136], z ∈ [−85,−79] clears the ramp by ~11 m, all buildings, roads,
+ * and parked cars. (Was [128,1,−65], partly inside the east ramp corridor.)
  */
-export const STATION_SPAWN: [number, number, number] = [128, 1, -65];
+export const STATION_SPAWN: [number, number, number] = [132, 1, -82];
 
 /** Jitter half-width on X: final x ∈ [STATION_SPAWN[0]−4, STATION_SPAWN[0]+4]. */
 export const STATION_SPAWN_JITTER_X = 4;
