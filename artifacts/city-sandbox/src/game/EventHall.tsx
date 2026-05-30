@@ -189,18 +189,49 @@ export default function EventHall() {
         <meshStandardMaterial color={TRIM_COLOR} emissive={TRIM_COLOR} emissiveIntensity={0.3} metalness={0.6} roughness={0.3} />
       </mesh>
 
-      {/* ── Giant event screen (static branded placeholder) ── */}
-      <mesh position={[cx, 5.4, zBack - 0.35]} rotation={[0, Math.PI, 0]}>
-        <planeGeometry args={[24, 7]} />
-        {screenTex
-          ? <meshBasicMaterial map={screenTex} toneMapped={false} />
-          : <meshBasicMaterial color="#0a1830" toneMapped={false} />}
-      </mesh>
-      {/* Screen frame */}
-      <mesh position={[cx, 5.4, zBack - 0.5]}>
-        <boxGeometry args={[25, 8, 0.4]} />
-        <meshStandardMaterial color={SCREEN_FRAME} roughness={0.5} metalness={0.4} />
-      </mesh>
+      {/* ── Giant event screen (static branded placeholder) ──
+          The 24×7 plane sits PROUD of the wall toward the audience (smaller z,
+          facing −Z). The frame is FOUR bars sitting just behind the plane's
+          edges (slightly larger z), so they border the screen without ever
+          covering its content. Z-offsets are spaced ≥0.15 m apart to avoid
+          z-fighting (wall face ≈ zBack−0.3; frame at zBack−0.55; plane at
+          zBack−0.75). */}
+      {(() => {
+        const screenZ = zBack - 0.75; // proud, audience-facing
+        const frameZ = zBack - 0.55;  // just behind the plane edges
+        const halfW = 12;             // 24/2
+        const halfH = 3.5;            // 7/2
+        const bar = 0.5;              // frame bar thickness
+        const yc = 5.4;
+        return (
+          <group>
+            {/* Screen content */}
+            <mesh position={[cx, yc, screenZ]} rotation={[0, Math.PI, 0]}>
+              <planeGeometry args={[24, 7]} />
+              {screenTex
+                ? <meshBasicMaterial map={screenTex} toneMapped={false} />
+                : <meshBasicMaterial color="#0a1830" toneMapped={false} />}
+            </mesh>
+            {/* Four-piece border frame (top / bottom / left / right) */}
+            <mesh position={[cx, yc + halfH + bar / 2, frameZ]}>
+              <boxGeometry args={[24 + bar * 2, bar, 0.4]} />
+              <meshStandardMaterial color={SCREEN_FRAME} roughness={0.5} metalness={0.4} />
+            </mesh>
+            <mesh position={[cx, yc - halfH - bar / 2, frameZ]}>
+              <boxGeometry args={[24 + bar * 2, bar, 0.4]} />
+              <meshStandardMaterial color={SCREEN_FRAME} roughness={0.5} metalness={0.4} />
+            </mesh>
+            <mesh position={[cx - halfW - bar / 2, yc, frameZ]}>
+              <boxGeometry args={[bar, 7, 0.4]} />
+              <meshStandardMaterial color={SCREEN_FRAME} roughness={0.5} metalness={0.4} />
+            </mesh>
+            <mesh position={[cx + halfW + bar / 2, yc, frameZ]}>
+              <boxGeometry args={[bar, 7, 0.4]} />
+              <meshStandardMaterial color={SCREEN_FRAME} roughness={0.5} metalness={0.4} />
+            </mesh>
+          </group>
+        );
+      })()}
 
       {/* ── Red curtains flanking the screen ── */}
       {[cx - 14, cx + 14].map((x, i) => (
@@ -230,16 +261,55 @@ export default function EventHall() {
         <meshStandardMaterial color="#2f3647" roughness={0.7} />
       </instancedMesh>
 
-      {/* ── Conservative real lights: 2 colored stage accents + soft fill ── */}
-      <pointLight position={[cx - 10, 7, zBack - 6]} color="#ff3a55" intensity={18} distance={36} decay={2} />
-      <pointLight position={[cx + 10, 7, zBack - 6]} color="#3a7bff" intensity={18} distance={36} decay={2} />
-      <pointLight position={[cx, 8, cz]} color="#fff4e0" intensity={10} distance={48} decay={2} />
+      {/* ── Interior lighting (night-readable) ──
+          Real-light budget = 8 short-range point lights: 2 coloured stage
+          accents + 3 warm "house" lights down the central aisle + 2 side-wall
+          sconce lights + 1 warm stage wash. Each uses distance/decay to stay
+          cheap. Decorative fixtures below are emissive meshes (zero light cost).
+          NOTE: the screen is a meshBasicMaterial (unlit), so no light can
+          overexpose it regardless of the stage wash. */}
+      {/* Coloured stage accents */}
+      <pointLight position={[cx - 10, 7, zBack - 6]} color="#ff3a55" intensity={13} distance={30} decay={2} />
+      <pointLight position={[cx + 10, 7, zBack - 6]} color="#3a7bff" intensity={13} distance={30} decay={2} />
+      {/* Warm house lights down the central aisle (light chairs + aisles) */}
+      {[zFront + 8, cz, zBack - 13].map((z, i) => (
+        <pointLight key={`house-${i}`} position={[cx, 6.5, z]} color="#ffe3b0" intensity={16} distance={26} decay={2} />
+      ))}
+      {/* Side-wall sconce lights */}
+      <pointLight position={[xMin + 2, 5, cz - 6]} color="#ffd6a0" intensity={9} distance={20} decay={2} />
+      <pointLight position={[xMax - 2, 5, cz + 4]} color="#ffd6a0" intensity={9} distance={20} decay={2} />
+      {/* Warm stage wash from the audience side (lights performers, not the screen) */}
+      <pointLight position={[cx, 6.5, zBack - 13]} color="#fff0d8" intensity={12} distance={26} decay={2} />
 
+      {/* ── Emissive fixtures (decorative light sources, no real lights) ── */}
+      {/* Ceiling light bars spanning the width */}
+      {[zFront + 6, zFront + 14, cz + 4, zBack - 8].map((z, i) => (
+        <mesh key={`ceilbar-${i}`} position={[cx, H - 0.55, z]}>
+          <boxGeometry args={[EVENT_HALL.w - 6, 0.18, 0.7]} />
+          <meshStandardMaterial color="#1a1c22" emissive="#ffe6c0" emissiveIntensity={0.9} />
+        </mesh>
+      ))}
+      {/* Aisle floor guide strips (center + two side aisles) */}
+      {[cx, xMin + 4, xMax - 4].map((x, i) => (
+        <mesh key={`aisle-${i}`} position={[x, 0.06, (zFront + zBack) / 2 - 4]} rotation={[-Math.PI / 2, 0, 0]}>
+          <planeGeometry args={[0.6, 26]} />
+          <meshStandardMaterial color="#0a0c12" emissive={i === 0 ? "#ffd27a" : "#2bd4ff"} emissiveIntensity={0.7} />
+        </mesh>
+      ))}
+      {/* Wall sconces along both side walls */}
+      {[xMin + 0.6, xMax - 0.6].flatMap((x, wi) =>
+        [zFront + 9, cz, zBack - 11].map((z, si) => (
+          <mesh key={`sconce-${wi}-${si}`} position={[x, 5.5, z]}>
+            <boxGeometry args={[0.25, 0.9, 0.5]} />
+            <meshStandardMaterial color="#15171d" emissive="#ffcf8a" emissiveIntensity={0.85} />
+          </mesh>
+        )),
+      )}
       {/* Faux spotlight cans on the ceiling over the stage (emissive, no real light) */}
       {[cx - 8, cx, cx + 8].map((x, i) => (
         <mesh key={`spot-${i}`} position={[x, H - 0.9, zBack - 7]} rotation={[Math.PI / 5, 0, 0]}>
           <cylinderGeometry args={[0.35, 0.5, 0.7, 10]} />
-          <meshStandardMaterial color="#0c0e14" emissive="#fff0c0" emissiveIntensity={0.4} />
+          <meshStandardMaterial color="#0c0e14" emissive="#fff0c0" emissiveIntensity={0.5} />
         </mesh>
       ))}
     </group>

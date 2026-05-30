@@ -28,6 +28,10 @@ import { distancePointToPolyline } from "./roadGeom";
 // RP_HOUSES is used only by the dev validation block to assert houses clear the
 // full world (BUILDINGS / REGIONAL_ROADS / obstacles / cars).
 import { RP_BUILDINGS, RP_HOUSES } from "./rpTypes";
+// Phase 14A: Grand Plaza Hall footprint + approach path, used to keep city-edge
+// trees out of the hall and its connector. eventHall only type-imports rpTypes
+// (erased at runtime), so it is a runtime leaf module — no import cycle.
+import { EVENT_HALL_EXTENTS, EVENT_HALL_CONNECTOR } from "./eventHall";
 
 // =============================================================
 // WORLD BOUNDS
@@ -1881,9 +1885,37 @@ function inAnyHomesteadYard(x: number, z: number): boolean {
   return false;
 }
 
+// Phase 14A: keep city-edge trees out of the Grand Plaza Hall and its approach.
+// The hall footprint sits inside the city-edge belt but OUTSIDE the city-core
+// margin, so without this rule random scatter / roadside rows could drop trees
+// inside the hall (through walls/chairs/screen) or on the connector path.
+const EVENT_HALL_TREE_KEEPOUT = 6;          // footprint expanded by 6 m → x[131.5,198.5] z[125,175]
+const EVENT_HALL_CONNECTOR_TREE_CLEAR = 6;  // tree → connector centerline clearance
+
+function inEventHallKeepout(x: number, z: number): boolean {
+  return (
+    x >= EVENT_HALL_EXTENTS.xMin - EVENT_HALL_TREE_KEEPOUT &&
+    x <= EVENT_HALL_EXTENTS.xMax + EVENT_HALL_TREE_KEEPOUT &&
+    z >= EVENT_HALL_EXTENTS.zMin - EVENT_HALL_TREE_KEEPOUT &&
+    z <= EVENT_HALL_EXTENTS.zMax + EVENT_HALL_TREE_KEEPOUT
+  );
+}
+
+function nearEventHallConnector(x: number, z: number): boolean {
+  return (
+    distancePointToPolyline(
+      x, z,
+      EVENT_HALL_CONNECTOR as ReadonlyArray<readonly [number, number]>,
+    ) < EVENT_HALL_CONNECTOR_TREE_CLEAR
+  );
+}
+
 function cityEdgeRejected(x: number, z: number): boolean {
   if (!inCityEdgeBelt(x, z)) return true;
   if (inCityCorePlusMargin(x, z)) return true;
+  // Phase 14A: hall footprint+apron and approach path stay tree-free.
+  if (inEventHallKeepout(x, z)) return true;
+  if (nearEventHallConnector(x, z)) return true;
   if (Math.abs(x) > WORLD_HALF - 2 || Math.abs(z) > WORLD_HALF - 2) return true;
   if (tooCloseToAnyRoad(x, z, CITY_EDGE_ROAD_CLEAR)) return true;
   if (checkBuildingCollision(x, z, CITY_EDGE_BUILDING_CLEAR)) return true;
@@ -3156,6 +3188,7 @@ if (isViteDev) {
   let beltObstacleViolations = 0;
   let beltOobViolations = 0;
   let beltBeltMembershipViolations = 0;
+  let beltHallViolations = 0;
   let beltN = 0, beltS = 0, beltE = 0, beltW = 0;
   for (const t of CITY_EDGE_TREES) {
     const { x, z } = t;
@@ -3208,6 +3241,15 @@ if (isViteDev) {
         break;
       }
     }
+    // Phase 14A: no city-edge tree may fall inside the Grand Plaza Hall keepout
+    // (footprint+6m) or on the approach path. Same thresholds as the generator,
+    // so this is a real regression detector.
+    if (inEventHallKeepout(x, z) || nearEventHallConnector(x, z)) {
+      beltHallViolations++;
+      issues.push(
+        `city-edge tree at (${x.toFixed(0)}, ${z.toFixed(0)}) inside the Grand Plaza Hall keepout/approach`,
+      );
+    }
     // Quadrant by dominant axis: trees closer to a vertical (E/W) edge
     // count east/west, otherwise north/south.
     if (Math.abs(x) >= Math.abs(z)) {
@@ -3236,9 +3278,9 @@ if (isViteDev) {
     `north=${beltN} south=${beltS} east=${beltE} west=${beltW}, ` +
     `roadClear=${beltRoadOK}/${beltTotal}, ` +
     `buildingClear=${beltBldOK}/${beltTotal}` +
-    (beltCoreViolations || beltObstacleViolations || beltOobViolations || beltBeltMembershipViolations
+    (beltCoreViolations || beltObstacleViolations || beltOobViolations || beltBeltMembershipViolations || beltHallViolations
       ? ` [core:${beltCoreViolations},obstacle:${beltObstacleViolations},` +
-        `oob:${beltOobViolations},offBelt:${beltBeltMembershipViolations}]`
+        `oob:${beltOobViolations},offBelt:${beltBeltMembershipViolations},hall:${beltHallViolations}]`
       : "");
 
   // ---- Peri-city homestead belt validator -------------------------------

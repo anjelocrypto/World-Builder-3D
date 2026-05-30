@@ -32,6 +32,8 @@ import {
   TRAIN_STATION,
   SKYBRIDGES,
   ROADS,
+  CITY_EDGE_TREES,
+  FOREST_TREES,
 } from "./cityData";
 import { RP_BUILDINGS, RP_HOUSES } from "./rpTypes";
 
@@ -90,7 +92,11 @@ export interface HallClearanceReport {
   nearestNpcRoute: number;
   nearestTrafficRoute: number;
   connectorNearestObstacle: number;
+  nearestTree: number;
 }
+
+/** Hall keepout = footprint expanded by this margin (must match the tree generator). */
+const TREE_KEEPOUT = 6;
 
 /** Minimum required edge clearance (m) from the footprint to any solid system. */
 const REQUIRED_MARGIN = 2;
@@ -231,10 +237,26 @@ export function validateEventHall(): HallClearanceReport {
     if (d < REQUIRED_MARGIN) fail(`connector path within ${d.toFixed(1)} m of an obstacle at [${o.x}, ${o.z}]`);
   }
 
+  // 13. Trees / flora — none may sit inside the hall keepout (footprint+6m). The
+  //     keepout rect; nearestTree is the smallest edge distance from the FOOTPRINT
+  //     to any tree, so a positive value well over TREE_KEEPOUT proves clearance.
+  const keepout: Rect = {
+    xMin: EVENT_HALL_EXTENTS.xMin - TREE_KEEPOUT, xMax: EVENT_HALL_EXTENTS.xMax + TREE_KEEPOUT,
+    zMin: EVENT_HALL_EXTENTS.zMin - TREE_KEEPOUT, zMax: EVENT_HALL_EXTENTS.zMax + TREE_KEEPOUT,
+  };
+  let nearestTree = Infinity;
+  for (const t of [...CITY_EDGE_TREES, ...FOREST_TREES]) {
+    const d = rectToPoint(fp, t.x, t.z);
+    if (d < nearestTree) nearestTree = d;
+    if (rectToPoint(keepout, t.x, t.z) <= 0) {
+      fail(`a tree at [${t.x.toFixed(1)}, ${t.z.toFixed(1)}] is inside the hall keepout (footprint+${TREE_KEEPOUT}m)`);
+    }
+  }
+
   return {
     nearestRoad, nearestBuilding, nearestRpBuilding, nearestRpHouse, nearestObstacle,
     nearestCar, nearestSpawn, nearestRail, nearestStation, nearestSkybridge,
-    nearestNpcRoute, nearestTrafficRoute, connectorNearestObstacle,
+    nearestNpcRoute, nearestTrafficRoute, connectorNearestObstacle, nearestTree,
   };
 }
 
