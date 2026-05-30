@@ -42,6 +42,7 @@ import {
 import { EVENT_HALL, EVENT_HALL_SIT, EVENT_HALL_STAGE, isInsideEventHallStage, nearestEventHallChair } from "../shared/eventHall";
 import {
   railSurfaceAt,
+  canAttachToRailSurface,
   nearestBoardableCar,
   trainCarPoseAtTime,
   trainStoppedStationIndex,
@@ -1525,18 +1526,16 @@ export default function LocalPlayer({
     if (isInsideEventHallStage(nx, nz)) {
       groundY = Math.max(groundY, EVENT_HALL_STAGE.topY);
     }
-    // Phase 15A: station platform deck + escalator ramp are walkable surfaces.
-    // The RAMP is continuous from the ground, so it always applies. The PLATFORM
-    // only applies when the player is already elevated near platform height
-    // (came up the ramp, or is jumping/falling onto it) — without this gate a
-    // ground-level player could walk under the deck and instantly snap up to the
-    // platform. The 1.0 m tolerance lets the ramp-top → platform hand-off be
-    // seamless (ramp top == platform height) while a ground player (feet ≈ 0)
-    // is ~12 m below and can never trigger the snap.
+    // Phase 15A (v2 fix): station platform deck + escalator ramp are walkable
+    // surfaces, but only via VERTICAL-CONTINUITY gating (canAttachToRailSurface):
+    //   - RAMP: attaches only at/near the low foot, or when within one step of
+    //     the current feet height (continuous climb/descent). A ground-level
+    //     player whose X/Z enters the middle of the ramp band is NOT snapped up.
+    //   - PLATFORM: attaches only when feet are already near platform height.
     const rail = railSurfaceAt(nx, nz);
     if (rail) {
       const feetNow = pos.current.y - PLAYER_HEIGHT / 2;
-      if (rail.kind === "ramp" || feetNow > rail.y - 1.0) {
+      if (canAttachToRailSurface(rail, feetNow)) {
         groundY = Math.max(groundY, rail.y);
       }
     }

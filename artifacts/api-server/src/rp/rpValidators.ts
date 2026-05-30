@@ -732,24 +732,53 @@ export function validateVehicleSpawnOBB(
 
 // ── §12.6 Jitter-safe station spawn ───────────────────────────────────────
 
+// Phase 15A (v2): station rail corridors — ground spawns MUST avoid these so a
+// spawned player never lands on/under the walkable escalator ramp or platform.
+// Mirrors the client railTransit geometry (the server can't import that client
+// module): platform 8×20 @ x=±110, z=−65 → x[±106,±114] z[−75,−55]; ramp band
+// from the platform edge to the foot, z = cz ± ESC_HALF_BAND(2.7) → x[±114,±134]
+// z[−67.7,−62.3]. West station included so future spawns there are also safe.
+const STATION_RAIL_CORRIDORS: ReadonlyArray<{ x0: number; x1: number; z0: number; z1: number }> = [
+  { x0: 106,  x1: 114,  z0: -75,   z1: -55 },   // east platform
+  { x0: 114,  x1: 134,  z0: -67.7, z1: -62.3 }, // east ramp
+  { x0: -114, x1: -106, z0: -75,   z1: -55 },   // west platform
+  { x0: -134, x1: -114, z0: -67.7, z1: -62.3 }, // west ramp
+];
+function inStationRailCorridor(x: number, z: number): boolean {
+  for (const c of STATION_RAIL_CORRIDORS) {
+    if (x >= c.x0 && x <= c.x1 && z >= c.z0 && z <= c.z1) return true;
+  }
+  return false;
+}
+
 /**
- * Returns a randomised spawn near STATION_SPAWN that clears roads and
- * obstacles. Falls back to the exact centre if all 10 attempts fail.
+ * Returns a randomised spawn near STATION_SPAWN that clears roads, obstacles AND
+ * the station ramp/platform corridors. Falls back to a known-safe forecourt
+ * coordinate (the STATION_SPAWN centre, which by construction is off every
+ * corridor) — never an invalid/rail-overlapping point.
  */
 export function safeStationSpawn(
   obstacles: StaticObstacle[],
 ): [number, number, number] {
-  for (let attempt = 0; attempt < 10; attempt++) {
+  for (let attempt = 0; attempt < 12; attempt++) {
     const jx = (Math.random() * 2 - 1) * STATION_SPAWN_JITTER_X;
     const jz = (Math.random() * 2 - 1) * STATION_SPAWN_JITTER_Z;
     const x  = STATION_SPAWN[0] + jx;
     const z  = STATION_SPAWN[2] + jz;
-    if (!isInCarriageway(x, z) && !isInsideObstacle(x, z, obstacles)) {
+    if (
+      !isInCarriageway(x, z) &&
+      !isInsideObstacle(x, z, obstacles) &&
+      !inStationRailCorridor(x, z)
+    ) {
       return [x, STATION_SPAWN[1], z];
     }
   }
-  // All attempts clipped — fall back to exact centre (always valid per plan §5.3).
-  return [STATION_SPAWN[0], STATION_SPAWN[1], STATION_SPAWN[2]];
+  // All attempts clipped — fall back to the safe forecourt centre. Guard it too,
+  // so we never hand back a rail-overlapping point under any data drift.
+  const [fx, fy, fz] = STATION_SPAWN;
+  if (!inStationRailCorridor(fx, fz)) return [fx, fy, fz];
+  // Last-resort fixed forecourt south-east of the east station, off all corridors.
+  return [132, 1, -82];
 }
 
 // ── §12.7 Server-side license check ───────────────────────────────────────

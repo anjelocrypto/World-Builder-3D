@@ -30,6 +30,7 @@ import {
   stationGeoms,
   railSurfaceY,
   railSurfaceAt,
+  canAttachToRailSurface,
   stationBoardPoint,
   PLATFORM_TOP_Y,
   ESC_RUN,
@@ -187,6 +188,36 @@ export function validateRailTransit(): RailClearanceReport {
 
     return { id: s.id, platformNearestStructure, rampNearestStructure, footNearestRoad, footNearestCar, footNearestSpawn };
   });
+
+  // Vertical-continuity gate (the v2 gravity fix). A ground-level player whose
+  // X/Z lands in the MIDDLE of a ramp band must NOT attach (no pop into air);
+  // the low foot MUST be steppable from the ground; and a continuous uphill walk
+  // from foot → platform must attach at every step.
+  for (const [px, pz] of [[124, -65], [128, -65]] as const) {
+    const surf = railSurfaceAt(px, pz);
+    if (surf && surf.kind === "ramp" && canAttachToRailSurface(surf, 0)) {
+      fail(`ground player at [${px}, ${pz}] (feet≈0) wrongly attaches to ramp y=${surf.y.toFixed(1)}`);
+    }
+  }
+  for (const g of stationGeoms()) {
+    const cz = g.station.cz;
+    // Low foot: just up-ramp from the foot, ground feet must attach.
+    const footProbe = railSurfaceAt(g.footX - g.out * 0.5, cz);
+    if (!footProbe || footProbe.kind !== "ramp" || !canAttachToRailSurface(footProbe, 0)) {
+      fail(`station "${g.station.id}" low foot near x=${(g.footX - g.out * 0.5).toFixed(0)} is not steppable from the ground`);
+    }
+    // Continuous uphill walk simulation: foot → platform edge in 0.3 m steps.
+    let feetY = 0;
+    for (let d = ESC_RUN; d >= 0; d -= 0.3) {
+      const x = g.edgeX + g.out * d;
+      const surf = railSurfaceAt(x, cz);
+      if (!surf) continue;
+      if (!canAttachToRailSurface(surf, feetY)) {
+        fail(`station "${g.station.id}" uphill walk breaks at d=${d.toFixed(1)} (rail y=${surf.y.toFixed(2)} not reachable from feet ${feetY.toFixed(2)})`);
+      }
+      feetY = surf.y; // step onto it, then continue from here
+    }
+  }
 
   // Station spawn: the FULL jitter box must not land on any platform/escalator
   // surface (railSurfaceAt === null everywhere in the box).

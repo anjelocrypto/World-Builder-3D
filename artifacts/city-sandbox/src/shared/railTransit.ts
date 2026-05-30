@@ -166,6 +166,40 @@ export function railSurfaceY(x: number, z: number): number | null {
   return railSurfaceAt(x, z)?.y ?? null;
 }
 
+// ── Vertical-continuity gate for attaching to a rail surface ─────────────────
+/** A ramp this low (m) can be stepped onto directly from the ground (the foot). */
+export const RAIL_RAMP_LOW_STEP_Y = 0.75;
+/** Max upward snap (m) onto the ramp in one step — enforces continuous climbing. */
+export const RAIL_MAX_STEP_UP_Y = 0.75;
+/** Platform applies only when feet are already within this (m) of platform height. */
+export const RAIL_PLATFORM_GATE_Y = 1.0;
+
+/**
+ * Whether a player with feet at `feetY` may stand on the rail surface `rail`.
+ * This is the SINGLE rule shared by LocalPlayer (ground resolution) and the
+ * validator, so they can never disagree:
+ *   - RAMP: only if it's near the low foot (steppable from the ground) OR the
+ *     target is within one step of the current feet height (i.e. the player is
+ *     walking continuously up/down the ramp). This prevents a ground-level
+ *     player whose X/Z enters the ramp band from snapping up to the middle of
+ *     the escalator (the v1 bug).
+ *   - PLATFORM: only when the feet are already up near platform height (came up
+ *     the ramp, or jumping/falling onto it).
+ */
+export function canAttachToRailSurface(
+  rail: { y: number; kind: RailSurfaceKind },
+  feetY: number,
+): boolean {
+  if (rail.kind === "ramp") {
+    const stepUp = rail.y - feetY;
+    const nearLowFoot = rail.y <= RAIL_RAMP_LOW_STEP_Y;
+    const continuous = stepUp <= RAIL_MAX_STEP_UP_Y; // negative (descending) always passes
+    return nearLowFoot || continuous;
+  }
+  // platform
+  return feetY > rail.y - RAIL_PLATFORM_GATE_Y;
+}
+
 /**
  * Guard-rail collider boxes (XZ AABBs): platform perimeter (minus the escalator
  * opening + the rail-side boarding edge handled in 15A-2) and the escalator side
