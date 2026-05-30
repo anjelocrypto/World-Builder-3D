@@ -344,6 +344,9 @@ export default function GameScene({
     nearEventHall: false,
     nearSitChair: false,
     isSitting: false,
+    nearBoardTrain: false,
+    inTrain: false,
+    trainCanExit: false,
   });
 
   // Phase 3: dealership shop panel visibility
@@ -1388,6 +1391,9 @@ export default function GameScene({
         nearEventHall={uiState.nearEventHall}
         nearSitChair={uiState.nearSitChair}
         isSitting={uiState.isSitting}
+        nearBoardTrain={uiState.nearBoardTrain}
+        inTrain={uiState.inTrain}
+        trainCanExit={uiState.trainCanExit}
         wantedStars={rpProfile?.wantedStars}
         jailUntil={rpProfile?.jailUntil}
         jailReason={rpProfile?.jailReason}

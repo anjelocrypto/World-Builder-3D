@@ -95,6 +95,12 @@ interface HUDProps {
   nearSitChair?: boolean;
   /** Phase 14C: true while the player is seated on a chair. */
   isSitting?: boolean;
+  /** Phase 15A-2: on a platform near a stopped train door (can board). */
+  nearBoardTrain?: boolean;
+  /** Phase 15A-2: riding the train. */
+  inTrain?: boolean;
+  /** Phase 15A-2: riding AND the train is stopped at a station (can exit). */
+  trainCanExit?: boolean;
   /**
    * Phase 6A: current wanted stars count (0 = clean). Shown in wallet panel.
    */
@@ -742,6 +748,9 @@ export default function HUD({
   nearEventHall,
   nearSitChair,
   isSitting,
+  nearBoardTrain,
+  inTrain,
+  trainCanExit,
   wantedStars,
   jailUntil,
   jailReason,
@@ -1692,6 +1701,58 @@ export default function HUD({
             </span>{" "}
             <span style={{ color: "#9bb", fontSize: 11 }}>
               {isSitting ? "· or move" : "· take a seat"}
+            </span>
+          </div>
+        </div>
+      )}
+
+      {/* ============================================================
+          BOTTOM-CENTER — Train board / exit (Phase 15A-2)
+          ============================================================ */}
+      {((nearBoardTrain && !inTrain) || (inTrain && trainCanExit)) && (
+        <div
+          style={{
+            position:             "absolute",
+            bottom:               130,
+            left:                 "50%",
+            transform:            "translateX(-50%)",
+            background:           PANEL_BG,
+            border:               "1px solid rgba(120, 220, 180, 0.65)",
+            borderRadius:         PANEL_RADIUS,
+            padding:              "8px 14px 8px 8px",
+            display:              "flex",
+            alignItems:           "center",
+            gap:                  12,
+            boxShadow:            `${PANEL_SHADOW}, 0 0 22px rgba(120,220,180,0.2)`,
+            backdropFilter:       "blur(6px)",
+            WebkitBackdropFilter: "blur(6px)",
+          }}
+        >
+          <div
+            style={{
+              width:          28,
+              height:         28,
+              borderRadius:   6,
+              background:     "rgba(120, 220, 180, 0.15)",
+              border:         "1px solid rgba(120, 220, 180, 0.7)",
+              display:        "flex",
+              alignItems:     "center",
+              justifyContent: "center",
+              fontSize:       13,
+              fontWeight:     "bold",
+              color:          "#78dcb4",
+              boxShadow:      "inset 0 -2px 0 rgba(120,220,180,0.35)",
+            }}
+          >
+            E
+          </div>
+          <div style={{ fontSize: 13, color: "#fff", letterSpacing: 1 }}>
+            🚆{" "}
+            <span style={{ color: "#78dcb4", fontWeight: "bold" }}>
+              {inTrain ? "Exit Train" : "Board Train"}
+            </span>{" "}
+            <span style={{ color: "#9bb", fontSize: 11 }}>
+              {inTrain ? "· at station" : "· Central Loop"}
             </span>
           </div>
         </div>

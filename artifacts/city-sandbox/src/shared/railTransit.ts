@@ -214,3 +214,39 @@ export function trainCarPose(s: number): { x: number; y: number; z: number; rotY
   const p = railLoopPointAt(((s % total) + total) % total);
   return { x: p.x, y: RAIL_DECK_HEIGHT + 0.2 + TRAIN.carHeight / 2, z: p.z, rotY: p.rotY };
 }
+
+/** Pose of a specific train car (by index) at time `tSec` — used by the ride attachment. */
+export function trainCarPoseAtTime(tSec: number, carIndex: number): { x: number; y: number; z: number; rotY: number } {
+  const arcs = trainCarArcs(tSec);
+  const i = Math.max(0, Math.min(arcs.length - 1, carIndex));
+  return trainCarPose(arcs[i]);
+}
+
+/** How close (m) the player must be to a stopped car to board. */
+export const BOARD_RADIUS = 7;
+
+/**
+ * If the train is dwelling at a station AND the player is on that platform AND
+ * within BOARD_RADIUS of a car door, returns which station/car they can board —
+ * otherwise null. Used for the "E — Board Train" prompt + the board action.
+ */
+export function nearestBoardableCar(
+  tSec: number,
+  px: number,
+  pz: number,
+): { stationIndex: number; carIndex: number } | null {
+  const si = trainStoppedStationIndex(tSec);
+  if (si === null) return null;
+  const s = TRAIN_STATIONS[si];
+  // Must be on (or right at the edge of) that station's platform.
+  if (Math.abs(px - s.cx) > s.w / 2 + 1.5 || Math.abs(pz - s.cz) > s.d / 2 + 1) return null;
+  const arcs = trainCarArcs(tSec);
+  let best = -1;
+  let bestD = BOARD_RADIUS;
+  for (let i = 0; i < arcs.length; i++) {
+    const p = trainCarPose(arcs[i]);
+    const d = Math.hypot(px - p.x, pz - p.z);
+    if (d < bestD) { bestD = d; best = i; }
+  }
+  return best >= 0 ? { stationIndex: si, carIndex: best } : null;
+}

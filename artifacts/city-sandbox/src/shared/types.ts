@@ -55,6 +55,12 @@ export interface PlayerState {
    * join and never changed by playerUpdate.
    */
   character?: "classic" | "simple";
+  /**
+   * Phase 15A-2: true while the player is riding the loop train. Remote
+   * renderers HIDE such players (their position is attached to the moving car,
+   * so they would otherwise appear standing in midair). Sanitised server-side.
+   */
+  isInTrain?: boolean;
 }
 
 export type VehicleVariant = "sedan" | "van" | "taxi" | "compact";

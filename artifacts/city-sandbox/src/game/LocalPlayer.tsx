@@ -40,7 +40,13 @@ import {
   WORLD_HALF,
 } from "../shared/cityData";
 import { EVENT_HALL, EVENT_HALL_SIT, EVENT_HALL_STAGE, isInsideEventHallStage, nearestEventHallChair } from "../shared/eventHall";
-import { railSurfaceAt } from "../shared/railTransit";
+import {
+  railSurfaceAt,
+  nearestBoardableCar,
+  trainCarPoseAtTime,
+  trainStoppedStationIndex,
+  stationBoardPoint,
+} from "../shared/railTransit";
 import { getVehicleGroundY, getVehicleGroundFrame } from "../shared/elevation";
 import { terrainHeightAt } from "../shared/terrain";
 import {
@@ -101,6 +107,9 @@ export enum Controls {
 // fresh Vector3 allocation 60 times per second.
 const _camTarget = new THREE.Vector3();
 const _camLookDesired = new THREE.Vector3();
+// Phase 15A-2: scratch vectors for the train-ride chase camera.
+const _trainCamPos = new THREE.Vector3();
+const _trainCamLook = new THREE.Vector3();
 
 // Camera smoothing constants. Stiffness values are used with
 // `alpha = 1 - exp(-dt * stiffness)` so smoothing is frame-rate
@@ -182,6 +191,12 @@ interface LocalPlayerProps {
     nearSitChair: boolean;
     /** Phase 14C: true while the player is seated on a chair. */
     isSitting: boolean;
+    /** Phase 15A-2: true when on a platform near a stopped train door (can board). */
+    nearBoardTrain: boolean;
+    /** Phase 15A-2: true while riding the train. */
+    inTrain: boolean;
+    /** Phase 15A-2: true while riding AND the train is stopped at a station (can exit). */
+    trainCanExit: boolean;
   }) => void;
   playerPosRef: React.MutableRefObject<THREE.Vector3>;
   // Authoritative spawn from the server's gameState. Falls back to a
@@ -437,6 +452,11 @@ export default function LocalPlayer({
   // on (null = standing). Both read by the frame loop / E handler.
   const nearSitChairRef       = useRef<{ x: number; z: number } | null>(null);
   const sittingChairRef       = useRef<{ x: number; z: number } | null>(null);
+  // Phase 15A-2: train ride. inTrainRef holds the boarded car index (null = on
+  // foot). nearBoardTrainRef holds the boardable car when standing at a stopped
+  // train, read by the E handler.
+  const inTrainRef            = useRef<{ carIndex: number } | null>(null);
+  const nearBoardTrainRef     = useRef<{ stationIndex: number; carIndex: number } | null>(null);
   // Mirror onOpenEventHall into a ref so the useFrame closure sees the latest.
   const onOpenEventHallRef    = useRef(onOpenEventHall);
   onOpenEventHallRef.current  = onOpenEventHall;
@@ -478,6 +498,9 @@ export default function LocalPlayer({
     nearEventHall: false,
     nearSitChair: false,
     isSitting: false,
+    nearBoardTrain: false,
+    inTrain: false,
+    trainCanExit: false,
   });
 
   // Pointer lock
@@ -609,7 +632,9 @@ export default function LocalPlayer({
       }
     }
 
-    if (sittingChairRef.current) {
+    if (inTrainRef.current) {
+      updateRiding(dt, keys, now);
+    } else if (sittingChairRef.current) {
       updateSitting(dt, keys, now);
     } else if (inVehicle.current && drivingVehicleId.current) {
       updateVehicle(dt, keys, now);
@@ -974,6 +999,20 @@ export default function LocalPlayer({
     }
     const nearSitChair = isSitting || nearSitChairRef.current !== null;
 
+    // Phase 15A-2: train boarding / riding HUD state.
+    const inTrain = inTrainRef.current !== null;
+    let nearBoardTrain = false;
+    let trainCanExit = false;
+    if (inTrain) {
+      trainCanExit = trainStoppedStationIndex(now / 1000) !== null;
+    } else if (!inVehicle.current && !isSitting) {
+      const board = nearestBoardableCar(now / 1000, curPos.x, curPos.z);
+      nearBoardTrainRef.current = board;
+      nearBoardTrain = board !== null;
+    } else {
+      nearBoardTrainRef.current = null;
+    }
+
     // Phase 3: nearest owned vehicle within 6 m (for lock/unlock prompt)
     let nearOwnedVehicleId: string | null = null;
     if (!inVehicle.current) {
@@ -1013,6 +1052,9 @@ export default function LocalPlayer({
       nearEventHall,
       nearSitChair,
       isSitting,
+      nearBoardTrain,
+      inTrain,
+      trainCanExit,
     };
 
     // Throttled per-field UI diff. JSON.stringify on a 10-key object
@@ -1043,7 +1085,10 @@ export default function LocalPlayer({
       newUI.nearBookingDesk !== cache.nearBookingDesk ||
       newUI.nearEventHall !== cache.nearEventHall ||
       newUI.nearSitChair !== cache.nearSitChair ||
-      newUI.isSitting !== cache.isSitting;
+      newUI.isSitting !== cache.isSitting ||
+      newUI.nearBoardTrain !== cache.nearBoardTrain ||
+      newUI.inTrain !== cache.inTrain ||
+      newUI.trainCanExit !== cache.trainCanExit;
     const sinceLast = now - lastUIEmit.current;
     if (
       stateChanged ||
@@ -1138,6 +1183,94 @@ export default function LocalPlayer({
       }
     }
     tryAttack("light");
+  }
+
+  // Phase 15A-2: GTA-style chase camera that follows the train car the player
+  // is riding — behind + above the car, with a slight side offset, looking just
+  // ahead of it. Smoothed so curves read cleanly. The local avatar is hidden.
+  function updateTrainCamera(
+    pose: { x: number; y: number; z: number; rotY: number },
+    dt: number,
+  ) {
+    const fwdX = -Math.sin(pose.rotY);
+    const fwdZ = -Math.cos(pose.rotY);
+    const rgtX = Math.cos(pose.rotY);
+    const rgtZ = -Math.sin(pose.rotY);
+    _trainCamPos.set(
+      pose.x - fwdX * 15 + rgtX * 4,
+      pose.y + 8,
+      pose.z - fwdZ * 15 + rgtZ * 4,
+    );
+    _trainCamLook.set(pose.x + fwdX * 6, pose.y + 1.2, pose.z + fwdZ * 6);
+    const a = 1 - Math.exp(-dt * 5);
+    camera.position.lerp(_trainCamPos, a);
+    if (!cameraLookAtRef.current) cameraLookAtRef.current = _trainCamLook.clone();
+    else cameraLookAtRef.current.lerp(_trainCamLook, a);
+    camera.lookAt(cameraLookAtRef.current);
+  }
+
+  // Phase 15A-2: while riding, the player is attached to their train car, the
+  // avatar is hidden, walking/combat/vehicle input is ignored, and the camera
+  // follows the train. Pressing E while the train is dwelling at a station exits
+  // onto that platform via stationBoardPoint.
+  function updateRiding(
+    dt: number,
+    keys: ReturnType<typeof getKeys>,
+    now: number,
+  ) {
+    const ride = inTrainRef.current;
+    if (!ride) return;
+    const tSec = now / 1000;
+    const pose = trainCarPoseAtTime(tSec, ride.carIndex);
+
+    // Attach position to the car (for minimap + a safe exit reference).
+    pos.current.set(pose.x, pose.y + 0.4, pose.z);
+    vel.current.set(0, 0, 0);
+    playerRotY.current = pose.rotY;
+    playerPosRef.current.copy(pos.current);
+    if (avatarGroupRef.current) avatarGroupRef.current.visible = false;
+
+    updateTrainCamera(pose, dt);
+
+    // Exit when dwelling at a station.
+    const si = trainStoppedStationIndex(tSec);
+    if (si !== null && keys.interact && interactCooldown.current <= 0) {
+      const bp = stationBoardPoint(si);
+      if (bp) {
+        pos.current.set(bp.x, bp.y + PLAYER_HEIGHT / 2, bp.z);
+        vel.current.set(0, 0, 0);
+        isGrounded.current = true;
+        playerPosRef.current.copy(pos.current);
+      }
+      inTrainRef.current = null;
+      interactCooldown.current = 0.5;
+      if (avatarGroupRef.current) avatarGroupRef.current.visible = true;
+      cameraLookAtRef.current = null; // reset so the walking camera re-initialises
+      return;
+    }
+
+    if (now - lastEmit.current > EMIT_RATE) {
+      lastEmit.current = now;
+      emitPlayerUpdate({
+        id: myId,
+        username,
+        x: pos.current.x,
+        y: pos.current.y,
+        z: pos.current.z,
+        rotY: pose.rotY,
+        isInVehicle: false,
+        vehicleId: null,
+        health: health.current,
+        isRunning: false,
+        animState: "idle",
+        attackSeq: attackSeqRef.current,
+        attackKind: null,
+        attackStartedAt: null,
+        isGrounded: true,
+        moveSpeed: 0,
+        isInTrain: true,
+      });
+    }
   }
 
   // Phase 14C: while seated on a hall chair the player is locked to the seat
@@ -1488,6 +1621,14 @@ export default function LocalPlayer({
         interactCooldown.current = 0.6;
         return;
       }
+      // Phase 15A-2: board the train when on the platform by a stopped car.
+      if (nearBoardTrainRef.current) {
+        inTrainRef.current = { carIndex: nearBoardTrainRef.current.carIndex };
+        nearBoardTrainRef.current = null;
+        vel.current.set(0, 0, 0);
+        interactCooldown.current = 0.6;
+        return;
+      }
       const near = findNearestVehicle(pos.current);
       if (near && !near.driverId) {
         // Optimistic license gate (Phase 1B). If canDriveVehicle is not yet
@@ -1573,6 +1714,7 @@ export default function LocalPlayer({
         attackStartedAt: attackStartedAtRef.current,
         isGrounded: isGrounded.current,
         moveSpeed: horizSpeed,
+        isInTrain: false,
       });
     }
   }

@@ -94,6 +94,8 @@ interface PlayerState {
   moveSpeed: number;
   /** Selectable character model id; set once at join, never via playerUpdate. */
   character: "classic" | "simple";
+  /** Phase 15A-2: true while riding the loop train (remote renderers hide them). */
+  isInTrain: boolean;
 }
 
 interface VehicleState {
@@ -227,6 +229,7 @@ export function setupGameServer(httpServer: HttpServer) {
         character,
         isGrounded: true,
         moveSpeed: 0,
+        isInTrain: false,
       };
       players.set(socket.id, player);
 
@@ -325,6 +328,9 @@ export function setupGameServer(httpServer: HttpServer) {
           !Number.isFinite(data.attackStartedAt))
       ) {
         delete data.attackStartedAt;
+      }
+      if (data.isInTrain !== undefined && typeof data.isInTrain !== "boolean") {
+        delete data.isInTrain;
       }
       if (data.isGrounded !== undefined && typeof data.isGrounded !== "boolean") {
         delete data.isGrounded;

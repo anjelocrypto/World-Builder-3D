@@ -19,6 +19,14 @@ interface RemotePlayerProps {
 const HALF_HEIGHT = 0.6;
 
 export default function RemotePlayer({ state, isCuffed = false }: RemotePlayerProps) {
+  // Phase 15A-2: a passenger riding the train has their position attached to the
+  // moving car. Hiding them avoids a midair/teleporting avatar for everyone else.
+  if (state.isInTrain) return null;
+
+  return <RemotePlayerBody state={state} isCuffed={isCuffed} />;
+}
+
+function RemotePlayerBody({ state, isCuffed = false }: RemotePlayerProps) {
   const groupRef = useRef<THREE.Group>(null!);
   const targetPos = useRef(
     new THREE.Vector3(state.x, state.y - HALF_HEIGHT, state.z),
