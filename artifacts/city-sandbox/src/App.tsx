@@ -7,11 +7,11 @@ import Lobby from "@/pages/Lobby";
 // the heavy character GLBs from being fetched before JOIN WORLD is clicked.
 const Game = lazy(() => import("@/pages/Game"));
 
-type CharacterChoice = "classic" | "simple";
+import type { CharacterId } from "@/game/character/characterCatalog";
 
 export default function App() {
   const [username, setUsername] = useState<string | null>(null);
-  const [character, setCharacter] = useState<CharacterChoice>("classic");
+  const [character, setCharacter] = useState<CharacterId>("classic");
 
   if (!username) {
     return (

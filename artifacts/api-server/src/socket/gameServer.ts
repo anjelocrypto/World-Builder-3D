@@ -55,6 +55,8 @@ const VALID_ANIM_STATES = new Set<string>([
   "driving",
   "talk",
   "sit",
+  "gethit",
+  "die",
 ]);
 type PlayerAnimState =
   | "idle"
@@ -66,7 +68,9 @@ type PlayerAnimState =
   | "attack_heavy"
   | "driving"
   | "talk"
-  | "sit";
+  | "sit"
+  | "gethit"
+  | "die";
 
 // Hard cap on how much attackSeq may advance in a single packet.
 // A fair client increments by exactly 1 per attack trigger; this
@@ -93,7 +97,7 @@ interface PlayerState {
   isGrounded: boolean;
   moveSpeed: number;
   /** Selectable character model id; set once at join, never via playerUpdate. */
-  character: "classic" | "simple";
+  character: "classic" | "simple" | "nemo";
   /** Phase 15A-2: true while riding the loop train (remote renderers hide them). */
   isInTrain: boolean;
 }
@@ -210,8 +214,12 @@ export function setupGameServer(httpServer: HttpServer) {
       const token = typeof data?.token === "string" ? data.token.slice(0, 36) : "";
       // Validate the selected character against the allowlist (mirror of the
       // client characterCatalog CHARACTER_IDS). Anything else → "classic".
-      const character: "classic" | "simple" =
-        data?.character === "simple" ? "simple" : "classic";
+      const character: "classic" | "simple" | "nemo" =
+        data?.character === "simple"
+          ? "simple"
+          : data?.character === "nemo"
+            ? "nemo"
+            : "classic";
       const [sx, sy, sz] = getSpawn();
       const player: PlayerState = {
         id: socket.id,

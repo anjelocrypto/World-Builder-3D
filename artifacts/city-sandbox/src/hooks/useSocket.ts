@@ -32,7 +32,10 @@ function getOrCreateToken(): string {
 
 // ── Hook ───────────────────────────────────────────────────────────────────
 
-export function useSocket(username: string, character: "classic" | "simple" = "classic") {
+export function useSocket(
+  username: string,
+  character: import("../game/character/characterCatalog").CharacterId = "classic",
+) {
   const socketRef = useRef<Socket | null>(null);
   // Reactive copy of the socket instance so hooks that need to attach their
   // own listeners (e.g. useRpSocket) can use it as a useEffect dependency.

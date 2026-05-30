@@ -15,7 +15,7 @@ import type { PlayerAnimState } from "../../shared/types";
 const BASE = import.meta.env.BASE_URL;
 
 /** Stable id sent over the wire + persisted in the lobby choice. */
-export type CharacterId = "classic" | "simple";
+export type CharacterId = "classic" | "simple" | "nemo";
 
 /** Default character when none is chosen / an unknown id arrives. */
 export const DEFAULT_CHARACTER: CharacterId = "classic";
@@ -68,6 +68,28 @@ export interface CharacterDef {
    * define this key.
    */
   sitKey?: string;
+  /**
+   * Optional one-shot clip played when the player takes a hit and survives
+   * (animState "gethit", Phase 16). Bound to the local car-collision damage in
+   * LocalPlayer. Omit for characters without a hit-reaction clip (Classic,
+   * Simple) — the reaction is only triggered for characters that define it, so
+   * their behavior is unchanged.
+   */
+  gethitKey?: string;
+  /** gethit clip duration (ms) — MUST match the GLB so the reaction window
+   * and the visual one-shot agree. Required iff gethitKey is set. */
+  gethitMs?: number;
+  /**
+   * Optional one-shot clip played when the player's health reaches 0
+   * (animState "die", Phase 16). Triggers a brief death lock + respawn in
+   * LocalPlayer. Omit for characters without a death clip (Classic, Simple) —
+   * those characters have no death sequence, preserving the original behavior
+   * where reaching 0 HP did nothing.
+   */
+  dieKey?: string;
+  /** die clip duration (ms) — also the death-lock window before respawn.
+   * Required iff dieKey is set. */
+  dieMs?: number;
   /** One-shot attack clip keys (triggered by attackSeq, not animState). */
   attackLightKey: string;
   attackHeavyKey: string;
@@ -150,20 +172,57 @@ const SIMPLE: CharacterDef = {
   scale: 1,
 };
 
+// ── Nemo (7 GLBs, one shared 24-joint rig — same rig family as Simple) ───
+// Measured clip durations (max sampler input time): idle 1.93s, walk 1.07s,
+// run 0.67s, talk 5.20s, punch 4.00s, die 3.00s, gethit 1.27s. Nemo binds
+// FIVE locomotion/action states the same way Simple does (idle/walk/run +
+// talk + a punch attack), and ADDITIONALLY binds die + gethit to the local
+// car-collision damage system (Phase 16): gethit plays on a survived hit,
+// die plays when health reaches 0 (then respawn). Nemo has a single attack
+// clip (punch), so both the light and heavy combo slots map to it.
+const NEMO: CharacterDef = {
+  id: "nemo",
+  label: "Nemo",
+  baseUrl: `${BASE}models/nemo-idle.glb`,
+  baseClipKey: "idle",
+  extraClips: [
+    { url: `${BASE}models/nemo-walk.glb`, clipKey: "walk" },
+    { url: `${BASE}models/nemo-run.glb`, clipKey: "run" },
+    { url: `${BASE}models/nemo-talk.glb`, clipKey: "talk" },
+    { url: `${BASE}models/nemo-punch.glb`, clipKey: "punch" },
+    { url: `${BASE}models/nemo-die.glb`, clipKey: "die" },
+    { url: `${BASE}models/nemo-gethit.glb`, clipKey: "gethit" },
+  ],
+  locomotion: { idle: "idle", walk: "walk", run: "run" },
+  talkKey: "talk",
+  gethitKey: "gethit",
+  gethitMs: 1267, // nemo-gethit.glb = 1.267s
+  dieKey: "die",
+  dieMs: 3000, // nemo-die.glb = 3.00s
+  // Single attack clip (punch) reused for both combo slots.
+  attackLightKey: "punch",
+  attackHeavyKey: "punch",
+  attackLightMs: 4000, // nemo-punch.glb = 4.00s
+  attackHeavyMs: 4000,
+  // Dedicated 1.07s walk clip → native rate, no time-scaling.
+  scale: 1,
+};
+
 export const CHARACTERS: Record<CharacterId, CharacterDef> = {
   classic: CLASSIC,
   simple: SIMPLE,
+  nemo: NEMO,
 };
 
 /** Ordered list for the lobby picker. */
-export const CHARACTER_LIST: ReadonlyArray<CharacterDef> = [CLASSIC, SIMPLE];
+export const CHARACTER_LIST: ReadonlyArray<CharacterDef> = [CLASSIC, SIMPLE, NEMO];
 
 /** Server/client allowlist of valid ids (mirror the server guard). */
-export const CHARACTER_IDS: ReadonlyArray<CharacterId> = ["classic", "simple"];
+export const CHARACTER_IDS: ReadonlyArray<CharacterId> = ["classic", "simple", "nemo"];
 
 /** Coerce any incoming value to a valid CharacterId (defaults to classic). */
 export function normalizeCharacterId(v: unknown): CharacterId {
-  return v === "simple" || v === "classic" ? v : DEFAULT_CHARACTER;
+  return v === "simple" || v === "classic" || v === "nemo" ? v : DEFAULT_CHARACTER;
 }
 
 /** Per-character attack clip duration (ms) for a given kind. */

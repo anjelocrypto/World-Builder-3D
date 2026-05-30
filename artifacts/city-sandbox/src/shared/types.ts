@@ -17,7 +17,9 @@ export type PlayerAnimState =
   | "attack_heavy"
   | "driving"
   | "talk"
-  | "sit";
+  | "sit"
+  | "gethit"
+  | "die";
 
 export interface PlayerState {
   id: string;
@@ -50,11 +52,11 @@ export interface PlayerState {
   /** Horizontal speed in m/s, used by remote renderers for blends. */
   moveSpeed?: number;
   /**
-   * Selectable character model id ("classic" | "simple"). Optional for
+   * Selectable character model id ("classic" | "simple" | "nemo"). Optional for
    * back-compat; renderers default to "classic" when missing. Set once at
    * join and never changed by playerUpdate.
    */
-  character?: "classic" | "simple";
+  character?: "classic" | "simple" | "nemo";
   /**
    * Phase 15A-2: true while the player is riding the loop train. Remote
    * renderers HIDE such players (their position is attached to the moving car,

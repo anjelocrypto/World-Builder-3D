@@ -64,6 +64,25 @@ export interface AnimResolveInput {
    * back-compat. Pass `attackDurationMs(def, kind)` from the catalog.
    */
   attackDurationMs?: number;
+  /**
+   * Phase 16 (Nemo) — death + hit reactions, bound to the local car-collision
+   * damage. ms timestamp the player started dying (health hit 0), or null.
+   * While within `dieDurationMs` of this, the resolver returns "die" with the
+   * highest non-vehicle priority (movement is locked by LocalPlayer during the
+   * window). Omitted/null → never dies (Classic/Simple).
+   */
+  dyingStartedAt?: number | null;
+  /** Duration (ms) of the death window — the die clip length. */
+  dieDurationMs?: number;
+  /**
+   * ms timestamp of the last survived hit (took damage but health > 0), or
+   * null. While within `hitDurationMs`, the resolver returns "gethit" (a brief
+   * flinch that overrides locomotion but not death/vehicle). Omitted/null →
+   * never flinches (Classic/Simple).
+   */
+  hitStartedAt?: number | null;
+  /** Duration (ms) of the flinch window — the gethit clip length. */
+  hitDurationMs?: number;
 }
 
 /**
@@ -74,18 +93,37 @@ export interface AnimResolveInput {
  *
  * Priority (highest first):
  *   1. inVehicle           → "driving"
- *   2. attack window open AND (not yet past the min display window OR the
+ *   2. dying window open   → "die"     (Nemo; movement locked by LocalPlayer)
+ *   3. hit window open     → "gethit"  (Nemo; brief flinch over locomotion)
+ *   4. attack window open AND (not yet past the min display window OR the
  *      player is standing still) → "attack_light" | "attack_heavy".
  *      Once past ATTACK_MIN_DISPLAY_MS, MOVEMENT cancels the attack so
  *      walk/run takes over smoothly instead of the character staying stuck
  *      in the attack pose for the whole (possibly multi-second) clip.
- *   3. airborne            → "jump" (rising) or "fall"
- *   4. ground horiz speed  → "run" | "walk"
- *   5. speaking (mic)      → "talk"  (only when grounded + below walk speed)
- *   6. otherwise           → "idle"
+ *   5. airborne            → "jump" (rising) or "fall"
+ *   6. ground horiz speed  → "run" | "walk"
+ *   7. speaking (mic)      → "talk"  (only when grounded + below walk speed)
+ *   8. otherwise           → "idle"
  */
 export function resolveAnimState(i: AnimResolveInput): PlayerAnimState {
   if (i.inVehicle) return "driving";
+  // Death first (after vehicle): a full-body, non-interruptible reaction. The
+  // window is the die clip length; LocalPlayer zeroes movement during it.
+  if (
+    i.dyingStartedAt != null &&
+    i.dieDurationMs != null &&
+    i.now - i.dyingStartedAt < i.dieDurationMs
+  ) {
+    return "die";
+  }
+  // Hit flinch: brief, overrides locomotion/attack but never death/vehicle.
+  if (
+    i.hitStartedAt != null &&
+    i.hitDurationMs != null &&
+    i.now - i.hitStartedAt < i.hitDurationMs
+  ) {
+    return "gethit";
+  }
   if (i.attackStartedAt !== null && i.attackKind !== null) {
     const dur =
       i.attackDurationMs ??
@@ -124,4 +162,6 @@ export const ANIM_STATES: readonly PlayerAnimState[] = [
   "driving",
   "talk",
   "sit",
+  "gethit",
+  "die",
 ];

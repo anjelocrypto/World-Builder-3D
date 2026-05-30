@@ -67,7 +67,7 @@ interface GameSceneProps {
   myId: string;
   username: string;
   /** Selectable character chosen in the lobby. */
-  character?: "classic" | "simple";
+  character?: import("./character/characterCatalog").CharacterId;
   playerCount: number;
   connected: boolean;
   gameState: { players: Record<string, import("../shared/types").PlayerState>; vehicles: Record<string, VehicleState> };

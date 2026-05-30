@@ -3,10 +3,11 @@ import { useSocket } from "../hooks/useSocket";
 import { useRpSocket } from "../hooks/useRpSocket";
 import { useProximityVoice } from "../hooks/useProximityVoice";
 import GameScene from "../game/GameScene";
+import type { CharacterId } from "../game/character/characterCatalog";
 
 interface GameProps {
   username: string;
-  character?: "classic" | "simple";
+  character?: CharacterId;
 }
 
 export default function Game({ username, character = "classic" }: GameProps) {

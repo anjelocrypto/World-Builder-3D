@@ -105,8 +105,14 @@ export default function AnimatedCharacter({
   const currentLocoRef = useRef<string | null>(null);
   const lastSeqRef = useRef(runtimeRef.current.attackSeq);
   const activeAttackRef = useRef<THREE.AnimationAction | null>(null);
+  // Phase 16 (Nemo) — die/gethit reaction overlays, driven by the animState
+  // edge (set by the resolver from LocalPlayer's damage binding) rather than a
+  // seq. The previous reaction state lets us fire the one-shot exactly once on
+  // entry and fade it out on exit (death respawn / flinch end).
+  const activeReactionRef = useRef<THREE.AnimationAction | null>(null);
+  const prevReactionStateRef = useRef<string | null>(null);
 
-  // Start idle loop; configure the two attack clips as one-shot.
+  // Start idle loop; configure the attack + reaction clips as one-shot.
   useEffect(() => {
     const idle = actions[def.locomotion.idle];
     if (idle) {
@@ -120,17 +126,34 @@ export default function AnimatedCharacter({
         a.clampWhenFinished = false;
       }
     }
+    // Reactions: gethit fades back to locomotion when it ends; die HOLDS its
+    // final pose (clampWhenFinished) until the player respawns and animState
+    // leaves "die", which fades it out in the useFrame exit branch below.
+    for (const key of [def.gethitKey, def.dieKey]) {
+      if (!key) continue;
+      const a = actions[key];
+      if (a) {
+        a.setLoop(THREE.LoopOnce, 1);
+        a.clampWhenFinished = key === def.dieKey;
+      }
+    }
     return () => {
       for (const a of Object.values(actions)) a?.stop();
     };
   }, [actions, def]);
 
-  // Clear the active-attack ref when its clip finishes.
+  // Clear the active attack/reaction ref when its clip finishes. A clamped
+  // reaction (die) is intentionally left playing — it holds its final frame
+  // until the respawn drops the "die" state, so we don't fade it here.
   useEffect(() => {
     const onFinished = (e: { action: THREE.AnimationAction }) => {
       if (activeAttackRef.current === e.action) {
         e.action.fadeOut(FADE);
         activeAttackRef.current = null;
+      }
+      if (activeReactionRef.current === e.action && !e.action.clampWhenFinished) {
+        e.action.fadeOut(FADE);
+        activeReactionRef.current = null;
       }
     };
     mixer.addEventListener("finished", onFinished);
@@ -167,6 +190,44 @@ export default function AnimatedCharacter({
     ) {
       activeAttackRef.current.fadeOut(FADE);
       activeAttackRef.current = null;
+    }
+
+    // --- One-shot reaction (gethit / die) on animState edge ---
+    // Fire exactly once when the state first becomes a reaction; a clamped die
+    // holds its final pose until respawn drops the state. gethit overrides a
+    // mid-swing attack (you flinch out of the punch).
+    if (r.animState !== prevReactionStateRef.current) {
+      prevReactionStateRef.current = r.animState;
+      const reactionKey =
+        r.animState === "die"
+          ? def.dieKey
+          : r.animState === "gethit"
+            ? def.gethitKey
+            : undefined;
+      if (reactionKey) {
+        const next = actions[reactionKey];
+        if (next) {
+          if (activeReactionRef.current && activeReactionRef.current !== next) {
+            activeReactionRef.current.fadeOut(FADE * 0.5);
+          }
+          if (activeAttackRef.current) {
+            activeAttackRef.current.fadeOut(FADE * 0.5);
+            activeAttackRef.current = null;
+          }
+          next.reset().setLoop(THREE.LoopOnce, 1).fadeIn(FADE * 0.5).play();
+          activeReactionRef.current = next;
+        }
+      }
+    }
+    // Leaving any reaction (flinch ended early, or respawn cleared "die") fades
+    // the held reaction out so locomotion takes back over.
+    if (
+      activeReactionRef.current &&
+      r.animState !== "gethit" &&
+      r.animState !== "die"
+    ) {
+      activeReactionRef.current.fadeOut(FADE);
+      activeReactionRef.current = null;
     }
 
     // --- Locomotion loop selection ---

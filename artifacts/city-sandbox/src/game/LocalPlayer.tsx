@@ -408,6 +408,13 @@ export default function LocalPlayer({
   const health = useRef(100);
   const knockback = useRef(new THREE.Vector3());
   const damageCooldown = useRef(0);
+  // Phase 16 (Nemo) — death + hit-reaction timers, set by takeDamage and read
+  // by the anim resolver. dyingStartedAtRef also locks movement for the death
+  // window and triggers a respawn when it elapses. Only ever set for characters
+  // whose catalog def provides die/gethit clips, so Classic/Simple are
+  // unchanged (reaching 0 HP stays a no-op for them).
+  const dyingStartedAtRef = useRef<number | null>(null);
+  const hitStartedAtRef = useRef<number | null>(null);
 
   const interactCooldown = useRef(0);
   // License-test checkpoint retry state.
@@ -582,6 +589,20 @@ export default function LocalPlayer({
     // Cooldowns
     if (interactCooldown.current > 0) interactCooldown.current -= dt;
     if (damageCooldown.current > 0) damageCooldown.current -= dt;
+
+    // Phase 16 (Nemo) death sequence: when the death-clip window elapses,
+    // respawn in place at full health with a short grace period so the same car
+    // doesn't immediately re-kill the player. Movement stays locked DURING the
+    // window via the dyingNow gate inside updatePlayer.
+    if (
+      dyingStartedAtRef.current !== null &&
+      now - dyingStartedAtRef.current >= (charDef.dieMs ?? 0)
+    ) {
+      dyingStartedAtRef.current = null;
+      health.current = 100;
+      damageCooldown.current = DAMAGE_COOLDOWN_MS / 1000;
+      vel.current.set(0, 0, 0);
+    }
 
     // Attack key edge detection (rising-edge so holding F doesn't
     // spam attacks; mouse buttons are handled in the pointer-lock
@@ -990,10 +1011,10 @@ export default function LocalPlayer({
       ehdx * ehdx + ehdz * ehdz < EVENT_HALL.interactRadius * EVENT_HALL.interactRadius;
     nearEventHallRef.current = nearEventHall;
 
-    // Phase 14C: nearest sittable chair (Simple character, on foot, not already
-    // seated). Drives the "E — Sit" prompt and the sit action.
+    // Phase 14C: nearest sittable chair (any character with a sit clip, on foot,
+    // not already seated). Drives the "E — Sit" prompt and the sit action.
     const isSitting = sittingChairRef.current !== null;
-    if (!isSitting && !inVehicle.current && charDef.id === "simple") {
+    if (!isSitting && !inVehicle.current && charDef.sitKey != null) {
       nearSitChairRef.current = nearestEventHallChair(curPos.x, curPos.z);
     } else {
       nearSitChairRef.current = null;
@@ -1170,8 +1191,18 @@ export default function LocalPlayer({
 
   function takeDamage(amount: number) {
     if (damageCooldown.current > 0) return;
+    // Already dying → ignore further damage until the respawn clears it.
+    if (dyingStartedAtRef.current !== null) return;
     health.current = Math.max(0, health.current - amount);
     damageCooldown.current = DAMAGE_COOLDOWN_MS / 1000;
+    // Phase 16: drive the death / flinch reactions, but ONLY for characters
+    // that define the clips (Nemo). For Classic/Simple these keys are undefined,
+    // so reaching 0 HP remains a no-op exactly as before.
+    if (health.current <= 0) {
+      if (charDef.dieKey) dyingStartedAtRef.current = Date.now();
+    } else if (charDef.gethitKey) {
+      hitStartedAtRef.current = Date.now();
+    }
   }
 
   // Trigger a single attack swing. Bumps attackSeq so the network
@@ -1399,21 +1430,29 @@ export default function LocalPlayer({
     const rightX = Math.cos(yaw);
     const rightZ = -Math.sin(yaw);
 
+    // Phase 16 (Nemo): while the death reaction plays, the player is frozen —
+    // no movement input and no jump. The residual knockback + gravity below
+    // still apply (the body settles where the car left it), and the else-branch
+    // decel brings horizontal velocity to rest.
+    const dyingNow =
+      dyingStartedAtRef.current !== null &&
+      now - dyingStartedAtRef.current < (charDef.dieMs ?? 0);
+
     let mx = 0;
     let mz = 0;
-    if (keys.forward) {
+    if (!dyingNow && keys.forward) {
       mx += fwdX;
       mz += fwdZ;
     }
-    if (keys.back) {
+    if (!dyingNow && keys.back) {
       mx -= fwdX;
       mz -= fwdZ;
     }
-    if (keys.left) {
+    if (!dyingNow && keys.left) {
       mx -= rightX;
       mz -= rightZ;
     }
-    if (keys.right) {
+    if (!dyingNow && keys.right) {
       mx += rightX;
       mz += rightZ;
     }
@@ -1439,7 +1478,7 @@ export default function LocalPlayer({
 
     // Gravity
     vel.current.y += GRAVITY * dt;
-    if (isGrounded.current && keys.jump) {
+    if (isGrounded.current && keys.jump && !dyingNow) {
       vel.current.y = JUMP_FORCE;
       isGrounded.current = false;
     }
@@ -1617,9 +1656,16 @@ export default function LocalPlayer({
       horizSpeed,
       attackDurationMs:
         attackKindRef.current === "heavy" ? attackHeavyDurMs : attackLightDurMs,
-      // Talk animation is Simple-only; Classic has no talk clip (falls back to
-      // idle). Lowest priority — driving/attack/jump/fall/walk/run all win.
-      speaking: charDef.id === "simple" && voiceSpeakingRef.current,
+      // Talk animation plays for any character that defines a talk clip (Simple,
+      // Nemo); Classic has none and falls back to idle. Lowest priority —
+      // driving/attack/jump/fall/walk/run all win.
+      speaking: charDef.talkKey != null && voiceSpeakingRef.current,
+      // Phase 16 (Nemo) — death + flinch windows. Undefined for characters
+      // without the clips, so the resolver never returns die/gethit for them.
+      dyingStartedAt: charDef.dieKey ? dyingStartedAtRef.current : null,
+      dieDurationMs: charDef.dieMs,
+      hitStartedAt: charDef.gethitKey ? hitStartedAtRef.current : null,
+      hitDurationMs: charDef.gethitMs,
     });
     const runtime = avatarRuntimeRef.current;
     runtime.animState = animState;
@@ -1642,9 +1688,10 @@ export default function LocalPlayer({
 
     // Enter vehicle / Licensing Office / Dealership / Lock-Unlock interact
     if (keys.interact && interactCooldown.current <= 0) {
-      // Phase 14C: sit on the nearest chair (Simple only). Highest priority —
-      // takes the E press before vehicle/building interactions and returns.
-      if (nearSitChairRef.current && charDef.id === "simple") {
+      // Phase 14C: sit on the nearest chair (characters with a sit clip).
+      // Highest priority — takes the E press before vehicle/building
+      // interactions and returns.
+      if (nearSitChairRef.current && charDef.sitKey != null) {
         sittingChairRef.current = { ...nearSitChairRef.current };
         nearSitChairRef.current = null;
         vel.current.set(0, 0, 0);
