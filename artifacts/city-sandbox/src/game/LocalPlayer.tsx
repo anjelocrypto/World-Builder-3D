@@ -1057,6 +1057,37 @@ export default function LocalPlayer({
       trainCanExit,
     };
 
+    // Phase 15A-2: while riding, force a CLEAN train-mode HUD state regardless of
+    // the car's path. updateRiding() (not updatePlayer) drives the frame while
+    // onboard, but this UI push runs in the frame body for every branch — so the
+    // override here guarantees the HUD never sticks on "Board" and shows only the
+    // Exit prompt (when stopped). On exit, inTrain is false again and the normal
+    // proximity prompts resume on the next frame.
+    if (inTrain) {
+      Object.assign(newUI, {
+        inVehicle: false,
+        showInteract: false,
+        speed: 0,
+        vehicleLabel: "",
+        nearOffice: false,
+        nearDealership: false,
+        nearOwnedVehicleId: null,
+        nearDepot: false,
+        nearTaxiDepot: false,
+        nearDeliveryHub: false,
+        nearMechanicGarage: false,
+        nearMedicCenter: false,
+        nearPoliceStation: false,
+        nearATM: false,
+        nearBookingDesk: false,
+        nearEventHall: false,
+        nearSitChair: false,
+        isSitting: false,
+        nearBoardTrain: false,
+        // inTrain stays true; trainCanExit reflects whether the train is stopped.
+      });
+    }
+
     // Throttled per-field UI diff. JSON.stringify on a 10-key object
     // every frame at 60fps was a ~5% main-thread cost in the audit;
     // primitive comparisons + a 100ms throttle keeps the HUD responsive
