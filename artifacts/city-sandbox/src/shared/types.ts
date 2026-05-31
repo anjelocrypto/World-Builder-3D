@@ -63,7 +63,25 @@ export interface PlayerState {
    * so they would otherwise appear standing in midair). Sanitised server-side.
    */
   isInTrain?: boolean;
+  /**
+   * Auth/account mode for this session (Batch A). The SERVER owns the final
+   * value — the client requests a mode at join but the server validates it.
+   * "guest" players have no token, no DB row, and no RP handlers registered.
+   * Optional for back-compat; missing → treated as a non-guest legacy session.
+   */
+  authMode?: AuthMode;
+  /** Convenience flag mirroring authMode === "guest" (server-set). */
+  isGuest?: boolean;
 }
+
+/**
+ * Account entry mode chosen on the landing screen (Batch A).
+ *   guest  — explore only; no account, no DB, no RP systems.
+ *   wallet — Solana wallet account (Batch B adds real signature login).
+ *   email  — email account (Batch C; provider TBD).
+ * In Batch A, wallet/email both use the existing username+token prototype flow.
+ */
+export type AuthMode = "guest" | "wallet" | "email";
 
 export type VehicleVariant = "sedan" | "van" | "taxi" | "compact";
 

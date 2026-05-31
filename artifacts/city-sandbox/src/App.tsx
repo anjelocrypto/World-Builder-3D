@@ -1,5 +1,7 @@
 import { Suspense, lazy, useState } from "react";
+import AuthGate from "@/pages/AuthGate";
 import Lobby from "@/pages/Lobby";
+import type { AuthMode } from "@/shared/types";
 
 // Lazy-load Game so its module graph (GameScene → LocalPlayer → CharacterAvatar
 // → AnimatedCharacter, which calls useGLTF.preload(...) at module top level)
@@ -10,8 +12,16 @@ const Game = lazy(() => import("@/pages/Game"));
 import type { CharacterId } from "@/game/character/characterCatalog";
 
 export default function App() {
+  // Batch A: entry flow is AuthGate → Lobby (name + character) → Game. The mode
+  // chosen here is the client's REQUEST; the server validates + owns the final
+  // authMode (guests get no token / no RP).
+  const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [character, setCharacter] = useState<CharacterId>("classic");
+
+  if (!authMode) {
+    return <AuthGate onChoose={setAuthMode} />;
+  }
 
   if (!username) {
     return (
@@ -26,7 +36,7 @@ export default function App() {
 
   return (
     <Suspense fallback={<div style={{ width: "100vw", height: "100vh", background: "#0a0a1a" }} />}>
-      <Game username={username} character={character} />
+      <Game username={username} character={character} authMode={authMode} />
     </Suspense>
   );
 }

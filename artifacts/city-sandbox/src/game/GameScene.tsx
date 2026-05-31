@@ -213,6 +213,8 @@ interface GameSceneProps {
   emitGetInventory: () => void;
   /** Phase 12A: house ownership list (safe payload — no owner UUIDs). */
   houses: HouseInfo[];
+  /** Batch A: true for guest sessions (explore-only; no RP systems). */
+  isGuest?: boolean;
   /** Batch B: server-authoritative Nemo Gang membership for this session. */
   nemoGang: { isMember: boolean; gangName: string } | null;
   /** Batch C: server-issued message to sign for wallet verification. */
@@ -319,6 +321,7 @@ export default function GameScene({
   playerInventory,
   emitGetInventory,
   houses,
+  isGuest = false,
   nemoGang,
   nemoSign,
   emitNemoRequestNonce,
@@ -445,6 +448,9 @@ export default function GameScene({
   const [showWallet, setShowWallet] = useState(false);
   const showWalletRef = useRef(showWallet);
   showWalletRef.current = showWallet;
+  // Batch A: guest sessions can't use RP actions (server enforces; this is UX).
+  const isGuestRef = useRef(isGuest);
+  isGuestRef.current = isGuest;
   // Phase 11C: stable ref for the inventory fetch emitter (used in keydown handler).
   const emitGetInventoryRef = useRef(emitGetInventory);
   emitGetInventoryRef.current = emitGetInventory;
@@ -718,6 +724,9 @@ export default function GameScene({
       if (e.code === "KeyN") {
         if (showWalletRef.current) {
           setShowWallet(false);
+        } else if (isGuestRef.current) {
+          // Guests can't connect a wallet / join the gang.
+          pushToastRef.current?.("Guests can't connect a wallet. Sign in to play.", "yellow", 3000);
         } else if (!anyModalOpen) {
           setShowWallet(true);
         }
@@ -1651,6 +1660,21 @@ export default function GameScene({
       {/* Phase 11C: read-only personal inventory (O key, anywhere) */}
       {showInventory && (
         <InventoryHUD inventory={playerInventory} onClose={() => setShowInventory(false)} />
+      )}
+
+      {/* Batch A: guest-mode badge (explore-only). */}
+      {isGuest && (
+        <div
+          style={{
+            position: "fixed", top: 64, left: 18, zIndex: 1400, pointerEvents: "none",
+            background: "rgba(30, 40, 20, 0.78)", border: "1px solid rgba(124,252,154,0.5)",
+            borderRadius: 8, padding: "5px 10px", fontFamily: "'Courier New', monospace",
+            fontSize: 12, letterSpacing: 1, color: "#cfeec0", boxShadow: "0 4px 14px rgba(0,0,0,0.4)",
+          }}
+          data-testid="hud-guest-badge"
+        >
+          👣 GUEST · explore only
+        </div>
       )}
 
       {/* Batch C: Nemo Gang wallet-verify panel (N). */}

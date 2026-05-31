@@ -35,6 +35,7 @@ function getOrCreateToken(): string {
 export function useSocket(
   username: string,
   character: import("../game/character/characterCatalog").CharacterId = "classic",
+  authMode: import("../shared/types").AuthMode = "wallet",
 ) {
   const socketRef = useRef<Socket | null>(null);
   // Reactive copy of the socket instance so hooks that need to attach their
@@ -54,7 +55,10 @@ export function useSocket(
   useEffect(() => {
     if (!username) return;
 
-    const token = getOrCreateToken();
+    // Batch A: guests carry NO token (no DB identity, no RP). Non-guests use the
+    // existing stable localStorage token so prototype accounts keep working.
+    const isGuest = authMode === "guest";
+    const token = isGuest ? "" : getOrCreateToken();
 
     const sock = io({
       path: "/api/socket.io",
@@ -66,9 +70,10 @@ export function useSocket(
 
     sock.on("connect", () => {
       setConnected(true);
-      // Include the stable token so the server can upsert rp_players and
-      // send back rp:profile (cash, bank, driverLicense, etc.).
-      sock.emit("join", { username, token, character });
+      // Include the stable token (non-guests) so the server can upsert
+      // rp_players and send back rp:profile. Guests send no token + authMode
+      // "guest"; the server validates and owns the final mode.
+      sock.emit("join", { username, token: token || undefined, character, authMode });
     });
 
     sock.on("disconnect", () => {
@@ -157,7 +162,7 @@ export function useSocket(
       sock.disconnect();
       setSocket(null);
     };
-  }, [username, character]);
+  }, [username, character, authMode]);
 
   const emitPlayerUpdate = useCallback((data: Partial<PlayerState>) => {
     socketRef.current?.emit("playerUpdate", data);

@@ -35,6 +35,7 @@ import {
   NEMO_HOOD_SPAWN,
 } from "../rp/rpNemoGangService";
 import { clearSolanaSession } from "../rp/rpSolanaService";
+import { setGuestSocket, clearGuestSocket } from "../rp/rpGuest";
 import { clearIdShareForPlayer } from "../rp/rpIdentityService";
 import { clearInventoryFetchForPlayer, ensureStarterInventoryForPlayer } from "../rp/rpInventoryService";
 import { ensureHousesSeeded, handleGetHouses } from "../rp/rpHouseService";
@@ -105,6 +106,10 @@ interface PlayerState {
   moveSpeed: number;
   /** Selectable character model id; set once at join, never via playerUpdate. */
   character: "classic" | "simple" | "nemo";
+  /** Batch A: account entry mode (server-owned). */
+  authMode: "guest" | "wallet" | "email";
+  /** Batch A: true for guest sessions (no token / no DB / no RP handlers). */
+  isGuest: boolean;
   /** Phase 15A-2: true while riding the loop train (remote renderers hide them). */
   isInTrain: boolean;
 }
@@ -216,9 +221,19 @@ export function setupGameServer(httpServer: HttpServer) {
   io.on("connection", (socket: Socket) => {
     logger.info({ socketId: socket.id }, "Player connected");
 
-    socket.on("join", async (data: { username: string; token?: string; character?: unknown }) => {
+    socket.on("join", async (data: { username: string; token?: string; character?: unknown; authMode?: unknown }) => {
       const username = (data?.username ?? "Player").slice(0, 20);
-      const token = typeof data?.token === "string" ? data.token.slice(0, 36) : "";
+      // Batch A: the SERVER owns the final auth mode. A session is a guest if it
+      // explicitly asks to be OR sends no token (no token → no identity → no RP).
+      const rawToken = typeof data?.token === "string" ? data.token.slice(0, 36) : "";
+      const requestedMode =
+        data?.authMode === "wallet" ? "wallet" :
+        data?.authMode === "email"  ? "email"  : "guest";
+      const isGuest = requestedMode === "guest" || rawToken === "";
+      const authMode: "guest" | "wallet" | "email" = isGuest ? "guest" : requestedMode;
+      // Guests never carry a token (no DB upsert, no rpCache, no RP handlers).
+      const token = isGuest ? "" : rawToken;
+      setGuestSocket(socket.id, isGuest);
       // Validate the selected character against the allowlist (mirror of the
       // client characterCatalog CHARACTER_IDS). Anything else → "classic".
       const character: "classic" | "simple" | "nemo" =
@@ -250,6 +265,8 @@ export function setupGameServer(httpServer: HttpServer) {
         isGrounded: true,
         moveSpeed: 0,
         isInTrain: false,
+        authMode,
+        isGuest,
       };
       players.set(socket.id, player);
 
@@ -302,8 +319,10 @@ export function setupGameServer(httpServer: HttpServer) {
           });
       }
 
-      // Register per-socket RP event listeners (rp:interact, rp:licenseTestCheckpoint)
-      setupRpHandlers(socket, ctx);
+      // Register per-socket RP event listeners — NOT for guests. Guests get no
+      // rp:*/voice:* handlers at all (central server enforcement); they can still
+      // move/explore via the playerUpdate handler below.
+      if (!isGuest) setupRpHandlers(socket, ctx);
     });
 
     socket.on("playerUpdate", (data: Partial<PlayerState>) => {
@@ -627,6 +646,8 @@ export function setupGameServer(httpServer: HttpServer) {
       clearNemoEligible(socket.id);
       // Batch C: drop any pending wallet nonce + rate-limit state.
       clearSolanaSession(socket.id);
+      // Batch A: drop guest-session flag.
+      clearGuestSocket(socket.id);
       // Phase 11B/11C: clear ID-share + inventory-fetch cooldowns (keyed by
       // playerId; read before delete).
       {

@@ -8,9 +8,11 @@ import type { CharacterId } from "../game/character/characterCatalog";
 interface GameProps {
   username: string;
   character?: CharacterId;
+  authMode?: import("../shared/types").AuthMode;
 }
 
-export default function Game({ username, character = "classic" }: GameProps) {
+export default function Game({ username, character = "classic", authMode = "wallet" }: GameProps) {
+  const isGuest = authMode === "guest";
   const {
     socket,
     myId,
@@ -20,7 +22,7 @@ export default function Game({ username, character = "classic" }: GameProps) {
     setGameState,
     emitPlayerUpdate,
     emitVehicleUpdate,
-  } = useSocket(username, character);
+  } = useSocket(username, character, authMode);
 
   // Attach rp:profile / rp:profileUpdate / rp:toast listeners as soon as
   // the socket instance exists — BEFORE the myId/ready guard below. This
@@ -226,6 +228,7 @@ export default function Game({ username, character = "classic" }: GameProps) {
       playerInventory={playerInventory}
       emitGetInventory={emitGetInventory}
       houses={houses}
+      isGuest={isGuest}
       nemoGang={nemoGang}
       nemoSign={nemoSign}
       emitNemoRequestNonce={emitNemoRequestNonce}

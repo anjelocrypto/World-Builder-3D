@@ -42,6 +42,7 @@ import {
 import { handleGetInventory } from "./rpInventoryService";
 import { issueNemoNonce, verifyNemoWallet } from "./rpSolanaService";
 import { grantNemoEligible, nemoGangStatus, NEMO_HOOD_SPAWN } from "./rpNemoGangService";
+import { isGuestSocket } from "./rpGuest";
 import { handleGetHouses, handleBuyHouse, handleEnterHouse, handleExitHouse } from "./rpHouseService";
 import { handleGlobalChat } from "./rpGlobalService";
 import { handleVoiceSetEnabled, handleVoiceOffer, handleVoiceAnswer, handleVoiceIce } from "./rpVoiceService";
@@ -83,6 +84,10 @@ export function setupRpHandlers(
   socket: Socket,
   ctx:    LicenseContext,
 ): void {
+  // Batch A defence-in-depth: guests get NONE of the rp:*/voice:* handlers.
+  // gameServer already skips this call for guests; this guard guarantees it even
+  // if setupRpHandlers is ever invoked from another path.
+  if (isGuestSocket(socket.id)) return;
 
   // ── rp:interact ───────────────────────────────────────────────────────────
   // Phase 2: licensing office start-test.
