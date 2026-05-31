@@ -36,6 +36,12 @@ import {
 } from "../rp/rpNemoGangService";
 import { clearSolanaSession } from "../rp/rpSolanaService";
 import { setGuestSocket, clearGuestSocket } from "../rp/rpGuest";
+import {
+  handleWalletNonce,
+  handleWalletVerify,
+  isWalletVerified,
+  clearWalletAuth,
+} from "../rp/rpWalletAuth";
 import { clearIdShareForPlayer } from "../rp/rpIdentityService";
 import { clearInventoryFetchForPlayer, ensureStarterInventoryForPlayer } from "../rp/rpInventoryService";
 import { ensureHousesSeeded, handleGetHouses } from "../rp/rpHouseService";
@@ -221,6 +227,12 @@ export function setupGameServer(httpServer: HttpServer) {
   io.on("connection", (socket: Socket) => {
     logger.info({ socketId: socket.id }, "Player connected");
 
+    // Batch B: pre-join wallet LOGIN handshake (ownership proof only). Available
+    // before/independent of join so an unauthenticated socket can prove its
+    // wallet, then send `join` with a "wallet:<address>" token validated below.
+    socket.on("auth:walletNonce", () => handleWalletNonce(socket));
+    socket.on("auth:walletVerify", (data) => handleWalletVerify(socket, data));
+
     socket.on("join", async (data: { username: string; token?: string; character?: unknown; authMode?: unknown }) => {
       const username = (data?.username ?? "Player").slice(0, 20);
       // Batch A: the SERVER owns the final auth mode. A session is a guest if it
@@ -232,7 +244,17 @@ export function setupGameServer(httpServer: HttpServer) {
       const isGuest = requestedMode === "guest" || rawToken === "";
       const authMode: "guest" | "wallet" | "email" = isGuest ? "guest" : requestedMode;
       // Guests never carry a token (no DB upsert, no rpCache, no RP handlers).
-      const token = isGuest ? "" : rawToken;
+      let token = isGuest ? "" : rawToken;
+      // Batch B: a "wallet:<address>" token is accepted ONLY if THIS socket
+      // actually proved ownership of that address in the pre-join handshake.
+      // An unproven claim is dropped (→ no RP), preventing impersonation.
+      if (token.startsWith("wallet:")) {
+        const addr = token.slice("wallet:".length);
+        if (!addr || !isWalletVerified(socket.id, addr)) {
+          token = "";
+          socket.emit("rp:toast", { msg: "Wallet not verified — reconnect.", color: "red", duration: 4000 });
+        }
+      }
       setGuestSocket(socket.id, isGuest);
       // Validate the selected character against the allowlist (mirror of the
       // client characterCatalog CHARACTER_IDS). Anything else → "classic".
@@ -323,10 +345,11 @@ export function setupGameServer(httpServer: HttpServer) {
           });
       }
 
-      // Register per-socket RP event listeners — NOT for guests. Guests get no
-      // rp:*/voice:* handlers at all (central server enforcement); they can still
-      // move/explore via the playerUpdate handler below.
-      if (!isGuest) setupRpHandlers(socket, ctx);
+      // Register per-socket RP event listeners ONLY for an RP-active session
+      // (a valid token → DB upsert above). Guests and unverified-wallet sockets
+      // have token === "" and get NO rp:*/voice:* handlers (central server
+      // enforcement); they can still move/explore via playerUpdate below.
+      if (token) setupRpHandlers(socket, ctx);
     });
 
     socket.on("playerUpdate", (data: Partial<PlayerState>) => {
@@ -652,6 +675,8 @@ export function setupGameServer(httpServer: HttpServer) {
       clearSolanaSession(socket.id);
       // Batch A: drop guest-session flag.
       clearGuestSocket(socket.id);
+      // Batch B: drop proven-wallet session state.
+      clearWalletAuth(socket.id);
       // Phase 11B/11C: clear ID-share + inventory-fetch cooldowns (keyed by
       // playerId; read before delete).
       {

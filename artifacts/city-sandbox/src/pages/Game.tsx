@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useSocket } from "../hooks/useSocket";
+import { useNemoWallet } from "../hooks/useNemoWallet";
 import { useRpSocket } from "../hooks/useRpSocket";
 import { useProximityVoice } from "../hooks/useProximityVoice";
 import GameScene from "../game/GameScene";
@@ -9,10 +10,14 @@ interface GameProps {
   username: string;
   character?: CharacterId;
   authMode?: import("../shared/types").AuthMode;
+  /** Verified-at-AuthGate Solana address (wallet mode only). */
+  walletAddress?: string | null;
 }
 
-export default function Game({ username, character = "classic", authMode = "wallet" }: GameProps) {
+export default function Game({ username, character = "classic", authMode = "wallet", walletAddress = null }: GameProps) {
   const isGuest = authMode === "guest";
+  // Batch B: Phantom signer for the pre-join wallet-ownership handshake.
+  const { signMessage } = useNemoWallet();
   const {
     socket,
     myId,
@@ -22,7 +27,7 @@ export default function Game({ username, character = "classic", authMode = "wall
     setGameState,
     emitPlayerUpdate,
     emitVehicleUpdate,
-  } = useSocket(username, character, authMode);
+  } = useSocket(username, character, authMode, walletAddress, signMessage);
 
   // Attach rp:profile / rp:profileUpdate / rp:toast listeners as soon as
   // the socket instance exists — BEFORE the myId/ready guard below. This

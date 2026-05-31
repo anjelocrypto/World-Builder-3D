@@ -16,11 +16,19 @@ export default function App() {
   // chosen here is the client's REQUEST; the server validates + owns the final
   // authMode (guests get no token / no RP).
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
+  const [walletAddress, setWalletAddress] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [character, setCharacter] = useState<CharacterId>("classic");
 
   if (!authMode) {
-    return <AuthGate onChoose={setAuthMode} />;
+    return (
+      <AuthGate
+        onChoose={(mode, addr) => {
+          setWalletAddress(addr ?? null);
+          setAuthMode(mode);
+        }}
+      />
+    );
   }
 
   if (!username) {
@@ -36,7 +44,7 @@ export default function App() {
 
   return (
     <Suspense fallback={<div style={{ width: "100vw", height: "100vh", background: "#0a0a1a" }} />}>
-      <Game username={username} character={character} authMode={authMode} />
+      <Game username={username} character={character} authMode={authMode} walletAddress={walletAddress} />
     </Suspense>
   );
 }

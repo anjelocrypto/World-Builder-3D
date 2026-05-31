@@ -1,4 +1,6 @@
+import { useState } from "react";
 import MenuWorldPreview from "@/game/MenuWorldPreview";
+import { useNemoWallet } from "@/hooks/useNemoWallet";
 import type { AuthMode } from "@/shared/types";
 
 // =============================================================
@@ -10,7 +12,8 @@ import type { AuthMode } from "@/shared/types";
 // =============================================================
 
 interface AuthGateProps {
-  onChoose: (mode: AuthMode) => void;
+  /** walletAddress is supplied only for the "wallet" mode after Phantom connects. */
+  onChoose: (mode: AuthMode, walletAddress?: string) => void;
 }
 
 const CARD = {
@@ -59,6 +62,16 @@ function ModeButton({
 }
 
 export default function AuthGate({ onChoose }: AuthGateProps) {
+  const { available, connect, busy, error } = useNemoWallet();
+  const [connecting, setConnecting] = useState(false);
+
+  const onWallet = async () => {
+    setConnecting(true);
+    const pk = await connect();
+    setConnecting(false);
+    if (pk) onChoose("wallet", pk); // signature handshake happens at join (Game).
+  };
+
   return (
     <div
       style={{
@@ -98,11 +111,19 @@ export default function AuthGate({ onChoose }: AuthGateProps) {
         <div style={CARD}>
           <ModeButton
             testid="auth-wallet"
-            title="🪪  Connect Wallet"
-            subtitle="Solana wallet account. Required for Nemo Gang."
+            title={connecting || busy ? "🪪  Connecting…" : "🪪  Connect Wallet"}
+            subtitle={
+              available
+                ? "Solana wallet account. You'll sign to prove ownership."
+                : "Phantom wallet not detected — install it to use this."
+            }
             accent="#b06fff"
-            onClick={() => onChoose("wallet")}
+            disabled={!available || connecting || busy}
+            onClick={onWallet}
           />
+          {error && (
+            <div style={{ fontSize: 11, color: "#ff9a9a", marginTop: -6 }}>{error}</div>
+          )}
           <ModeButton
             testid="auth-email"
             title="✉️  Email Sign Up / Login"

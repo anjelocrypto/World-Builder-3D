@@ -36,6 +36,10 @@ export function useSocket(
   username: string,
   character: import("../game/character/characterCatalog").CharacterId = "classic",
   authMode: import("../shared/types").AuthMode = "wallet",
+  // Batch B: wallet-mode pre-join handshake inputs (verified address from the
+  // AuthGate + a Phantom signer). Null for guest/legacy.
+  walletAddress: string | null = null,
+  signMessage: ((message: string) => Promise<string | null>) | null = null,
 ) {
   const socketRef = useRef<Socket | null>(null);
   // Reactive copy of the socket instance so hooks that need to attach their
@@ -70,9 +74,30 @@ export function useSocket(
 
     sock.on("connect", () => {
       setConnected(true);
-      // Include the stable token (non-guests) so the server can upsert
-      // rp_players and send back rp:profile. Guests send no token + authMode
-      // "guest"; the server validates and owns the final mode.
+      if (authMode === "wallet" && walletAddress && signMessage) {
+        // Batch B: prove wallet ownership BEFORE join. The server reconstructs
+        // the message from its own nonce; we just sign what it sends. On success
+        // we join with a "wallet:<address>" token so RP state persists per wallet.
+        sock.once("auth:walletChallenge", (d: { message?: string }) => {
+          const message = typeof d?.message === "string" ? d.message : "";
+          if (!message) { sock.emit("join", { username, character, authMode }); return; }
+          void signMessage(message).then((sig) => {
+            if (sig) sock.emit("auth:walletVerify", { pubkey: walletAddress, signature: sig });
+            else sock.emit("join", { username, character, authMode }); // declined → no RP
+          });
+        });
+        sock.once("auth:walletResult", (res: { ok?: boolean; address?: string }) => {
+          if (res?.ok && typeof res.address === "string") {
+            sock.emit("join", { username, token: `wallet:${res.address}`, character, authMode });
+          } else {
+            sock.emit("join", { username, character, authMode }); // unverified → no RP
+          }
+        });
+        sock.emit("auth:walletNonce");
+        return;
+      }
+      // Guests / legacy: include the stable token (non-guests) so the server can
+      // upsert rp_players and send rp:profile. Guests send no token.
       sock.emit("join", { username, token: token || undefined, character, authMode });
     });
 
@@ -162,7 +187,7 @@ export function useSocket(
       sock.disconnect();
       setSocket(null);
     };
-  }, [username, character, authMode]);
+  }, [username, character, authMode, walletAddress, signMessage]);
 
   const emitPlayerUpdate = useCallback((data: Partial<PlayerState>) => {
     socketRef.current?.emit("playerUpdate", data);

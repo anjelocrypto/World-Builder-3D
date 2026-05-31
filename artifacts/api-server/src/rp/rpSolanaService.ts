@@ -189,6 +189,46 @@ export async function verifyNemoWallet(
   };
 }
 
+// ── Batch B: wallet LOGIN — ownership proof only (NO $NEMOCLAW balance) ──────
+// This is general account authorization: it proves the wallet owns the address
+// and stops. It deliberately does NOT check any token balance — that is the
+// SEPARATE Nemo Gang authorization (verifyNemoWallet above). Reuses the same
+// nonce store + ed25519 verify; consumes the single-use nonce like any verify.
+export function verifyWalletOwnership(
+  socketId: string,
+  pubkey: unknown,
+  signature: unknown,
+): { ok: boolean; address?: string; reason: string } {
+  const now = Date.now();
+  const r = rate.get(socketId) ?? { lastNonceAt: 0, lastVerifyAt: 0 };
+  if (now - r.lastVerifyAt < VERIFY_COOLDOWN_MS) {
+    return { ok: false, reason: "Please wait a moment before retrying." };
+  }
+  r.lastVerifyAt = now;
+  rate.set(socketId, r);
+
+  if (typeof pubkey !== "string" || typeof signature !== "string") {
+    return { ok: false, reason: "Invalid wallet response." };
+  }
+  const nonce = consumeNonce(socketId);
+  if (!nonce) {
+    return { ok: false, reason: "Sign-in expired — reconnect your wallet." };
+  }
+  const keyBytes = decodeKey(pubkey);
+  const sigBytes = decodeSignature(signature);
+  if (!keyBytes || !sigBytes) {
+    return { ok: false, reason: "Invalid wallet signature." };
+  }
+  const msgBytes = new TextEncoder().encode(buildVerifyMessage(nonce));
+  const valid = nacl.sign.detached.verify(msgBytes, sigBytes, keyBytes);
+  if (!valid) {
+    logger.info({ outcome: "login_sig_invalid" }, "[walletAuth] login verify failed");
+    return { ok: false, reason: "Wallet signature did not verify." };
+  }
+  logger.info({ outcome: "login_ok" }, "[walletAuth] login verified");
+  return { ok: true, address: pubkey, reason: "Wallet verified." };
+}
+
 // ── C2: balance by MINT ADDRESS, decimals read from chain, summed accounts ───
 async function getNemoBalance(pubkey: string): Promise<number> {
   const rpcUrl = getRpcUrl();
