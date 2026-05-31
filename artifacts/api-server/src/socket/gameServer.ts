@@ -235,26 +235,33 @@ export function setupGameServer(httpServer: HttpServer) {
 
     socket.on("join", async (data: { username: string; token?: string; character?: unknown; authMode?: unknown }) => {
       const username = (data?.username ?? "Player").slice(0, 20);
-      // Batch A: the SERVER owns the final auth mode. A session is a guest if it
-      // explicitly asks to be OR sends no token (no token → no identity → no RP).
-      const rawToken = typeof data?.token === "string" ? data.token.slice(0, 36) : "";
+      // Batch A/B: the SERVER owns the final auth mode. Validate the token FIRST,
+      // then derive guest / RP-active state from the FINAL token. A wallet token
+      // is "wallet:<base58 pubkey>" (~51 chars), so it must NOT be sliced to 36
+      // before validation (that broke wallet login). RP is active iff token!=="".
       const requestedMode =
         data?.authMode === "wallet" ? "wallet" :
         data?.authMode === "email"  ? "email"  : "guest";
-      const isGuest = requestedMode === "guest" || rawToken === "";
-      const authMode: "guest" | "wallet" | "email" = isGuest ? "guest" : requestedMode;
-      // Guests never carry a token (no DB upsert, no rpCache, no RP handlers).
-      let token = isGuest ? "" : rawToken;
-      // Batch B: a "wallet:<address>" token is accepted ONLY if THIS socket
-      // actually proved ownership of that address in the pre-join handshake.
-      // An unproven claim is dropped (→ no RP), preventing impersonation.
-      if (token.startsWith("wallet:")) {
-        const addr = token.slice("wallet:".length);
-        if (!addr || !isWalletVerified(socket.id, addr)) {
-          token = "";
-          socket.emit("rp:toast", { msg: "Wallet not verified — reconnect.", color: "red", duration: 4000 });
+      const submittedToken = typeof data?.token === "string" ? data.token.trim() : "";
+      let token = "";
+      if (requestedMode !== "guest" && submittedToken) {
+        if (submittedToken.startsWith("wallet:")) {
+          // Accepted ONLY if THIS socket proved ownership in the pre-join
+          // handshake — an unproven claim is dropped (→ guest), no impersonation.
+          const addr = submittedToken.slice("wallet:".length);
+          if (addr && isWalletVerified(socket.id, addr)) {
+            token = `wallet:${addr}`;
+          } else {
+            socket.emit("rp:toast", { msg: "Wallet not verified — reconnect.", color: "red", duration: 4000 });
+          }
+        } else {
+          token = submittedToken.slice(0, 36); // legacy UUID only
         }
       }
+      // Final state derives from the validated token: an unverified wallet (or
+      // any tokenless session) is guest-equivalent — no RP, no Nemo eligibility.
+      const isGuest = token === "";
+      const authMode: "guest" | "wallet" | "email" = isGuest ? "guest" : requestedMode;
       setGuestSocket(socket.id, isGuest);
       // Validate the selected character against the allowlist (mirror of the
       // client characterCatalog CHARACTER_IDS). Anything else → "classic".
@@ -268,11 +275,11 @@ export function setupGameServer(httpServer: HttpServer) {
       // no DB). Eligible members spawn at the hood; everyone else at the
       // station. Currently gated by a dev allowlist — Batch C replaces that
       // with verified on-chain $NEMOCLAW ownership.
-      // Guests are NEVER Nemo-eligible — don't even run the check for them, so a
-      // dev-allowlisted username can't leak a guest into the hood spawn.
-      const nemoEligible = !isGuest && evaluateNemoEligibilityOnJoin(socket.id, username);
-      // Defence-in-depth: ensure no stale eligibility lingers for a guest socket.
-      if (isGuest) clearNemoEligible(socket.id);
+      // Nemo eligibility requires an RP-ACTIVE token (not merely !isGuest), so a
+      // guest OR an unverified-wallet session can never leak into the hood spawn.
+      const nemoEligible = token !== "" && evaluateNemoEligibilityOnJoin(socket.id, username);
+      // Defence-in-depth: clear any stale eligibility for a non-RP socket.
+      if (token === "") clearNemoEligible(socket.id);
       const [sx, sy, sz] = nemoEligible ? NEMO_HOOD_SPAWN : getSpawn();
       const player: PlayerState = {
         id: socket.id,
