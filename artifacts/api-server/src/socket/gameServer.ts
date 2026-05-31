@@ -246,7 +246,11 @@ export function setupGameServer(httpServer: HttpServer) {
       // no DB). Eligible members spawn at the hood; everyone else at the
       // station. Currently gated by a dev allowlist — Batch C replaces that
       // with verified on-chain $NEMOCLAW ownership.
-      const nemoEligible = evaluateNemoEligibilityOnJoin(socket.id, username);
+      // Guests are NEVER Nemo-eligible — don't even run the check for them, so a
+      // dev-allowlisted username can't leak a guest into the hood spawn.
+      const nemoEligible = !isGuest && evaluateNemoEligibilityOnJoin(socket.id, username);
+      // Defence-in-depth: ensure no stale eligibility lingers for a guest socket.
+      if (isGuest) clearNemoEligible(socket.id);
       const [sx, sy, sz] = nemoEligible ? NEMO_HOOD_SPAWN : getSpawn();
       const player: PlayerState = {
         id: socket.id,
