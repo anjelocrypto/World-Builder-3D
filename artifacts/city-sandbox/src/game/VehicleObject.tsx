@@ -156,15 +156,60 @@ const SEAM_MAT = new THREE.MeshBasicMaterial({ color: "#0a0a0a" });
 const HEADLIGHT_MAT = new THREE.MeshStandardMaterial({
   color: "#fff5d0",
   emissive: "#fff5d0",
-  emissiveIntensity: 0.9,
+  emissiveIntensity: 1.15, // brighter for night presence (Phase-1 car polish)
   roughness: 0.3,
 });
 const TAILLIGHT_MAT = new THREE.MeshStandardMaterial({
   color: "#e74c3c",
   emissive: "#c0392b",
-  emissiveIntensity: 0.6,
+  emissiveIntensity: 0.9, // brighter for night presence (Phase-1 car polish)
   roughness: 0.4,
 });
+// Cool-white daytime-running-light accent strip under each headlight.
+const DRL_MAT = new THREE.MeshStandardMaterial({
+  color: "#eaf2ff",
+  emissive: "#cfe0ff",
+  emissiveIntensity: 1.1,
+  roughness: 0.4,
+});
+// Dark housing that sits just behind the emissive headlight lens so the lit
+// element reads as set into a cluster instead of floating on the bumper.
+// (Reuses PLASTIC_MAT — no new material needed.)
+
+// ── Soft contact shadow (grounding) ──────────────────────────────────────────
+// A single radial-gradient canvas texture shared by every car. Drawn as one
+// flat quad under the body so cars read as planted on the road instead of
+// floating. Pure visual: no light, no collision, scaled to each car footprint.
+let _shadowTex: THREE.Texture | null = null;
+function getShadowTexture(): THREE.Texture {
+  if (_shadowTex) return _shadowTex;
+  const SZ = 64;
+  const c = document.createElement("canvas");
+  c.width = SZ;
+  c.height = SZ;
+  const ctx = c.getContext("2d");
+  if (ctx) {
+    const g = ctx.createRadialGradient(SZ / 2, SZ / 2, 2, SZ / 2, SZ / 2, SZ / 2);
+    g.addColorStop(0, "rgba(0,0,0,0.55)");
+    g.addColorStop(0.6, "rgba(0,0,0,0.26)");
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, SZ, SZ);
+  }
+  _shadowTex = new THREE.CanvasTexture(c);
+  return _shadowTex;
+}
+let _shadowMat: THREE.MeshBasicMaterial | null = null;
+function getShadowMat(): THREE.MeshBasicMaterial {
+  if (_shadowMat) return _shadowMat;
+  _shadowMat = new THREE.MeshBasicMaterial({
+    map: getShadowTexture(),
+    transparent: true,
+    depthWrite: false,
+    toneMapped: false,
+  });
+  return _shadowMat;
+}
 const TURNSIGNAL_MAT = new THREE.MeshStandardMaterial({
   color: "#ffaa33",
   emissive: "#ff8800",
@@ -211,6 +256,9 @@ const MIRROR_GEO = new THREE.BoxGeometry(0.12, 0.12, 0.22);
 const SEAM_VERT_GEO = new THREE.PlaneGeometry(0.02, 0.7); // door seam
 const SEAM_HORIZ_GEO = new THREE.PlaneGeometry(0.7, 0.02);
 const GRILLE_BAR_GEO = new THREE.BoxGeometry(0.9, 0.04, 0.04);
+const CONTACT_SHADOW_GEO = new THREE.PlaneGeometry(1, 1); // scaled per car footprint
+const HL_HOUSING_GEO = new THREE.BoxGeometry(0.5, 0.26, 0.05); // dark cluster behind lens
+const DRL_GEO = new THREE.BoxGeometry(0.34, 0.04, 0.05); // running-light accent strip
 
 // =============================================================
 // Per-variant geometry builder.
@@ -231,6 +279,8 @@ interface VariantGeo {
   bumperFront: THREE.BufferGeometry;
   bumperRear: THREE.BufferGeometry;
   archFL: THREE.BufferGeometry;
+  rocker: THREE.BufferGeometry;   // lower side sill cladding (one per side)
+  beltline: THREE.BufferGeometry; // chrome trim strip at the window base
 }
 
 const _variantGeoCache = new Map<VehicleVariant, VariantGeo>();
@@ -277,6 +327,10 @@ function getVariantGeo(v: VehicleVariant): VariantGeo {
     0.18,
   );
   const archFL = new THREE.BoxGeometry(0.55, 0.45, 0.55);
+  // Lower side sill: thin, runs most of the body length along local Z.
+  const rocker = new THREE.BoxGeometry(0.07, dim.bodyH * 0.32, dim.bodyD * 0.82);
+  // Chrome beltline strip at the base of the greenhouse, along the cabin length.
+  const beltline = new THREE.BoxGeometry(0.04, 0.06, dim.cabinD * 0.94);
   g = {
     bodyMain,
     bodyTop,
@@ -287,6 +341,8 @@ function getVariantGeo(v: VehicleVariant): VariantGeo {
     bumperFront,
     bumperRear,
     archFL,
+    rocker,
+    beltline,
   };
   _variantGeoCache.set(v, g);
   return g;
@@ -363,6 +419,19 @@ export function CarVisual({ variant, color, castShadow = true }: CarVisualProps)
           bottoms render at world y = groundY exactly. The driving
           headlight (defined as a sibling of CarVisual in LocalPlayer)
           stays at its old world height since IT is not wrapped. */}
+      {/* ----- Soft contact shadow — a single radial-gradient quad scaled to the
+                car footprint so the body reads as planted on the road. Sits just
+                above the ground plane; no light, no collision. Cheap enough that
+                even ambient traffic gets it. ----- */}
+      <mesh
+        geometry={CONTACT_SHADOW_GEO}
+        material={getShadowMat()}
+        position={[0, 0.02, 0]}
+        rotation={[-Math.PI / 2, 0, 0]}
+        scale={[dim.bodyW * 1.35, dim.bodyD * 1.12, 1]}
+        renderOrder={-1}
+      />
+
       {/* ----- Bumpers (dark plastic, sit slightly forward/back of body) ----- */}
       <mesh
         geometry={geo.bumperFront}
@@ -649,6 +718,59 @@ export function CarVisual({ variant, color, castShadow = true }: CarVisualProps)
         material={PLATE_MAT}
         position={[0, dim.bodyH * 0.25, halfD + 0.16]}
       />
+
+      {/* ----- Extra premium detail — only on "hero" cars (castShadow=true:
+                player / remote / parked). Skipped on cosmetic ambient traffic to
+                keep its per-car mesh count down. Shared/cached geometry +
+                module-level materials only; all within the body envelope. ----- */}
+      {castShadow && (
+        <>
+          {/* Lower rocker sills (dark cladding) — tonal break along the bottom */}
+          <mesh
+            geometry={geo.rocker}
+            material={PLASTIC_MAT}
+            position={[-halfW, dim.bodyH * 0.16, 0]}
+          />
+          <mesh
+            geometry={geo.rocker}
+            material={PLASTIC_MAT}
+            position={[halfW, dim.bodyH * 0.16, 0]}
+          />
+          {/* Chrome beltline trim at the base of the windows */}
+          <mesh
+            geometry={geo.beltline}
+            material={RIM_MAT}
+            position={[-dim.cabinW / 2 - 0.012, dim.bodyH + 0.02, dim.cabinOffsetZ]}
+          />
+          <mesh
+            geometry={geo.beltline}
+            material={RIM_MAT}
+            position={[dim.cabinW / 2 + 0.012, dim.bodyH + 0.02, dim.cabinOffsetZ]}
+          />
+          {/* Headlight chrome/dark housings behind the emissive lenses */}
+          <mesh
+            geometry={HL_HOUSING_GEO}
+            material={PLASTIC_MAT}
+            position={[-0.55, dim.bodyH * 0.55, -halfD - 0.07]}
+          />
+          <mesh
+            geometry={HL_HOUSING_GEO}
+            material={PLASTIC_MAT}
+            position={[0.55, dim.bodyH * 0.55, -halfD - 0.07]}
+          />
+          {/* Cool-white DRL accent strip under each headlight */}
+          <mesh
+            geometry={DRL_GEO}
+            material={DRL_MAT}
+            position={[-0.55, dim.bodyH * 0.42, -halfD - 0.1]}
+          />
+          <mesh
+            geometry={DRL_GEO}
+            material={DRL_MAT}
+            position={[0.55, dim.bodyH * 0.42, -halfD - 0.1]}
+          />
+        </>
+      )}
 
       {/* ----- Variant-specific extras ----- */}
 
