@@ -212,6 +212,8 @@ interface GameSceneProps {
   emitGetInventory: () => void;
   /** Phase 12A: house ownership list (safe payload — no owner UUIDs). */
   houses: HouseInfo[];
+  /** Batch B: server-authoritative Nemo Gang membership for this session. */
+  nemoGang: { isMember: boolean; gangName: string } | null;
   /** Phase 12A: pending house teleport target for the local player (snap ref). */
   houseTeleportRef: React.MutableRefObject<[number, number, number] | null>;
   /** Phase 12A: Emit rp:getHouses. */
@@ -312,6 +314,7 @@ export default function GameScene({
   playerInventory,
   emitGetInventory,
   houses,
+  nemoGang,
   houseTeleportRef,
   emitGetHouses,
   emitBuyHouse,
@@ -1333,6 +1336,32 @@ export default function GameScene({
           onWithdraw={(amount) => { emitBankWithdraw(amount); }}
           onClose={() => setShowATM(false)}
         />
+      )}
+
+      {/* Batch B: Nemo Gang membership badge (display only; spawn authority is
+          server-side). Shown for verified members; the hood is their spawn. */}
+      {nemoGang?.isMember && (
+        <div
+          style={{
+            position: "fixed",
+            top: 64,
+            left: 18,
+            zIndex: 1400,
+            pointerEvents: "none",
+            background: "rgba(40, 18, 64, 0.78)",
+            border: "1px solid rgba(176,111,255,0.55)",
+            borderRadius: 8,
+            padding: "5px 10px",
+            fontFamily: "'Courier New', monospace",
+            fontSize: 12,
+            letterSpacing: 1,
+            color: "#d9c2ff",
+            boxShadow: "0 4px 14px rgba(0,0,0,0.4)",
+          }}
+          data-testid="hud-nemo-gang-badge"
+        >
+          🐾 {nemoGang.gangName} · spawn: hood
+        </div>
       )}
 
       {/* Phase 14A: Grand Plaza Hall event-screen panel */}

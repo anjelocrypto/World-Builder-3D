@@ -28,6 +28,12 @@ import { setupRpHandlers, type LicenseContext } from "../rp/setupRpHandlers";
 import { failTest, cleanupOnDisconnect } from "../rp/rpLicenseService";
 import { loadAndSpawnOwnedVehicles } from "../rp/rpVehicleService";
 import { cleanupPendingGangRequest, cleanupGangMission } from "../rp/rpFactionService";
+import {
+  evaluateNemoEligibilityOnJoin,
+  clearNemoEligible,
+  nemoGangStatus,
+  NEMO_HOOD_SPAWN,
+} from "../rp/rpNemoGangService";
 import { clearIdShareForPlayer } from "../rp/rpIdentityService";
 import { clearInventoryFetchForPlayer, ensureStarterInventoryForPlayer } from "../rp/rpInventoryService";
 import { ensureHousesSeeded, handleGetHouses } from "../rp/rpHouseService";
@@ -220,7 +226,12 @@ export function setupGameServer(httpServer: HttpServer) {
           : data?.character === "nemo"
             ? "nemo"
             : "classic";
-      const [sx, sy, sz] = getSpawn();
+      // Batch B: server-authoritative Nemo Gang eligibility (session cache,
+      // no DB). Eligible members spawn at the hood; everyone else at the
+      // station. Currently gated by a dev allowlist — Batch C replaces that
+      // with verified on-chain $NEMOCLAW ownership.
+      const nemoEligible = evaluateNemoEligibilityOnJoin(socket.id, username);
+      const [sx, sy, sz] = nemoEligible ? NEMO_HOOD_SPAWN : getSpawn();
       const player: PlayerState = {
         id: socket.id,
         username,
@@ -253,6 +264,10 @@ export function setupGameServer(httpServer: HttpServer) {
 
       socket.broadcast.emit("playerJoined", player);
       io.emit("playerCount", players.size);
+
+      // Batch B: tell the joining client its Nemo Gang membership (display only;
+      // spawn authority stays server-side above).
+      socket.emit("rp:nemoGangStatus", nemoGangStatus(socket.id));
 
       logger.info({ socketId: socket.id, username }, "Player joined");
 
@@ -607,6 +622,8 @@ export function setupGameServer(httpServer: HttpServer) {
       cleanupPendingGangRequest(socket.id, ctx);
       // Phase 7G: remove any active Tag Turf mission.
       cleanupGangMission(socket.id);
+      // Batch B: drop Nemo Gang session eligibility for this socket.
+      clearNemoEligible(socket.id);
       // Phase 11B/11C: clear ID-share + inventory-fetch cooldowns (keyed by
       // playerId; read before delete).
       {

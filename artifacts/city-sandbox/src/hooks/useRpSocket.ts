@@ -149,6 +149,10 @@ export function useRpSocket(socket: Socket | null) {
   const [playerInventory, setPlayerInventory] = useState<PlayerInventory | null>(null);
   // Phase 12A: house ownership list (safe payload — no owner UUIDs).
   const [houses, setHouses] = useState<HouseInfo[]>([]);
+  // Nemo Gang (Batch B): server-authoritative membership for this session.
+  // Display-only — spawn authority lives on the server. Null until the join
+  // status arrives.
+  const [nemoGang, setNemoGang] = useState<{ isMember: boolean; gangName: string } | null>(null);
   // Phase 12A: pending server-authorised house teleport target for the local
   // player. GameScene passes this ref straight to LocalPlayer, which snaps to it.
   const houseTeleportRef = useRef<[number, number, number] | null>(null);
@@ -386,6 +390,9 @@ export function useRpSocket(socket: Socket | null) {
     const onHouses = (data: { houses?: HouseInfo[] }) => {
       setHouses(data && Array.isArray(data.houses) ? data.houses : []);
     };
+    const onNemoGangStatus = (data: { isMember?: boolean; gangName?: string }) => {
+      setNemoGang({ isMember: !!data?.isMember, gangName: data?.gangName ?? "Nemo Gang" });
+    };
     const onHouseTeleport = (data: { pos?: [number, number, number] }) => {
       if (data && Array.isArray(data.pos) && data.pos.length === 3) {
         houseTeleportRef.current = data.pos;
@@ -457,6 +464,7 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:idInspected",          onIDInspected);
     socket.on("rp:inventory",            onInventory);
     socket.on("rp:houses",               onHouses);
+    socket.on("rp:nemoGangStatus",       onNemoGangStatus);
     socket.on("rp:houseTeleport",        onHouseTeleport);
 
     return () => {
@@ -495,6 +503,7 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:idInspected",          onIDInspected);
       socket.off("rp:inventory",            onInventory);
       socket.off("rp:houses",               onHouses);
+      socket.off("rp:nemoGangStatus",       onNemoGangStatus);
       socket.off("rp:houseTeleport",        onHouseTeleport);
     };
   }, [socket]);
@@ -871,6 +880,7 @@ export function useRpSocket(socket: Socket | null) {
     emitGetInventory,
     /** Phase 12A: player housing. */
     houses,
+    nemoGang,
     houseTeleportRef,
     emitGetHouses,
     emitBuyHouse,
