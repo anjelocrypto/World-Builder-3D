@@ -420,8 +420,15 @@ export function npcPositionAt(
   const z = a[1] + (b[1] - a[1]) * segT;
   const dx = b[0] - a[0];
   const dz = b[1] - a[1];
-  // rotY=0 → forward = -Z (matches LocalPlayer convention).
-  const rotY = Math.atan2(-dx, -dz);
+  // rotY for the NPC GLB avatar's VISUAL facing. NPC pedestrians now render via
+  // CharacterAvatar (the same rig as players), whose model forward is local +Z
+  // — i.e. LocalPlayer faces its avatar with `rotation.y = atan2(moveX, moveZ)`.
+  // So an NPC faces its movement direction (dx,dz) with atan2(dx, dz). The only
+  // consumer of this rotY is NPCs.tsx (LocalPlayer's collision uses x/z only).
+  //
+  // NOTE: ambient CARS use the OPPOSITE convention — CarVisual's forward is
+  // local −Z, so ambientCarStateAt() keeps atan2(-dx,-dz). Do not unify them.
+  const rotY = Math.atan2(dx, dz);
   return { x, z, rotY };
 }
 
