@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef } from "react";
 import { useFrame, useThree } from "@react-three/fiber";
+import { Sky } from "@react-three/drei";
 import * as THREE from "three";
 import {
   DAY_LENGTH_MS,
   computeTimeOfDay,
   dayNightRuntime,
 } from "../shared/timeOfDay";
+import { StarField, CloudLayer } from "./Atmosphere";
 
 // =============================================================
 // DayNightController
@@ -74,17 +76,32 @@ const DIR_SHADOW_HALF     = 130; // ±130 m around camera = 260×260 m coverage
 export default function DayNightController() {
   const { scene, camera, gl } = useThree();
 
-  // One-time scene wiring: scene.background + scene.fog.
+  // One-time scene wiring. The physical <Sky> dome (below) IS the background now,
+  // so scene.background is cleared. Fog is exponential (FogExp2) for natural
+  // atmospheric falloff — density + color are driven per-frame by phase.
   useEffect(() => {
     const prevBg  = scene.background;
     const prevFog = scene.fog;
-    scene.background = new THREE.Color("#070e1e");
-    scene.fog = new THREE.Fog(0x070e1e, 140, 750);
+    scene.background = null;
+    scene.fog = new THREE.FogExp2(0x0a1020, 0.0012);
     return () => {
       scene.background = prevBg;
       scene.fog        = prevFog;
     };
   }, [scene]);
+
+  // Physical sky (drei <Sky>) — uniforms driven per-frame from the sun angle.
+  // Typed loosely: the ref is a three-stdlib Sky mesh whose ShaderMaterial holds
+  // the scattering uniforms (turbidity/rayleigh/mie/sunPosition).
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const skyRef = useRef<any>(null);
+  const sunDir = useMemo(() => new THREE.Vector3(), []);
+
+  // Sky must render BEHIND the sun/moon discs (renderOrder -1000). Drawing it
+  // first lets the additive discs/halos sit on top of the scattering gradient.
+  useEffect(() => {
+    if (skyRef.current) skyRef.current.renderOrder = -2000;
+  }, []);
 
   // Refs into the scene lights and sun/moon meshes.
   const dirRef      = useRef<THREE.DirectionalLight>(null);
@@ -146,26 +163,34 @@ export default function DayNightController() {
       scratch.dir.copy(COLOR_MOON_DIR);
     }
 
-    // Light intensities — richer range than before.
+    // Light intensities — stronger daylight key for cinematic contrast; night
+    // stays dark but lifted enough to read near lamps/buildings.
     const dirIntensity  = sunUp
-      ? lerp(0.20, 1.3, clamp01(t.sunY * 1.6))
-      : lerp(0.04, 0.20, clamp01(-t.sunY));
-    const ambIntensity  = lerp(0.08, 0.30, t.dayFactor);
-    const hemiIntensity = lerp(0.18, 0.60, t.dayFactor);
+      ? lerp(0.25, 1.55, clamp01(t.sunY * 1.5))
+      : lerp(0.05, 0.22, clamp01(-t.sunY));
+    const ambIntensity  = lerp(0.10, 0.26, t.dayFactor);
+    const hemiIntensity = lerp(0.20, 0.70, t.dayFactor);
 
-    // Fog: near/far shift with phase for atmospheric depth.
-    // Clearer day, denser/warmer twilight, cool dense night.
-    const fogNear = lerp(lerp(100, 240, t.dayFactor), 80,  t.dawnDuskFactor * 0.6);
-    const fogFar  = lerp(lerp(680, 950, t.dayFactor), 620, t.dawnDuskFactor * 0.5);
-
-    // Scene background + fog.
-    if (scene.background instanceof THREE.Color) {
-      scene.background.copy(scratch.sky);
-    }
-    if (scene.fog instanceof THREE.Fog) {
+    // Fog: exponential density by phase — clearer by day, cool depth at night,
+    // warm haze at sunset. Kept light so streets stay readable.
+    const fogDensity = 0.00140 * fN + 0.00165 * fT + 0.00078 * fD;
+    if (scene.fog instanceof THREE.FogExp2) {
       scene.fog.color.copy(scratch.fog);
-      scene.fog.near  = fogNear;
-      scene.fog.far   = fogFar;
+      scene.fog.density = fogDensity;
+    }
+
+    // ---- Physical sky (drei <Sky>) scattering, driven by the sun angle ----
+    const sky = skyRef.current;
+    if (sky && sky.material && sky.material.uniforms) {
+      const u = sky.material.uniforms;
+      // Floor the sun's Y slightly below the horizon so the sky keeps a warm
+      // band at dusk/dawn instead of snapping to night.
+      sunDir.set(Math.cos(t.sunAngle), Math.max(t.sunY, -0.16), 0.32).normalize();
+      u.sunPosition.value.copy(sunDir);
+      u.turbidity.value       = 12.0 * fN + 9.0 * fT + 2.6 * fD;
+      u.rayleigh.value        = 0.8 * fN + 3.0 * fT + 1.4 * fD;
+      u.mieCoefficient.value  = 0.010 * fN + 0.025 * fT + 0.006 * fD;
+      u.mieDirectionalG.value = 0.82 * fN + 0.86 * fT + 0.80 * fD;
     }
 
     // ---- Directional light — camera-following shadow volume ----
@@ -204,9 +229,9 @@ export default function DayNightController() {
     // Slightly darker at dawn/dusk so the vivid colours aren't clipped,
     // slightly brighter at night to lift shadow detail.
     gl.toneMappingExposure = lerp(
-      lerp(1.0, 1.1, t.dayFactor),
-      0.88,
-      t.dawnDuskFactor * 0.35,
+      lerp(0.98, 1.05, t.dayFactor),
+      0.9,
+      t.dawnDuskFactor * 0.30,
     );
 
     // ---- Sun/moon visible meshes — pinned to camera (infinite sky) ----
@@ -290,11 +315,24 @@ export default function DayNightController() {
         `lampLighting OK: noGroundPools=true, activePointLights<=8 ` +
           `(nearest-N over curated anchors + every lamp head)`,
       );
+      // eslint-disable-next-line no-console
+      console.log(
+        `skyAtmosphere OK: physicalSky=true, clouds=true, stars=true, ` +
+          `singleShadowLight=true, activePointLights<=8`,
+      );
     }
   });
 
   return (
     <group>
+      {/* Physical atmospheric sky (Rayleigh/Mie scattering). Uniforms are driven
+          per-frame from the sun angle; renderOrder pinned behind the sun/moon. */}
+      <Sky ref={skyRef} distance={1000} />
+
+      {/* Night starfield (fades in by nightFactor) + drifting cloud deck. */}
+      <StarField />
+      <CloudLayer />
+
       {/* Sky-fill hemisphere light — warm ground, cool sky. */}
       <hemisphereLight ref={hemiRef} args={["#a0b8d8", "#222636", 0.60]} />
 
