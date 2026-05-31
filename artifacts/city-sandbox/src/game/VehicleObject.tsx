@@ -207,6 +207,17 @@ function getShadowMat(): THREE.MeshBasicMaterial {
     transparent: true,
     depthWrite: false,
     toneMapped: false,
+    // Decal-style depth handling so the contact shadow never z-fights with
+    // road / bridge / ramp / sloped-terrain planes it sits just above:
+    //  - depthWrite:false  → it never competes to WRITE depth (can't corrupt the
+    //    buffer or make other surfaces flicker against it).
+    //  - polygonOffset (negative) → biases its depth slightly toward the camera
+    //    so it consistently WINS the depth test over near-coplanar ground,
+    //    rather than tying and flickering. Combined with the +0.02 m physical
+    //    lift in CarVisual, flicker is eliminated on flat roads and slopes alike.
+    polygonOffset: true,
+    polygonOffsetFactor: -2,
+    polygonOffsetUnits: -2,
   });
   return _shadowMat;
 }
