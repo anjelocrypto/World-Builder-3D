@@ -34,6 +34,7 @@ import {
   nemoGangStatus,
   NEMO_HOOD_SPAWN,
 } from "../rp/rpNemoGangService";
+import { clearSolanaSession } from "../rp/rpSolanaService";
 import { clearIdShareForPlayer } from "../rp/rpIdentityService";
 import { clearInventoryFetchForPlayer, ensureStarterInventoryForPlayer } from "../rp/rpInventoryService";
 import { ensureHousesSeeded, handleGetHouses } from "../rp/rpHouseService";
@@ -624,6 +625,8 @@ export function setupGameServer(httpServer: HttpServer) {
       cleanupGangMission(socket.id);
       // Batch B: drop Nemo Gang session eligibility for this socket.
       clearNemoEligible(socket.id);
+      // Batch C: drop any pending wallet nonce + rate-limit state.
+      clearSolanaSession(socket.id);
       // Phase 11B/11C: clear ID-share + inventory-fetch cooldowns (keyed by
       // playerId; read before delete).
       {

@@ -96,6 +96,9 @@ export default function Game({ username, character = "classic" }: GameProps) {
     emitGetInventory,
     houses,
     nemoGang,
+    nemoSign,
+    emitNemoRequestNonce,
+    emitNemoVerify,
     houseTeleportRef,
     emitGetHouses,
     emitBuyHouse,
@@ -224,6 +227,9 @@ export default function Game({ username, character = "classic" }: GameProps) {
       emitGetInventory={emitGetInventory}
       houses={houses}
       nemoGang={nemoGang}
+      nemoSign={nemoSign}
+      emitNemoRequestNonce={emitNemoRequestNonce}
+      emitNemoVerify={emitNemoVerify}
       houseTeleportRef={houseTeleportRef}
       emitGetHouses={emitGetHouses}
       emitBuyHouse={emitBuyHouse}

@@ -153,6 +153,9 @@ export function useRpSocket(socket: Socket | null) {
   // Display-only — spawn authority lives on the server. Null until the join
   // status arrives.
   const [nemoGang, setNemoGang] = useState<{ isMember: boolean; gangName: string } | null>(null);
+  // Batch C: the server-issued message the wallet must sign (carries a fresh
+  // nonce). Bumped via a monotonic token so the HUD re-signs on each request.
+  const [nemoSign, setNemoSign] = useState<{ message: string; token: number } | null>(null);
   // Phase 12A: pending server-authorised house teleport target for the local
   // player. GameScene passes this ref straight to LocalPlayer, which snaps to it.
   const houseTeleportRef = useRef<[number, number, number] | null>(null);
@@ -393,6 +396,11 @@ export function useRpSocket(socket: Socket | null) {
     const onNemoGangStatus = (data: { isMember?: boolean; gangName?: string }) => {
       setNemoGang({ isMember: !!data?.isMember, gangName: data?.gangName ?? "Nemo Gang" });
     };
+    const onNemoNonce = (data: { message?: string }) => {
+      if (typeof data?.message === "string") {
+        setNemoSign({ message: data.message, token: Date.now() });
+      }
+    };
     const onHouseTeleport = (data: { pos?: [number, number, number] }) => {
       if (data && Array.isArray(data.pos) && data.pos.length === 3) {
         houseTeleportRef.current = data.pos;
@@ -465,6 +473,7 @@ export function useRpSocket(socket: Socket | null) {
     socket.on("rp:inventory",            onInventory);
     socket.on("rp:houses",               onHouses);
     socket.on("rp:nemoGangStatus",       onNemoGangStatus);
+    socket.on("rp:nemoNonce",            onNemoNonce);
     socket.on("rp:houseTeleport",        onHouseTeleport);
 
     return () => {
@@ -504,6 +513,7 @@ export function useRpSocket(socket: Socket | null) {
       socket.off("rp:inventory",            onInventory);
       socket.off("rp:houses",               onHouses);
       socket.off("rp:nemoGangStatus",       onNemoGangStatus);
+      socket.off("rp:nemoNonce",            onNemoNonce);
       socket.off("rp:houseTeleport",        onHouseTeleport);
     };
   }, [socket]);
@@ -651,6 +661,13 @@ export function useRpSocket(socket: Socket | null) {
   const emitBuyHouse    = useCallback((slug: string) => { socket?.emit("rp:buyHouse", { slug }); }, [socket]);
   const emitEnterHouse  = useCallback((slug: string) => { socket?.emit("rp:enterHouse", { slug }); }, [socket]);
   const emitExitHouse   = useCallback(() => { socket?.emit("rp:exitHouse"); }, [socket]);
+  // Batch C: Nemo Gang wallet verification — request a nonce, submit signature.
+  // The client only ever sends these two events; the server decides eligibility.
+  const emitNemoRequestNonce = useCallback(() => { socket?.emit("rp:nemoRequestNonce"); }, [socket]);
+  const emitNemoVerify = useCallback(
+    (pubkey: string, signature: string) => { socket?.emit("rp:nemoVerify", { pubkey, signature }); },
+    [socket],
+  );
 
   /** Phase 6C: emit rp:cuff — officer cuffs a nearby wanted player. */
   const emitCuff = useCallback(
@@ -881,6 +898,9 @@ export function useRpSocket(socket: Socket | null) {
     /** Phase 12A: player housing. */
     houses,
     nemoGang,
+    nemoSign,
+    emitNemoRequestNonce,
+    emitNemoVerify,
     houseTeleportRef,
     emitGetHouses,
     emitBuyHouse,

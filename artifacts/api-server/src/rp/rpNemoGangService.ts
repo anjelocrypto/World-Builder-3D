@@ -46,6 +46,16 @@ export function isNemoEligible(socketId: string): boolean {
   return eligible.has(socketId);
 }
 
+/**
+ * Grant eligibility after a SUCCESSFUL server-side wallet+token verification
+ * (Batch C). The only caller is the rp:nemoVerify handler, which has already
+ * proven wallet ownership and a sufficient on-chain $NEMOCLAW balance. Session-
+ * only — cleared on disconnect like every other eligibility path.
+ */
+export function grantNemoEligible(socketId: string): void {
+  eligible.add(socketId);
+}
+
 export function clearNemoEligible(socketId: string): void {
   eligible.delete(socketId);
 }

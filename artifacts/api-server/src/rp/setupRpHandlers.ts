@@ -40,6 +40,8 @@ import {
   handlePoliceInspectID,
 } from "./rpIdentityService";
 import { handleGetInventory } from "./rpInventoryService";
+import { issueNemoNonce, verifyNemoWallet } from "./rpSolanaService";
+import { grantNemoEligible, nemoGangStatus, NEMO_HOOD_SPAWN } from "./rpNemoGangService";
 import { handleGetHouses, handleBuyHouse, handleEnterHouse, handleExitHouse } from "./rpHouseService";
 import { handleGlobalChat } from "./rpGlobalService";
 import { handleVoiceSetEnabled, handleVoiceOffer, handleVoiceAnswer, handleVoiceIce } from "./rpVoiceService";
@@ -140,6 +142,53 @@ export function setupRpHandlers(
           duration: 4000,
         });
       });
+    },
+  );
+
+  // ── Nemo Gang wallet verification (Batch C) ───────────────────────────────
+  // C1: client requests a server-issued single-use nonce to sign. Client may
+  // ONLY trigger this and submit { pubkey, signature } — it never decides
+  // eligibility. Rate-limited + TTL'd inside rpSolanaService.
+  socket.on("rp:nemoRequestNonce", () => {
+    const res = issueNemoNonce(socket.id);
+    if (!res.ok) {
+      socket.emit("rp:toast", { msg: res.reason ?? "Try again shortly.", color: "yellow", duration: 2500 });
+      return;
+    }
+    socket.emit("rp:nemoNonce", { message: res.message });
+  });
+
+  // C1+C2: client submits { pubkey, signature } over the server-reconstructed
+  // message. Server verifies the signature, then checks the on-chain $NEMOCLAW
+  // balance by mint. On success it grants session eligibility, re-emits status,
+  // and teleports the player to the hood. Fails closed on every error.
+  socket.on(
+    "rp:nemoVerify",
+    (data: { pubkey?: unknown; signature?: unknown } | null | undefined) => {
+      verifyNemoWallet(socket.id, data?.pubkey, data?.signature)
+        .then((result) => {
+          if (result.ok && result.eligible) {
+            grantNemoEligible(socket.id);
+            socket.emit("rp:nemoGangStatus", nemoGangStatus(socket.id));
+            // Server-authoritative teleport to the hood spawn (reuses the same
+            // client snap channel as house teleports).
+            const player = ctx.players.get(socket.id);
+            if (player && !player.isInVehicle) {
+              const [hx, hy, hz] = NEMO_HOOD_SPAWN;
+              const moved = { ...player, x: hx, y: hy, z: hz, isInVehicle: false, vehicleId: null, speed: 0 };
+              ctx.players.set(socket.id, moved);
+              ctx.io.emit("playerMoved", moved);
+              socket.emit("rp:houseTeleport", { pos: [hx, hy, hz] });
+            }
+            socket.emit("rp:toast", { msg: `🐾 ${result.reason}`, color: "green", duration: 4000 });
+          } else {
+            socket.emit("rp:toast", { msg: result.reason, color: result.ok ? "yellow" : "red", duration: 4000 });
+          }
+        })
+        .catch((err) => {
+          logger.error({ err, socketId: socket.id }, "[rp] nemoVerify threw");
+          socket.emit("rp:toast", { msg: "Wallet verification failed — try again.", color: "red", duration: 4000 });
+        });
     },
   );
 

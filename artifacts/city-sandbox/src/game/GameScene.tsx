@@ -29,6 +29,7 @@ import CityLedgerHUD from "./CityLedgerHUD";
 import IDCardHUD from "./IDCardHUD";
 import ReceivedIDHUD from "./ReceivedIDHUD";
 import InventoryHUD from "./InventoryHUD";
+import WalletConnectHUD from "./WalletConnectHUD";
 import RPBuildings from "./RPBuildings";
 import RPHouses from "./RPHouses";
 import NemoHood from "./NemoHood";
@@ -214,6 +215,10 @@ interface GameSceneProps {
   houses: HouseInfo[];
   /** Batch B: server-authoritative Nemo Gang membership for this session. */
   nemoGang: { isMember: boolean; gangName: string } | null;
+  /** Batch C: server-issued message to sign for wallet verification. */
+  nemoSign: { message: string; token: number } | null;
+  emitNemoRequestNonce: () => void;
+  emitNemoVerify: (pubkey: string, signature: string) => void;
   /** Phase 12A: pending house teleport target for the local player (snap ref). */
   houseTeleportRef: React.MutableRefObject<[number, number, number] | null>;
   /** Phase 12A: Emit rp:getHouses. */
@@ -315,6 +320,9 @@ export default function GameScene({
   emitGetInventory,
   houses,
   nemoGang,
+  nemoSign,
+  emitNemoRequestNonce,
+  emitNemoVerify,
   houseTeleportRef,
   emitGetHouses,
   emitBuyHouse,
@@ -433,6 +441,10 @@ export default function GameScene({
   const [showInventory, setShowInventory] = useState(false);
   const showInventoryRef = useRef(showInventory);
   showInventoryRef.current = showInventory;
+  // Batch C: Nemo Gang wallet-verify panel (N).
+  const [showWallet, setShowWallet] = useState(false);
+  const showWalletRef = useRef(showWallet);
+  showWalletRef.current = showWallet;
   // Phase 11C: stable ref for the inventory fetch emitter (used in keydown handler).
   const emitGetInventoryRef = useRef(emitGetInventory);
   emitGetInventoryRef.current = emitGetInventory;
@@ -629,6 +641,7 @@ export default function GameScene({
         e.code !== "KeyC" &&  // Phase 11A: C opens the ID/wallet card (anywhere)
         e.code !== "KeyV" &&  // Phase 11B: V = on-duty officer inspects nearest ID
         e.code !== "KeyO" &&  // Phase 11C: O opens the inventory (anywhere)
+        e.code !== "KeyN" &&  // Batch C: N opens the Nemo Gang wallet-verify panel
         e.code !== "F7"
       ) return;
       // Ignore key-repeat (held key firing continuously).
@@ -656,6 +669,7 @@ export default function GameScene({
         showCityLedgerHUDRef.current ||
         showIDCardRef.current ||
         showInventoryRef.current ||
+        showWalletRef.current ||
         receivedIDOpenRef.current ||
         showHouseBuyRef.current ||
         showGlobalChatRef.current ||
@@ -695,6 +709,17 @@ export default function GameScene({
         } else if (!anyModalOpen) {
           emitGetInventoryRef.current();
           setShowInventory(true);
+        }
+        return;
+      }
+
+      // Batch C: N toggles the Nemo Gang wallet-verify panel. Close always
+      // allowed; open only when no other modal is blocking.
+      if (e.code === "KeyN") {
+        if (showWalletRef.current) {
+          setShowWallet(false);
+        } else if (!anyModalOpen) {
+          setShowWallet(true);
         }
         return;
       }
@@ -1626,6 +1651,17 @@ export default function GameScene({
       {/* Phase 11C: read-only personal inventory (O key, anywhere) */}
       {showInventory && (
         <InventoryHUD inventory={playerInventory} onClose={() => setShowInventory(false)} />
+      )}
+
+      {/* Batch C: Nemo Gang wallet-verify panel (N). */}
+      {showWallet && (
+        <WalletConnectHUD
+          onClose={() => setShowWallet(false)}
+          nemoSign={nemoSign}
+          isMember={!!nemoGang?.isMember}
+          emitNemoRequestNonce={emitNemoRequestNonce}
+          emitNemoVerify={emitNemoVerify}
+        />
       )}
 
       {/* Phase 12A: house purchase confirmation modal */}
