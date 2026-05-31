@@ -11,6 +11,9 @@ import {
   PROPS,
 } from "../shared/cityData";
 import type { Building, PropData } from "../shared/types";
+import {
+  GROUND_BASE_Y, ROAD_SURFACE_Y, ROAD_MARKING_Y, DECAL_Y,
+} from "../shared/visualLayers";
 import CentralRail from "./CentralRail";
 
 // =============================================================
@@ -21,7 +24,7 @@ function Ground() {
   // Base ground covers the full 1000-unit playable area plus a small
   // overhang. Biome render layers a per-region tint plane on top.
   return (
-    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0, 0]} receiveShadow>
+    <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, GROUND_BASE_Y, 0]} receiveShadow>
       <planeGeometry args={[1100, 1100]} />
       {/* MeshStandard gives the city ground a subtle roughness under ACES
           lighting, so it reads as compacted earth/tarmac rather than a
@@ -48,7 +51,7 @@ function Roads() {
       {ROADS.ns.map((x) => (
         <group key={`ns-${x}`}>
           {/* Carriageway */}
-          <mesh position={[x, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+          <mesh position={[x, ROAD_SURFACE_Y, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
             <planeGeometry args={[20, 200]} />
             <meshLambertMaterial color={ROAD_COLOR} />
           </mesh>
@@ -56,7 +59,7 @@ function Roads() {
           {Array.from({ length: 20 }, (_, i) => (
             <mesh
               key={i}
-              position={[x, 0.02, -95 + i * 10]}
+              position={[x, ROAD_MARKING_Y, -95 + i * 10]}
               rotation={[-Math.PI / 2, 0, 0]}
             >
               <planeGeometry args={[0.3, 4]} />
@@ -64,11 +67,11 @@ function Roads() {
             </mesh>
           ))}
           {/* Lane edge lines (white) at ±9 from centerline */}
-          <mesh position={[x - 9, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <mesh position={[x - 9, ROAD_MARKING_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[0.2, 200]} />
             <meshBasicMaterial color="#ffffff" />
           </mesh>
-          <mesh position={[x + 9, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <mesh position={[x + 9, ROAD_MARKING_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[0.2, 200]} />
             <meshBasicMaterial color="#ffffff" />
           </mesh>
@@ -95,25 +98,25 @@ function Roads() {
       {/* E-W roads */}
       {ROADS.ew.map((z) => (
         <group key={`ew-${z}`}>
-          <mesh position={[0, 0.01, z]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+          <mesh position={[0, ROAD_SURFACE_Y, z]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
             <planeGeometry args={[200, 20]} />
             <meshLambertMaterial color={ROAD_COLOR} />
           </mesh>
           {Array.from({ length: 20 }, (_, i) => (
             <mesh
               key={i}
-              position={[-95 + i * 10, 0.02, z]}
+              position={[-95 + i * 10, ROAD_MARKING_Y, z]}
               rotation={[-Math.PI / 2, 0, 0]}
             >
               <planeGeometry args={[4, 0.3]} />
               <meshBasicMaterial color={LANE_COLOR} />
             </mesh>
           ))}
-          <mesh position={[0, 0.02, z - 9]} rotation={[-Math.PI / 2, 0, 0]}>
+          <mesh position={[0, ROAD_MARKING_Y, z - 9]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[200, 0.2]} />
             <meshBasicMaterial color="#ffffff" />
           </mesh>
-          <mesh position={[0, 0.02, z + 9]} rotation={[-Math.PI / 2, 0, 0]}>
+          <mesh position={[0, ROAD_MARKING_Y, z + 9]} rotation={[-Math.PI / 2, 0, 0]}>
             <planeGeometry args={[200, 0.2]} />
             <meshBasicMaterial color="#ffffff" />
           </mesh>
@@ -164,7 +167,7 @@ function Crosswalks() {
       {stripes.map((s, i) => (
         <mesh
           key={i}
-          position={[s.x, 0.025, s.z]}
+          position={[s.x, DECAL_Y, s.z]}
           rotation={[-Math.PI / 2, 0, s.rot]}
         >
           <planeGeometry args={[1.2, 0.5]} />
@@ -585,11 +588,11 @@ function ParkingMarkings() {
       {PARKING_SPOTS.map((p, i) => (
         <mesh
           key={i}
-          position={[p.x, 0.03, p.z]}
+          position={[p.x, DECAL_Y, p.z]}
           rotation={[-Math.PI / 2, 0, p.rotY]}
         >
           <planeGeometry args={[2.6, 5.2]} />
-          <meshBasicMaterial color="#ffffff" transparent opacity={0.18} />
+          <meshBasicMaterial color="#ffffff" transparent opacity={0.18} depthWrite={false} />
         </mesh>
       ))}
     </group>

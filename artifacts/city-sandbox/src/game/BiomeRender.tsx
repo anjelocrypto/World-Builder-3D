@@ -22,6 +22,9 @@ import {
 import { getRoadElevationAt } from "../shared/elevation";
 import { terrainHeightAt } from "../shared/terrain";
 import { dayNightRuntime } from "../shared/timeOfDay";
+import {
+  MOUNTAIN_TERRAIN_Y, BIOME_TINT_Y, BIOME_SEAM_Y, ROAD_SURFACE_Y, ROAD_MARKING_Y,
+} from "../shared/visualLayers";
 import type {
   RoadPath, StaticObstacle, RegionalLampData, TreeInstance,
   PeriCityHomestead,
@@ -76,7 +79,7 @@ function RegionalRoadSegment({
     // planeGeometry default: width along local +X, height along local +Y,
     // normal +Z. So (right, fwd, up) is exactly the basis we want.
     m.makeBasis(right, fwd, up);
-    m.setPosition((ax + bx) / 2, (ay + by) / 2 + 0.02, (az + bz) / 2);
+    m.setPosition((ax + bx) / 2, (ay + by) / 2 + ROAD_SURFACE_Y, (az + bz) / 2);
     return { matrix: m, lenS: lenSv };
   }, [ax, ay, az, bx, by, bz]);
   useEffect(() => {
@@ -173,7 +176,7 @@ function MountainTerrain() {
     // Slight downward bias so the heightfield's flat baseline (y=0)
     // hides beneath the BiomeGround tiles and only the elevated parts
     // are visible. flatShading reads as rugged rock facets.
-    <mesh geometry={geom} position={[0, -0.02, 0]} receiveShadow>
+    <mesh geometry={geom} position={[0, MOUNTAIN_TERRAIN_Y, 0]} receiveShadow>
       <meshStandardMaterial color="#3a3630" roughness={0.92} metalness={0.04} flatShading />
     </mesh>
   );
@@ -194,7 +197,7 @@ function BiomeGround() {
       {/* North mountain region: handled by MountainTerrain heightfield
           (no flat tile here — would z-fight with the rising terrain). */}
       {/* Forest (south) */}
-      <mesh position={[0, 0.001, 340]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh position={[0, BIOME_TINT_Y, 340]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[1000, 320]} />
         <meshLambertMaterial color="#2a3a26" />
       </mesh>
@@ -204,12 +207,12 @@ function BiomeGround() {
         <meshLambertMaterial color="#15161a" />
       </mesh>
       {/* East suburban / industrial */}
-      <mesh position={[300, 0.001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh position={[300, BIOME_TINT_Y, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[400, 400]} />
         <meshLambertMaterial color="#4a4438" />
       </mesh>
       {/* West fields */}
-      <mesh position={[-300, 0.001, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh position={[-300, BIOME_TINT_Y, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[400, 400]} />
         <meshLambertMaterial color="#5a5238" />
       </mesh>
@@ -219,21 +222,22 @@ function BiomeGround() {
           stays at y=0 in the flat suburban areas — covered by the
           tints above). */}
 
-      {/* Transition strips at biome→city seams (y=0.0015 sits just
-          above the base biome tints to overpaint the rectangular edge). */}
-      <mesh position={[0, 0.0015, -110]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      {/* Transition strips at biome→city seams (BIOME_SEAM_Y sits just above
+          the base biome tints to overpaint the rectangular edge, still below
+          road surfaces — see shared/visualLayers.ts). */}
+      <mesh position={[0, BIOME_SEAM_Y, -110]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[1000, 32]} />
         <meshLambertMaterial color="#473e34" />
       </mesh>
-      <mesh position={[0, 0.0015, 195]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh position={[0, BIOME_SEAM_Y, 195]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[1000, 38]} />
         <meshLambertMaterial color="#3a402c" />
       </mesh>
-      <mesh position={[110, 0.0015, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh position={[110, BIOME_SEAM_Y, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[32, 400]} />
         <meshLambertMaterial color="#473d35" />
       </mesh>
-      <mesh position={[-110, 0.0015, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
+      <mesh position={[-110, BIOME_SEAM_Y, 0]} rotation={[-Math.PI / 2, 0, 0]} receiveShadow>
         <planeGeometry args={[32, 400]} />
         <meshLambertMaterial color="#52472f" />
       </mesh>
@@ -250,7 +254,7 @@ function BridgeLaneStripes() {
       {positions.map((z) => (
         <mesh
           key={z}
-          position={[0, 0.012, z]}
+          position={[0, ROAD_MARKING_Y, z]}
           rotation={[-Math.PI / 2, 0, 0]}
         >
           <planeGeometry args={[0.35, 4]} />

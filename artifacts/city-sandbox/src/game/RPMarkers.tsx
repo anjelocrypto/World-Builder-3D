@@ -15,6 +15,7 @@ import { useRef } from "react";
 import { useFrame } from "@react-three/fiber";
 import * as THREE from "three";
 import type { ActiveTest, ActiveJob, ActiveGangMission, GangTerritoryStatus } from "../shared/rpTypes";
+import { DECAL_Y } from "../shared/visualLayers";
 import {
   STATION_MARKER_POS,
   GOVERNMENT_OFFICE_DESK,
@@ -415,7 +416,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         </mesh>
 
         {/* Ground ring indicator — radius 9–10 m */}
-        <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[9, 10, 48]} />
           <meshStandardMaterial
             ref={ringMatRef}
@@ -438,7 +439,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         return (
           <group position={[ox, 0, oz]}>
             {/* Ground ring — 5–6 m radius */}
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[5, 6, 48]} />
               <meshStandardMaterial
                 ref={officeRingRef}
@@ -465,7 +466,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         return (
           <group position={[dx, 0, dz]}>
             {/* Ground ring — 6–7 m radius, gold/green */}
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[6, 7, 48]} />
               <meshStandardMaterial
                 ref={dealerRingRef}
@@ -492,7 +493,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         return (
           <group position={[dpx, 0, dpz]}>
             {/* Ground ring — 5–6 m radius, orange/municipal */}
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[5, 6, 48]} />
               <meshStandardMaterial
                 ref={depotRingRef}
@@ -519,7 +520,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         return (
           <group position={[tdx, 0, tdz]}>
             {/* Ground ring — 5–6 m radius, yellow/cab */}
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[5, 6, 48]} />
               <meshStandardMaterial
                 ref={taxiDepotRingRef}
@@ -546,7 +547,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         return (
           <group position={[dhx, 0, dhz]}>
             {/* Ground ring — 5–6 m radius, brown/cargo */}
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[5, 6, 48]} />
               <meshStandardMaterial
                 ref={deliveryHubRingRef}
@@ -573,7 +574,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         return (
           <group position={[mgx, 0, mgz]}>
             {/* Ground ring — 5–6 m radius, steel/industrial gray */}
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[5, 6, 48]} />
               <meshStandardMaterial
                 ref={mechanicGarageRingRef}
@@ -607,7 +608,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         return (
           <group position={[cx, 0, cz]}>
             {/* Ground ring — 10–11 m (vehicle-scale) */}
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[10, 11, 48]} />
               <meshStandardMaterial
                 ref={mechanicCpRingRef}
@@ -658,7 +659,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
           return (
             <group key={`jcp-${i}`} position={[cx, 0, cz]}>
               {/* Ground ring — 7–8 m, orange/amber */}
-              <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
                 <ringGeometry args={[7, 8, 48]} />
                 <meshStandardMaterial
                   ref={jobCpRingRefs[i]}
@@ -718,7 +719,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
           return (
             <group key={`tcp-${i}`} position={[cx, 0, cz]}>
               {/* Ground ring — 10–11 m (larger for vehicles) */}
-              <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
                 <ringGeometry args={[10, 11, 48]} />
                 <meshStandardMaterial
                   ref={taxiCpRingRefs[i]}
@@ -778,7 +779,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
           return (
             <group key={`dcp-${i}`} position={[cx, 0, cz]}>
               {/* Ground ring — 10–11 m (vehicle-scale) */}
-              <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
                 <ringGeometry args={[10, 11, 48]} />
                 <meshStandardMaterial
                   ref={deliveryCpRingRefs[i]}
@@ -831,7 +832,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         return (
           <group position={[mcx, 0, mcz]}>
             {/* Ground ring — 5–6 m radius, red/white medical */}
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[5, 6, 48]} />
               <meshStandardMaterial
                 ref={medicCenterRingRef}
@@ -863,7 +864,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         const emissiveColor = "#ff2244";
         return (
           <group position={[cx, 0, cz]}>
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[10, 11, 48]} />
               <meshStandardMaterial
                 ref={medicPatientRingRef}
@@ -896,7 +897,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         const emissiveColor = "#4488ff";
         return (
           <group position={[erx, 0, erz]}>
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[10, 11, 48]} />
               <meshStandardMaterial
                 ref={medicErRingRef}
@@ -928,7 +929,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         return (
           <group position={[psx, 0, psz]}>
             {/* Ground ring — 5–6 m radius, navy/blue */}
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[5, 6, 48]} />
               <meshStandardMaterial
                 ref={policeStationRingRef}
@@ -960,7 +961,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
           return (
             <group key={`pcp-${i}`} position={[cx, 0, cz]}>
               {/* Ground ring — 10–11 m (vehicle-scale) */}
-              <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
                 <ringGeometry args={[10, 11, 48]} />
                 <meshStandardMaterial
                   ref={policeCpRingRefs[i]}
@@ -1015,7 +1016,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         return (
           <group key={`atm-${id}`} position={[ax, 0, az]}>
             {/* Ground ring — 3–4 m (walk-up scale) */}
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[3, 4, 32]} />
               <meshStandardMaterial
                 ref={atmRingRefs[i]}
@@ -1067,7 +1068,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
       {/* ════ Phase 6D: Booking Desk marker ════════════════════════════════════ */}
       <group position={[POLICE_BOOKING_DESK_POS[0], POLICE_BOOKING_DESK_POS[1], POLICE_BOOKING_DESK_POS[2]]}>
         {/* Ground ring — 4 m radius */}
-        <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[3.5, 4.5, 40]} />
           <meshStandardMaterial
             ref={bookingDeskRingRef}
@@ -1112,7 +1113,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
       {/* ════ Phase 6D: Jail Cell confinement ring ══════════════════════════════ */}
       <group position={[POLICE_JAIL_CELL[0], POLICE_JAIL_CELL[1], POLICE_JAIL_CELL[2]]}>
         {/* Ground ring — matches POLICE_JAIL_RADIUS (6 m, Phase 10C) */}
-        <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[5.5, 6, 48]} />
           <meshStandardMaterial
             ref={jailCellRingRef}
@@ -1146,7 +1147,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
       {/* ════ Phase 6D: Release Exit gate ═══════════════════════════════════════ */}
       <group position={[POLICE_RELEASE_POS[0], POLICE_RELEASE_POS[1], POLICE_RELEASE_POS[2]]}>
         {/* Ground ring — matches POLICE_RELEASE_RADIUS (4 m) */}
-        <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+        <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <ringGeometry args={[3.5, 4.5, 40]} />
           <meshStandardMaterial
             ref={releaseExitRingRef}
@@ -1235,7 +1236,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         return (
           <group position={[gx, 0, gz]}>
             {/* Ground ring — 5–6 m radius, gang green */}
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[5, 6, 48]} />
               <meshStandardMaterial
                 ref={gangHangoutRingRef}
@@ -1383,7 +1384,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
         return (
           <group position={[gx, 0, gz]}>
             {/* Ground ring — civic indigo */}
-            <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+            <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
               <ringGeometry args={[innerR, outerR, 48]} />
               <meshStandardMaterial
                 ref={govOfficeRingRef}
@@ -1411,7 +1412,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
           return (
             <group key={`cp-${i}`} position={[cx, 0, cz]}>
               {/* Ground ring */}
-              <mesh position={[0, 0.01, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+              <mesh position={[0, DECAL_Y, 0]} rotation={[-Math.PI / 2, 0, 0]}>
                 <ringGeometry args={[7, 8, 48]} />
                 <meshStandardMaterial
                   ref={cpRingRefs[i]}

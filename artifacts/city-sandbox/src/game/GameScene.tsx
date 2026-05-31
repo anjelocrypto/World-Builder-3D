@@ -1239,7 +1239,10 @@ export default function GameScene({
           shadows
           dpr={[1, 1.5]}
           gl={{ powerPreference: "high-performance", antialias: false, stencil: false }}
-          camera={{ fov: 75, near: 0.1, far: 1500, position: [0, 8, 15] }}
+          // near raised 0.1 -> 0.5 to massively improve far-distance depth
+          // precision (kills ground/biome z-fighting at 200-500m). Safe for the
+          // third-person camera, which never sits within 0.5m of geometry.
+          camera={{ fov: 75, near: 0.5, far: 1500, position: [0, 8, 15] }}
           style={{ width: "100%", height: "100%" }}
           onCreated={({ gl }) => configureWorldRenderer(gl)}
         >

@@ -165,7 +165,7 @@ export default function MenuWorldPreview() {
         failIfMajorPerformanceCaveat: false,
       }}
       onCreated={({ gl }) => configureWorldRenderer(gl)}
-      camera={{ fov: 60, near: 0.1, far: 1500, position: SHOTS[0].pos }}
+      camera={{ fov: 60, near: 0.5, far: 1500, position: SHOTS[0].pos }}
       style={{
         position: "absolute",
         inset: 0,
