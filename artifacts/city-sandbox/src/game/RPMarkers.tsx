@@ -453,7 +453,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             </mesh>
 
             {/* Phase 9B-3: signpost/board removed — the RPBuildings DMV shell now
-                provides identity (consistent with Batch D). Subtle accent light kept. */}
+                provides identity (consistent with Batch D). */}
             {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
@@ -480,7 +480,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             </mesh>
 
             {/* Phase 9A Batch D: signpost/board removed — the RPBuildings dealership
-                shell now provides identity. Subtle accent light kept. */}
+                shell now provides identity. */}
             {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
@@ -507,7 +507,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             </mesh>
 
             {/* Phase 9A Batch D: signpost/board removed — the RPBuildings Public Works
-                depot shell now provides identity. Subtle accent light kept. */}
+                depot shell now provides identity. */}
             {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
@@ -534,8 +534,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             </mesh>
 
             {/* Phase 9B-1: signpost/board removed — the RPBuildings taxi depot
-                shell now provides identity (consistent with Batch D). Subtle
-                accent light kept. */}
+                shell now provides identity (consistent with Batch D). */}
             {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
@@ -562,8 +561,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             </mesh>
 
             {/* Phase 9B-2: signpost/board removed — the RPBuildings delivery hub
-                shell now provides identity (consistent with Batch D). Subtle
-                accent light kept. */}
+                shell now provides identity (consistent with Batch D). */}
             {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
@@ -590,7 +588,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             </mesh>
 
             {/* Phase 9A Batch D: signpost/board removed — the RPBuildings mechanic
-                garage shell now provides identity. Subtle accent light kept. */}
+                garage shell now provides identity. */}
             {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
@@ -848,7 +846,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             </mesh>
 
             {/* Phase 9A Batch D: signpost/board removed — the RPBuildings medical
-                center shell now provides identity. Subtle accent light kept. */}
+                center shell now provides identity. */}
             {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
@@ -945,8 +943,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             </mesh>
 
             {/* Phase 9B-4b: signpost/board removed — the RPBuildings police station
-                shell now provides identity (consistent with Batch D). Subtle
-                accent light kept. */}
+                shell now provides identity (consistent with Batch D). */}
             {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
@@ -1392,7 +1389,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
                 ref={govOfficeRingRef}
                 color="#0a0e2a"
                 emissive="#3355cc"
-                emissiveIntensity={0.4}
+                emissiveIntensity={0.6}
                 transparent
                 opacity={0.55}
                 side={THREE.DoubleSide}
@@ -1401,14 +1398,8 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             </mesh>
 
             {/* Phase 9A Batch D: signpost/board/accent removed — the RPBuildings
-                City Hall shell now provides identity. Subtle accent light kept. */}
-            <pointLight
-              position={[0, 2.5, 0]}
-              color="#4466dd"
-              intensity={1.0}
-              distance={12}
-              decay={2}
-            />
+                City Hall shell now provides identity. */}
+            {/* Accent light removed (light-budget) — emissive ground ring carries the glow. */}
           </group>
         );
       })()}
