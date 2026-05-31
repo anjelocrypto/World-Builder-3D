@@ -8,30 +8,79 @@ import {
   type NpcStumbleMap,
 } from "../shared/collision";
 import type { NpcRoute } from "../shared/types";
+import CharacterAvatar, { type CharacterRuntime } from "./character/CharacterAvatar";
+import { type CharacterId } from "./character/characterCatalog";
+import { WALK_THRESH, RUN_THRESH } from "./character/characterState";
 
 interface NPCsProps {
   stumbleRef: React.MutableRefObject<NpcStumbleMap>;
 }
 
+// Pool of selectable characters NPC pedestrians draw from. All three have
+// idle/walk/run locomotion clips, so they animate correctly as walkers. GLBs
+// are shared via the Drei useGLTF URL cache (AnimatedCharacter preloads every
+// character once), so adding NPC instances clones meshes but never re-fetches.
+const NPC_CHARACTER_POOL: CharacterId[] = ["simple", "nemo", "classic"];
+
+/**
+ * Deterministic character for an NPC, chosen by its stable route id (NOT random
+ * per render) so the same pedestrian always wears the same model and never
+ * flickers between frames. e.g. id 0 → simple, 1 → nemo, 2 → classic, 3 → simple…
+ */
+export function npcCharacterFor(id: number): CharacterId {
+  const n = NPC_CHARACTER_POOL.length;
+  return NPC_CHARACTER_POOL[((id % n) + n) % n];
+}
+
 interface NpcEntry {
   route: NpcRoute;
+  character: CharacterId;
+  /** Per-NPC animation runtime read by its CharacterAvatar each frame. A plain
+   *  {current} object (stable across renders) — CharacterAvatar only READS it. */
+  runtimeRef: React.MutableRefObject<CharacterRuntime>;
   group: THREE.Group | null;
+  lastX: number;
+  lastZ: number;
+  hasLast: boolean;
 }
 
 /**
- * Renders all ambient NPC pedestrians defined in cityData.NPC_ROUTES
- * with a SINGLE useFrame walking the array, instead of one-per-NPC
- * (was N R3F frame subscriptions). Stumble logic is preserved exactly.
+ * Renders all ambient NPC pedestrians defined in cityData.NPC_ROUTES using the
+ * SAME selectable character GLB system as players (Simple / Nemo / Classic),
+ * assigned deterministically per route id. A SINGLE useFrame walks the array
+ * (one shared subscription for positioning), computing each NPC's deterministic
+ * route position + heading and a per-frame speed that drives its idle/walk/run
+ * animation. Stumble/knockback (offset + tilt + lift) is preserved exactly.
  *
- * Visual children only retain castShadow on the body (the legs/head
- * shadow contribution was negligible relative to the body + cost a
- * shadow-pass draw call per NPC).
+ * Client-only and deterministic — positions come from npcPositionAt(Date.now()),
+ * no server/DB. NPCs never attack/talk/die/gethit (attackSeq stays 0, animState
+ * is only ever idle/walk/run).
  */
 export default function NPCs({ stumbleRef }: NPCsProps) {
-  const data = useMemo(() => NPC_ROUTES.map((r) => r), []);
-  const refs = useRef<NpcEntry[]>(data.map((r) => ({ route: r, group: null })));
+  const data = useMemo<NpcEntry[]>(
+    () =>
+      NPC_ROUTES.map((route) => ({
+        route,
+        character: npcCharacterFor(route.id),
+        runtimeRef: {
+          current: {
+            animState: "walk",
+            speed: 0,
+            attackSeq: 0,
+            attackKind: null,
+            attackStartedAt: null,
+          },
+        },
+        group: null,
+        lastX: 0,
+        lastZ: 0,
+        hasLast: false,
+      })),
+    [],
+  );
+  const refs = useRef<NpcEntry[]>(data);
 
-  useFrame(() => {
+  useFrame((_, delta) => {
     const tMs = Date.now();
     const arr = refs.current;
     const stumbles = stumbleRef.current;
@@ -42,6 +91,22 @@ export default function NPCs({ stumbleRef }: NPCsProps) {
       const route = e.route;
       const { x, z, rotY: heading } = npcPositionAt(route, tMs);
       const bob = Math.sin(tMs / 220 + route.id) * 0.05;
+
+      // Locomotion animation from the BASE route speed (excludes the transient
+      // stumble offset so the walk/idle choice doesn't jitter on a shove).
+      const moved = e.hasLast ? Math.hypot(x - e.lastX, z - e.lastZ) : 0;
+      const speed = e.hasLast && delta > 0 ? moved / delta : 0;
+      const rt = e.runtimeRef.current;
+      rt.speed = speed;
+      rt.animState =
+        speed > RUN_THRESH
+          ? "run"
+          : speed > WALK_THRESH || !e.hasLast
+            ? "walk"
+            : "idle";
+      e.lastX = x;
+      e.lastZ = z;
+      e.hasLast = true;
 
       let offX = 0;
       let offZ = 0;
@@ -59,6 +124,8 @@ export default function NPCs({ stumbleRef }: NPCsProps) {
         stumbles.delete(route.id);
       }
 
+      // GLB avatar feet sit at the group origin → y is just the bob/lift; the
+      // pedestrians walk on flat city ground (y=0), so no float/sink.
       g.position.set(x + offX, bob + yLift, z + offZ);
       g.rotation.set(0, heading, tiltZ);
     }
@@ -66,33 +133,15 @@ export default function NPCs({ stumbleRef }: NPCsProps) {
 
   return (
     <group>
-      {data.map((route, i) => (
+      {data.map((e, i) => (
         <group
-          key={route.id}
+          key={e.route.id}
           ref={(g) => {
-            const e = refs.current[i];
-            if (e) e.group = g;
+            const entry = refs.current[i];
+            if (entry) entry.group = g;
           }}
         >
-          {/* Body (capsule) — kept shadow-casting; tallest piece. */}
-          <mesh position={[0, 0.65, 0]} castShadow>
-            <capsuleGeometry args={[0.22, 0.7, 4, 8]} />
-            <meshLambertMaterial color={route.shirtColor} />
-          </mesh>
-          {/* Legs (no shadow — saves N draw calls in the shadow pass). */}
-          <mesh position={[-0.12, 0.18, 0]}>
-            <boxGeometry args={[0.16, 0.36, 0.16]} />
-            <meshLambertMaterial color="#2c3e50" />
-          </mesh>
-          <mesh position={[0.12, 0.18, 0]}>
-            <boxGeometry args={[0.16, 0.36, 0.16]} />
-            <meshLambertMaterial color="#2c3e50" />
-          </mesh>
-          {/* Head (no shadow). */}
-          <mesh position={[0, 1.42, 0]}>
-            <sphereGeometry args={[0.2, 10, 10]} />
-            <meshLambertMaterial color={route.skinColor} />
-          </mesh>
+          <CharacterAvatar runtimeRef={e.runtimeRef} characterId={e.character} />
         </group>
       ))}
     </group>
