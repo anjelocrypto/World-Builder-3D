@@ -441,7 +441,10 @@ export function npcPositionAt(
  * interpolation of the stored waypoint headings. Interpolating across the whole
  * segment turned the car toward the next segment early, so it visibly drove
  * sideways on straights. The stored waypoint rotY (index 2) is now legacy/
- * diagnostic only. rotY=0 → forward = −Z (matches LocalPlayer + npcPositionAt).
+ * diagnostic only. rotY=0 → forward = −Z, because CarVisual's model forward is
+ * local −Z. This is the CAR convention only — it is intentionally OPPOSITE to
+ * npcPositionAt() (whose GLB avatars are +Z forward, atan2(dx,dz)) and to the
+ * LocalPlayer avatar (atan2(moveX,moveZ)). Do not unify the two.
  */
 export function ambientCarStateAt(
   route: TrafficRoute,
