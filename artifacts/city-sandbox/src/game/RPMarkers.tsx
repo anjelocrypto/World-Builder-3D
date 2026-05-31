@@ -429,7 +429,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
           />
         </mesh>
 
-        <pointLight position={[0, 5, -3]} color="#5577ff" intensity={3} distance={18} decay={2} />
+        {/* Accent light removed (light-budget) — the emissive sign + ground ring carry the glow. */}
       </group>
 
       {/* ════ Licensing Office marker ════════════════════════════════════════ */}
@@ -454,7 +454,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
 
             {/* Phase 9B-3: signpost/board removed — the RPBuildings DMV shell now
                 provides identity (consistent with Batch D). Subtle accent light kept. */}
-            <pointLight position={[0, 2.5, 0]} color="#ffaa22" intensity={1.0} distance={12} decay={2} />
+            {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
       })()}
@@ -481,7 +481,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
 
             {/* Phase 9A Batch D: signpost/board removed — the RPBuildings dealership
                 shell now provides identity. Subtle accent light kept. */}
-            <pointLight position={[0, 2.5, 0]} color="#66cc22" intensity={1.0} distance={12} decay={2} />
+            {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
       })()}
@@ -508,7 +508,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
 
             {/* Phase 9A Batch D: signpost/board removed — the RPBuildings Public Works
                 depot shell now provides identity. Subtle accent light kept. */}
-            <pointLight position={[0, 2.5, 0]} color="#ff8833" intensity={1.0} distance={12} decay={2} />
+            {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
       })()}
@@ -536,7 +536,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             {/* Phase 9B-1: signpost/board removed — the RPBuildings taxi depot
                 shell now provides identity (consistent with Batch D). Subtle
                 accent light kept. */}
-            <pointLight position={[0, 2.5, 0]} color="#f5c518" intensity={1.0} distance={12} decay={2} />
+            {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
       })()}
@@ -564,7 +564,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             {/* Phase 9B-2: signpost/board removed — the RPBuildings delivery hub
                 shell now provides identity (consistent with Batch D). Subtle
                 accent light kept. */}
-            <pointLight position={[0, 2.5, 0]} color="#c8884a" intensity={1.0} distance={12} decay={2} />
+            {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
       })()}
@@ -591,7 +591,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
 
             {/* Phase 9A Batch D: signpost/board removed — the RPBuildings mechanic
                 garage shell now provides identity. Subtle accent light kept. */}
-            <pointLight position={[0, 2.5, 0]} color="#8899bb" intensity={1.0} distance={12} decay={2} />
+            {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
       })()}
@@ -849,7 +849,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
 
             {/* Phase 9A Batch D: signpost/board removed — the RPBuildings medical
                 center shell now provides identity. Subtle accent light kept. */}
-            <pointLight position={[0, 2.5, 0]} color="#ff2244" intensity={1.0} distance={12} decay={2} />
+            {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
       })()}
@@ -947,7 +947,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             {/* Phase 9B-4b: signpost/board removed — the RPBuildings police station
                 shell now provides identity (consistent with Batch D). Subtle
                 accent light kept. */}
-            <pointLight position={[0, 2.5, 0]} color="#2255cc" intensity={1.0} distance={12} decay={2} />
+            {/* Accent light removed (light-budget) — emissive ring carries the glow. */}
           </group>
         );
       })()}
@@ -1024,7 +1024,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
                 ref={atmRingRefs[i]}
                 color="#003322"
                 emissive="#00cc88"
-                emissiveIntensity={0.4}
+                emissiveIntensity={0.6}
                 transparent
                 opacity={0.45}
                 side={THREE.DoubleSide}
@@ -1062,13 +1062,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
               <meshStandardMaterial color="#ffffff" emissive="#aaffdd" emissiveIntensity={2} />
             </mesh>
 
-            <pointLight
-              position={[0, 1.6, 0]}
-              color="#00cc88"
-              intensity={1.8}
-              distance={10}
-              decay={2}
-            />
+            {/* Accent light removed (light-budget) — the emissive screen/strip + ring glow. */}
           </group>
         );
       })}
@@ -1082,7 +1076,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             ref={bookingDeskRingRef}
             color="#3d1a00"
             emissive="#cc6600"
-            emissiveIntensity={0.4}
+            emissiveIntensity={0.6}
             transparent
             opacity={0.55}
             side={THREE.DoubleSide}
@@ -1115,13 +1109,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
           <meshStandardMaterial color="#ffffff" emissive="#ffcc88" emissiveIntensity={2} />
         </mesh>
 
-        <pointLight
-          position={[0, 3.6, -1.8]}
-          color="#cc6600"
-          intensity={1.4}
-          distance={10}
-          decay={2}
-        />
+        {/* Accent light removed (light-budget) — emissive sign board + ring carry the glow. */}
       </group>
 
       {/* ════ Phase 6D: Jail Cell confinement ring ══════════════════════════════ */}
@@ -1133,7 +1121,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             ref={jailCellRingRef}
             color="#200000"
             emissive="#cc0000"
-            emissiveIntensity={0.3}
+            emissiveIntensity={0.45}
             transparent
             opacity={0.35}
             side={THREE.DoubleSide}
@@ -1155,13 +1143,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
           </mesh>
         ))}
 
-        <pointLight
-          position={[0, 3, 0]}
-          color="#cc2200"
-          intensity={0.8}
-          distance={12}
-          decay={2}
-        />
+        {/* Accent light removed (light-budget) — emissive ring + bar pillars carry the glow. */}
       </group>
 
       {/* ════ Phase 6D: Release Exit gate ═══════════════════════════════════════ */}
@@ -1173,7 +1155,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
             ref={releaseExitRingRef}
             color="#002010"
             emissive="#00cc55"
-            emissiveIntensity={0.4}
+            emissiveIntensity={0.6}
             transparent
             opacity={0.55}
             side={THREE.DoubleSide}
@@ -1241,13 +1223,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
           <meshStandardMaterial color="#ffffff" emissive="#aaffcc" emissiveIntensity={2} />
         </mesh>
 
-        <pointLight
-          position={[0, 4, 0]}
-          color="#00cc55"
-          intensity={1.6}
-          distance={12}
-          decay={2}
-        />
+        {/* Accent light removed (light-budget) — emissive gate arch + ring carry the glow. */}
       </group>
 
       {/* ════ License-test checkpoint rings — only while test is active ════════
@@ -1301,7 +1277,7 @@ export default function RPMarkers({ activeTest, activeJob, activeGangMission, ga
               <meshStandardMaterial color="#ffffff" emissive="#81c784" emissiveIntensity={2} />
             </mesh>
 
-            <pointLight position={[0, 4, 0]} color="#2e7d32" intensity={2.5} distance={14} decay={2} />
+            {/* Accent light removed (light-budget) — emissive ring + pillar carry the glow. */}
           </group>
         );
       })()}

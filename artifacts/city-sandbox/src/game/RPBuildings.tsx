@@ -337,7 +337,7 @@ function RPBuildingMesh({ b }: { b: RpBuildingDef }) {
           {/* Colored sign board (the accent strip) */}
           <mesh position={frontPoint(b, SIGN_FACE_OUT, 0, SIGN_CENTER_Y)} rotation={[0, frontRotationY(b.facing), 0]}>
             <boxGeometry args={frontBoxArgs(b.facing, signLat, SIGN_BOARD_H, 0.3)} />
-            <meshStandardMaterial color={s.sign} emissive={s.sign} emissiveIntensity={0.6} roughness={0.4} />
+            <meshStandardMaterial color={s.sign} emissive={s.sign} emissiveIntensity={0.85} roughness={0.4} />
           </mesh>
           {/* Dark backing panel for text contrast, a hair proud of the board */}
           <mesh position={frontPoint(b, SIGN_FACE_OUT + 0.16, 0, SIGN_CENTER_Y)} rotation={[0, frontRotationY(b.facing), 0]}>
@@ -408,7 +408,7 @@ function RPBuildingMesh({ b }: { b: RpBuildingDef }) {
           rotation={[0, frontRotationY(b.facing), 0]}
         >
           <boxGeometry args={frontBoxArgs(b.facing, Math.min(2.2, frontLen * 0.2), 1.6, 0.08)} />
-          <meshStandardMaterial color="#bfe6ff" emissive="#9fd4ff" emissiveIntensity={0.4} roughness={0.25} metalness={0.1} />
+          <meshStandardMaterial color="#bfe6ff" emissive="#9fd4ff" emissiveIntensity={0.7} roughness={0.25} metalness={0.1} />
         </mesh>
       ))}
 
@@ -419,7 +419,7 @@ function RPBuildingMesh({ b }: { b: RpBuildingDef }) {
       {sideWindows.out.map((w, i) => (
         <mesh key={`win${i}`} position={[w.px, sideWindows.y, w.pz]}>
           <boxGeometry args={[w.w, 0.9, w.d]} />
-          <meshStandardMaterial color="#bfe6ff" emissive="#9fd4ff" emissiveIntensity={0.35} roughness={0.3} />
+          <meshStandardMaterial color="#bfe6ff" emissive="#9fd4ff" emissiveIntensity={0.6} roughness={0.3} />
         </mesh>
       ))}
     </group>

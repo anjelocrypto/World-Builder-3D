@@ -172,8 +172,9 @@ export default function DayNightController() {
     const hemiIntensity = lerp(0.20, 0.70, t.dayFactor);
 
     // Fog: exponential density by phase — clearer by day, cool depth at night,
-    // warm haze at sunset. Kept light so streets stay readable.
-    const fogDensity = 0.00140 * fN + 0.00165 * fT + 0.00078 * fD;
+    // warm haze at sunset. Lightened ~30% (Phase-1 polish) so the physical sky
+    // and downtown towers read clearly at distance instead of greying out.
+    const fogDensity = 0.00098 * fN + 0.00116 * fT + 0.00052 * fD;
     if (scene.fog instanceof THREE.FogExp2) {
       scene.fog.color.copy(scratch.fog);
       scene.fog.density = fogDensity;
@@ -226,12 +227,14 @@ export default function DayNightController() {
     }
 
     // ---- Tone-mapping exposure: subtle shift by phase ----
-    // Slightly darker at dawn/dusk so the vivid colours aren't clipped,
-    // slightly brighter at night to lift shadow detail.
+    // Phase-1 polish: a touch more daylight contrast (cap lifted to ~1.12) for a
+    // more cinematic look, while dawn/dusk is still pulled back so the vivid
+    // twilight colours aren't clipped. The Event Hall screen is meshBasic
+    // (unlit), so it can't blow out regardless of exposure.
     gl.toneMappingExposure = lerp(
-      lerp(0.98, 1.05, t.dayFactor),
-      0.9,
-      t.dawnDuskFactor * 0.30,
+      lerp(1.0, 1.12, t.dayFactor),
+      0.92,
+      t.dawnDuskFactor * 0.28,
     );
 
     // ---- Sun/moon visible meshes — pinned to camera (infinite sky) ----
@@ -303,22 +306,28 @@ export default function DayNightController() {
           `phase=${t.phase}, sunY=${t.sunY.toFixed(2)}, ` +
           `moonY=${t.moonY.toFixed(2)}, ` +
           `nightFactor=${t.nightFactor.toFixed(2)}, ` +
-          `activePointLights<=8`,
+          `dynamicLampBudget<=8`,
       );
       // eslint-disable-next-line no-console
       console.log(
         `lightingRealism OK: toneMapping=ACES, shadowMap=PCFSoft, ` +
-          `activePointLights<=8, windowsNightReactive=true`,
+          `dynamicLampBudget<=8, windowsNightReactive=true`,
       );
       // eslint-disable-next-line no-console
       console.log(
-        `lampLighting OK: noGroundPools=true, activePointLights<=8 ` +
+        `lampLighting OK: noGroundPools=true, dynamicLampBudget<=8 ` +
           `(nearest-N over curated anchors + every lamp head)`,
       );
       // eslint-disable-next-line no-console
+      // NOTE (Phase-1 audit): the "<=8" budget describes ONLY the dynamic lamp
+      // system (BiomeRender/DynamicPointLights). Fixed-site lights (Event Hall,
+      // landmark accents) are NOT in that budget — they are now distance-gated
+      // (see DistanceGate.tsx) so they only mount when the camera is near them,
+      // and the bulk of decorative marker lights were converted to emissive-only.
       console.log(
         `skyAtmosphere OK: physicalSky=true, clouds=true, stars=true, ` +
-          `singleShadowLight=true, activePointLights<=8`,
+          `singleShadowLight=true, dynamicLampBudget<=8, ` +
+          `fixedSiteLights=distance-gated (hall+landmarks)`,
       );
     }
   });

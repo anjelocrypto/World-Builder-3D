@@ -39,7 +39,7 @@ const ROAD_COLOR = "#18181e";       // slightly darker asphalt
 const LANE_COLOR = "#e8b830";       // aged yellow lane markings
 const SIDEWALK_COLOR = "#42424a";   // darker concrete
 const CURB_COLOR = "#626268";
-const CROSSWALK_COLOR = "#d8d8dc";
+const CROSSWALK_COLOR = "#f4f4f6";  // near-white fresh paint (Phase-1 polish)
 
 function Roads() {
   return (

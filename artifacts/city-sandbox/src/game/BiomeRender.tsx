@@ -637,6 +637,11 @@ function TreeInstances({ data }: { data: ReadonlyArray<TreeInstance> }) {
     const q = new THREE.Quaternion();
     const s = new THREE.Vector3();
     const p = new THREE.Vector3();
+    // Phase-1 polish: 3 canopy greens (mid / lighter / darker) assigned per tree
+    // from a position hash, so the forest reads with depth instead of one flat
+    // green. The canopy material is white so instanceColor multiplies to exactly
+    // these hexes. Instanced — no extra draw calls or meshes.
+    const c = new THREE.Color();
     for (let i = 0; i < count; i++) {
       const t = data[i];
       e.set(0, t.rotY, 0);
@@ -648,9 +653,13 @@ function TreeInstances({ data }: { data: ReadonlyArray<TreeInstance> }) {
       p.set(t.x, (4 + 2.5) * t.scale, t.z);
       m.compose(p, q, s);
       canopyRef.current.setMatrixAt(i, m);
+      const tone = Math.abs(((t.x * 7 + t.z * 13) | 0)) % 3;
+      c.set(tone === 0 ? "#2c5a2a" : tone === 1 ? "#39702f" : "#214a22");
+      canopyRef.current.setColorAt(i, c);
     }
     trunkRef.current.instanceMatrix.needsUpdate = true;
     canopyRef.current.instanceMatrix.needsUpdate = true;
+    if (canopyRef.current.instanceColor) canopyRef.current.instanceColor.needsUpdate = true;
     trunkRef.current.computeBoundingSphere();
     trunkRef.current.computeBoundingBox();
     canopyRef.current.computeBoundingSphere();
@@ -669,7 +678,8 @@ function TreeInstances({ data }: { data: ReadonlyArray<TreeInstance> }) {
       </instancedMesh>
       <instancedMesh ref={canopyRef} args={[undefined, undefined, count]}>
         <coneGeometry args={[1.6, 5, 8]} />
-        <meshLambertMaterial color="#2c5a2a" />
+        {/* White base so per-instance setColorAt() greens render at full value. */}
+        <meshLambertMaterial color="#ffffff" />
       </instancedMesh>
     </group>
   );

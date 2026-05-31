@@ -15,6 +15,7 @@
 
 import { useLayoutEffect, useMemo, useRef } from "react";
 import * as THREE from "three";
+import { DistanceGate } from "./DistanceGate";
 import {
   EVENT_HALL,
   EVENT_HALL_EXTENTS,
@@ -328,11 +329,16 @@ export default function EventHall({ screenVideoTexture = null, screenVideoAspect
         )),
       )}
 
-      {/* Exterior real lights — 4 max: 2 facade uplights + marquee wash + path wash */}
-      <pointLight position={[cx - 7, 0.7, zFront - 1.3]} color="#ffcaa0" intensity={9} distance={14} decay={2} />
-      <pointLight position={[cx + 7, 0.7, zFront - 1.3]} color="#ffcaa0" intensity={9} distance={14} decay={2} />
-      <pointLight position={[cx, 5.6, MARQUEE.frontZ - 0.6]} color="#ffe6c0" intensity={8} distance={16} decay={2} />
-      <pointLight position={[cx, 1.3, zFront - 7]} color="#bfe6ff" intensity={6} distance={15} decay={2} />
+      {/* Exterior real lights — 4 max: 2 facade uplights + marquee wash + path wash.
+          Distance-gated: these only mount (and so only cost shader time) when the
+          camera is near the hall, instead of being uploaded to every material
+          across the whole map. */}
+      <DistanceGate center={[cx, 4, cz]} radius={80}>
+        <pointLight position={[cx - 7, 0.7, zFront - 1.3]} color="#ffcaa0" intensity={9} distance={14} decay={2} />
+        <pointLight position={[cx + 7, 0.7, zFront - 1.3]} color="#ffcaa0" intensity={9} distance={14} decay={2} />
+        <pointLight position={[cx, 5.6, MARQUEE.frontZ - 0.6]} color="#ffe6c0" intensity={8} distance={16} decay={2} />
+        <pointLight position={[cx, 1.3, zFront - 7]} color="#bfe6ff" intensity={6} distance={15} decay={2} />
+      </DistanceGate>
 
       {/* ── Stage (raised platform at the south end) — solid sides + standable top.
             Rendered from EVENT_HALL_STAGE so visuals match the collider exactly. */}
@@ -449,18 +455,22 @@ export default function EventHall({ screenVideoTexture = null, screenVideoAspect
           cheap. Decorative fixtures below are emissive meshes (zero light cost).
           NOTE: the screen is a meshBasicMaterial (unlit), so no light can
           overexpose it regardless of the stage wash. */}
-      {/* Coloured stage accents */}
-      <pointLight position={[cx - 10, 7, zBack - 6]} color="#ff3a55" intensity={13} distance={30} decay={2} />
-      <pointLight position={[cx + 10, 7, zBack - 6]} color="#3a7bff" intensity={13} distance={30} decay={2} />
-      {/* Warm house lights down the central aisle (light chairs + aisles) */}
-      {[zFront + 8, cz, zBack - 13].map((z, i) => (
-        <pointLight key={`house-${i}`} position={[cx, 6.5, z]} color="#ffe3b0" intensity={16} distance={26} decay={2} />
-      ))}
-      {/* Side-wall sconce lights */}
-      <pointLight position={[xMin + 2, 5, cz - 6]} color="#ffd6a0" intensity={9} distance={20} decay={2} />
-      <pointLight position={[xMax - 2, 5, cz + 4]} color="#ffd6a0" intensity={9} distance={20} decay={2} />
-      {/* Warm stage wash from the audience side (lights performers, not the screen) */}
-      <pointLight position={[cx, 6.5, zBack - 13]} color="#fff0d8" intensity={12} distance={26} decay={2} />
+      {/* Interior real lights (8) — distance-gated as one group so they only enter
+          the scene's light list when the player is at/near the hall. */}
+      <DistanceGate center={[cx, 4, cz]} radius={80}>
+        {/* Coloured stage accents */}
+        <pointLight position={[cx - 10, 7, zBack - 6]} color="#ff3a55" intensity={13} distance={30} decay={2} />
+        <pointLight position={[cx + 10, 7, zBack - 6]} color="#3a7bff" intensity={13} distance={30} decay={2} />
+        {/* Warm house lights down the central aisle (light chairs + aisles) */}
+        {[zFront + 8, cz, zBack - 13].map((z, i) => (
+          <pointLight key={`house-${i}`} position={[cx, 6.5, z]} color="#ffe3b0" intensity={16} distance={26} decay={2} />
+        ))}
+        {/* Side-wall sconce lights */}
+        <pointLight position={[xMin + 2, 5, cz - 6]} color="#ffd6a0" intensity={9} distance={20} decay={2} />
+        <pointLight position={[xMax - 2, 5, cz + 4]} color="#ffd6a0" intensity={9} distance={20} decay={2} />
+        {/* Warm stage wash from the audience side (lights performers, not the screen) */}
+        <pointLight position={[cx, 6.5, zBack - 13]} color="#fff0d8" intensity={12} distance={26} decay={2} />
+      </DistanceGate>
 
       {/* ── Emissive fixtures (decorative light sources, no real lights) ── */}
       {/* Ceiling light bars spanning the width */}
