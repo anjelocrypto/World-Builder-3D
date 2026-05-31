@@ -19,6 +19,7 @@ export interface MusicTrack {
 export const MUSIC_TRACKS: MusicTrack[] = [
   { title: "On Melancholy Hill", artist: "Gorillaz", url: `${BASE}music/on-melancholy-hill.mp3` },
   { title: "Midnight City", artist: "M83", url: `${BASE}music/midnight-city.mp3` },
+  { title: "Those Were the Days", url: `${BASE}music/those-were-the-days.mp3` },
   // Add more tracks here ↓ (they join the loop automatically)
   // { title: "Your Song", artist: "Artist", url: `${BASE}music/your-song.mp3` },
 ];
