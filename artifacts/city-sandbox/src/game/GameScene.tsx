@@ -30,6 +30,7 @@ import IDCardHUD from "./IDCardHUD";
 import ReceivedIDHUD from "./ReceivedIDHUD";
 import InventoryHUD from "./InventoryHUD";
 import WalletConnectHUD from "./WalletConnectHUD";
+import MusicPlayer from "./MusicPlayer";
 import RPBuildings from "./RPBuildings";
 import RPHouses from "./RPHouses";
 import NemoHood from "./NemoHood";
@@ -1661,6 +1662,9 @@ export default function GameScene({
       {showInventory && (
         <InventoryHUD inventory={playerInventory} onClose={() => setShowInventory(false)} />
       )}
+
+      {/* Looping background soundtrack + volume control (bottom-left). */}
+      <MusicPlayer />
 
       {/* Batch A: guest-mode badge (explore-only). */}
       {isGuest && (
