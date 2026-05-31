@@ -186,7 +186,7 @@ export function setupRpHandlers(
           }
         })
         .catch((err) => {
-          logger.error({ err, socketId: socket.id }, "[rp] nemoVerify threw");
+          logger.error({ err }, "[rp] nemoVerify threw");
           socket.emit("rp:toast", { msg: "Wallet verification failed — try again.", color: "red", duration: 4000 });
         });
     },

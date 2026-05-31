@@ -163,7 +163,7 @@ export async function verifyNemoWallet(
   const msgBytes = new TextEncoder().encode(buildVerifyMessage(nonce));
   const signatureValid = nacl.sign.detached.verify(msgBytes, sigBytes, keyBytes);
   if (!signatureValid) {
-    logger.info({ socketId, outcome: "sig_invalid" }, "[nemoSolana] verify failed");
+    logger.info({ outcome: "sig_invalid" }, "[nemoSolana] verify failed");
     return { ok: false, eligible: false, reason: "Wallet signature did not verify." };
   }
 
@@ -175,13 +175,13 @@ export async function verifyNemoWallet(
     const reason = (err as Error)?.message === "RPC_UNAVAILABLE"
       ? "Wallet verification unavailable."
       : "Wallet verification temporarily unavailable.";
-    logger.warn({ socketId, outcome: "rpc_error" }, "[nemoSolana] balance check failed");
+    logger.warn({ outcome: "rpc_error" }, "[nemoSolana] balance check failed");
     return { ok: false, eligible: false, reason };
   }
 
   const min = getMinAmount();
   const eligible = min > 0 ? balance >= min : balance > 0;
-  logger.info({ socketId, outcome: eligible ? "eligible" : "ineligible" }, "[nemoSolana] verify done");
+  logger.info({ outcome: eligible ? "eligible" : "ineligible" }, "[nemoSolana] verify done");
   return {
     ok: true,
     eligible,
