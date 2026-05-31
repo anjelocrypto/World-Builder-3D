@@ -31,6 +31,7 @@ import ReceivedIDHUD from "./ReceivedIDHUD";
 import InventoryHUD from "./InventoryHUD";
 import RPBuildings from "./RPBuildings";
 import RPHouses from "./RPHouses";
+import NemoHood from "./NemoHood";
 import EventHall from "./EventHall";
 import EventHallHUD from "./EventHallHUD";
 import { useHallScreenShare } from "../hooks/useHallScreenShare";
@@ -1245,6 +1246,10 @@ export default function GameScene({
 
           {/* Phase 12A: starter player houses (sealed shells + door markers). */}
           <RPHouses />
+
+          {/* Nemo Gang hood — static SW-forest neighborhood (Batch A: visuals
+              + collision only; gang membership/spawn arrive in Batch B). */}
+          <NemoHood />
 
           {/* Phase 14A: Grand Plaza Hall event venue (SE peri-city).
               Phase 14B: live presenter screen-share maps onto the giant screen. */}

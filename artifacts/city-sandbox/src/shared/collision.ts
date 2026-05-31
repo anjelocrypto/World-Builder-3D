@@ -14,6 +14,7 @@ import {
 } from "./cityData";
 import { RP_BUILDING_WALL_BOXES, RP_HOUSE_WALL_BOXES } from "./rpTypes";
 import { EVENT_HALL_WALL_BOXES, EVENT_HALL_CHAIR_BOXES, EVENT_HALL_EXTENTS, EVENT_HALL_STAGE } from "./eventHall";
+import { nemoHoodColliders } from "./nemoHood";
 import { stationRailBoxes, STATION_RAIL_FEET_GATE } from "./railTransit";
 import { distancePointToPolyline } from "./roadGeom";
 
@@ -272,6 +273,21 @@ export function playerHitsAnyHallWall(
 ): boolean {
   const c: Circle = { x: px, z: pz, r };
   for (const w of EVENT_HALL_WALL_BOXES) {
+    if (circleVsAabb(c, { x: w.x, z: w.z, hw: w.w / 2, hd: w.d / 2 })) return true;
+  }
+  return false;
+}
+
+// Nemo Gang hood houses are solid (Batch A). Precomputed AABBs from nemoHood —
+// kept out of STATIC_OBSTACLES so no obstacle renderer double-draws them.
+const NEMO_HOOD_BOXES = nemoHoodColliders();
+export function playerHitsAnyHoodWall(
+  px: number,
+  pz: number,
+  r = PLAYER_BODY_RADIUS,
+): boolean {
+  const c: Circle = { x: px, z: pz, r };
+  for (const w of NEMO_HOOD_BOXES) {
     if (circleVsAabb(c, { x: w.x, z: w.z, hw: w.w / 2, hd: w.d / 2 })) return true;
   }
   return false;

@@ -28,6 +28,10 @@ import { distancePointToPolyline } from "./roadGeom";
 // RP_HOUSES is used only by the dev validation block to assert houses clear the
 // full world (BUILDINGS / REGIONAL_ROADS / obstacles / cars).
 import { RP_BUILDINGS, RP_HOUSES } from "./rpTypes";
+// Nemo Gang hood tree-keepout. nemoHood is a leaf module (imports only ./types),
+// so this is a one-way import — no cycle. Used solely to suppress forest scatter
+// inside the hood footprint (same mechanism as the village clearings below).
+import { NEMO_HOOD_CLEARING } from "./nemoHood";
 // Phase 14A: Grand Plaza Hall footprint + approach path, used to keep city-edge
 // trees out of the hall and its connector. eventHall only type-imports rpTypes
 // (erased at runtime), so it is a runtime leaf module — no import cycle.
@@ -1691,6 +1695,9 @@ export const FOREST_CLEARINGS: ReadonlyArray<{
   { x0:  -56, x1: -38, z0: 408, z1: 425 }, // cabin-W1 plot (centre -48,416)
   { x0:  -60, x1: -38, z0: 440, z1: 460 }, // cabin-W2 plot (centre -50,449)
   { x0:  -30, x1:  30, z0: 470, z1: 500 }, // Trailhead
+  // Nemo Gang hood (deep south-west). Suppresses forest scatter inside the
+  // hood footprint so the houses + green read cleanly. See nemoHood.ts.
+  NEMO_HOOD_CLEARING,
 ];
 
 function inAnyClearing(x: number, z: number): boolean {
@@ -4459,6 +4466,20 @@ if (isViteDev) {
       } catch (err) {
         // eslint-disable-next-line no-console
         console.error("[city-sandbox] traffic heading validation FAILED:", (err as Error).message);
+      }
+    })
+    .catch(() => { /* validator module unavailable — ignore in dev */ });
+
+  // Nemo Gang hood geometry check (houses clear roads/obstacles, no overlap).
+  void import("./nemoHoodValidator")
+    .then((m) => {
+      try {
+        const r = m.validateNemoHood();
+        // eslint-disable-next-line no-console
+        console.info(`[city-sandbox] nemo hood OK (${r.houses} houses, road ${r.minRoadClear}m, obstacles ${r.minObstacleClear}m)`);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[city-sandbox] nemo hood validation FAILED:", (err as Error).message);
       }
     })
     .catch(() => { /* validator module unavailable — ignore in dev */ });

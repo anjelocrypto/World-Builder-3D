@@ -67,6 +67,7 @@ import {
   playerHitsAnyRpWall,
   playerHitsAnyHouse,
   playerHitsAnyHallWall,
+  playerHitsAnyHoodWall,
   playerHitsAnyHallChair,
   playerHitsEventHallStageSide,
   playerHitsStationRail,
@@ -1501,6 +1502,7 @@ export default function LocalPlayer({
       playerHitsAnyRpWall(nx, pos.current.z) ||
       playerHitsAnyHouse(nx, pos.current.z) ||
       playerHitsAnyHallWall(nx, pos.current.z) ||
+      playerHitsAnyHoodWall(nx, pos.current.z) ||
       playerHitsAnyHallChair(nx, pos.current.z) ||
       playerHitsEventHallStageSide(nx, pos.current.z, feetY) ||
       playerHitsStationRail(nx, pos.current.z, feetY) ||
@@ -1518,6 +1520,7 @@ export default function LocalPlayer({
       playerHitsAnyRpWall(nx, nz) ||
       playerHitsAnyHouse(nx, nz) ||
       playerHitsAnyHallWall(nx, nz) ||
+      playerHitsAnyHoodWall(nx, nz) ||
       playerHitsAnyHallChair(nx, nz) ||
       playerHitsEventHallStageSide(nx, nz, feetY) ||
       playerHitsStationRail(nx, nz, feetY) ||

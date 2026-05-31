@@ -21,6 +21,7 @@ import {
 } from "../shared/rpTypes";
 import { TRAIN_STATIONS } from "../shared/cityData";
 import { EVENT_HALL } from "../shared/eventHall";
+import { NEMO_HOOD_HANGOUT_POS } from "../shared/nemoHood";
 
 export type MinimapPoi = {
   id: string;
@@ -108,7 +109,7 @@ function buildPois(): MinimapPoi[] {
     });
   }
 
-  // 5. Gang turf landmark — Grove Street hangout.
+  // 5. Gang turf landmarks — Grove Street + Nemo Gang hood hangouts.
   out.push({
     id: "turf-grove-street",
     label: "Grove Street",
@@ -118,6 +119,16 @@ function buildPois(): MinimapPoi[] {
     color: "#58d68d",
     size: 9,
     priority: 4,
+  });
+  out.push({
+    id: "turf-nemo-hood",
+    label: "Nemo Gang",
+    x: NEMO_HOOD_HANGOUT_POS[0],
+    z: NEMO_HOOD_HANGOUT_POS[2],
+    icon: "🐾",
+    color: "#b06fff",
+    size: 10,
+    priority: 5,
   });
 
   // 6. ATMs — from ATM_LOCATIONS ([x,y,z] pos; no label of their own).
