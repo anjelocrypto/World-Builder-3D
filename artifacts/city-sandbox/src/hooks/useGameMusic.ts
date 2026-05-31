@@ -26,6 +26,9 @@ function readMuted(): boolean {
 
 export function useGameMusic() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  // True once the player has manually paused — blocks autoplay-resume from
+  // restarting the music on the next gameplay click/keypress.
+  const userPausedRef = useRef(false);
   const [index, setIndex] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
   const [volume, setVolumeState] = useState<number>(readVol);
@@ -48,9 +51,20 @@ export function useGameMusic() {
     a.addEventListener("play", onPlay);
     a.addEventListener("pause", onPause);
 
-    // Autoplay is often blocked until the user interacts — resume on the first
-    // gesture anywhere on the page (entering the game is itself a click).
-    const resume = () => { void a.play().catch(() => {}); };
+    // Autoplay is often blocked until the user interacts. Resume on the first
+    // gesture, but ONLY to kick off the very first playback — once a play()
+    // succeeds we detach the listeners so later clicks/keys never restart the
+    // music, and we never resume if the player has manually paused.
+    const resume = () => {
+      const el = audioRef.current;
+      if (!el || userPausedRef.current) return;
+      void el.play()
+        .then(() => {
+          window.removeEventListener("pointerdown", resume);
+          window.removeEventListener("keydown", resume);
+        })
+        .catch(() => { /* still blocked — keep listening for the next gesture */ });
+    };
     window.addEventListener("pointerdown", resume);
     window.addEventListener("keydown", resume);
 
@@ -67,12 +81,15 @@ export function useGameMusic() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Load + play whenever the current track index changes (incl. first mount).
+  // Load + play whenever the current track index changes (incl. first mount and
+  // the auto-advance on track end). Respect a manual pause — load but don't play.
   useEffect(() => {
     const a = audioRef.current;
     if (!a || MUSIC_TRACKS.length === 0) return;
     a.src = MUSIC_TRACKS[index].url;
-    void a.play().catch(() => { /* blocked until a gesture; resume handler covers it */ });
+    if (!userPausedRef.current) {
+      void a.play().catch(() => { /* blocked until a gesture; resume handler covers it */ });
+    }
   }, [index]);
 
   // Sync + persist volume / mute.
@@ -95,8 +112,13 @@ export function useGameMusic() {
   const togglePlay = useCallback(() => {
     const a = audioRef.current;
     if (!a) return;
-    if (a.paused) void a.play().catch(() => {});
-    else a.pause();
+    if (a.paused) {
+      userPausedRef.current = false; // manual play — allow resume again.
+      void a.play().catch(() => {});
+    } else {
+      userPausedRef.current = true; // manual pause — keep it paused.
+      a.pause();
+    }
   }, []);
 
   return {
