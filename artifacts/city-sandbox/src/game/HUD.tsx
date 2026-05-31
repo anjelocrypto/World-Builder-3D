@@ -215,14 +215,16 @@ const PHASE_COLOR: Record<string, string> = {
   NIGHT: "#7d9cff",
 };
 
-// Single source of truth for the HUD accent palette so panels feel
-// like they're part of the same chassis instead of a debug stack.
-const ACCENT = "#00e5ff";
-const PANEL_BG = "rgba(8, 14, 28, 0.72)";
-const PANEL_BORDER = "rgba(0, 229, 255, 0.28)";
+// Single source of truth for the NEMOVERSE HUD chassis — near-black glass with
+// a restrained red accent, so every panel reads as one premium interface.
+const RED = "#ff3b46";
+const ACCENT = RED;
+const LABEL = "#9aa0aa"; // muted neutral gray for small labels
+const PANEL_BG = "rgba(10, 10, 12, 0.74)";
+const PANEL_BORDER = "rgba(226, 29, 43, 0.30)";
 const PANEL_RADIUS = 10;
 const PANEL_SHADOW =
-  "0 8px 24px rgba(0,0,0,0.45), 0 0 1px rgba(0,229,255,0.25), inset 0 1px 0 rgba(255,255,255,0.04)";
+  "0 8px 24px rgba(0,0,0,0.5), 0 0 1px rgba(226,29,43,0.30), inset 0 1px 0 rgba(255,255,255,0.05)";
 
 const MINIMAP_PX = 200;
 
@@ -554,19 +556,19 @@ function Minimap({
     const cx = Math.max(8, Math.min(W - 8, toMapX(px)));
     const cz = Math.max(8, Math.min(H - 8, toMapZ(pz)));
 
-    // Halo
-    ctx.strokeStyle = "rgba(0,229,255,0.55)";
+    // Halo (player marker) — white for max contrast over any biome/sky.
+    ctx.strokeStyle = "rgba(255,255,255,0.6)";
     ctx.lineWidth = 1.2;
     ctx.beginPath();
     ctx.arc(cx, cz, 9, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Arrow body
+    // Arrow body — white fill with a red glow (NEMOVERSE). Geometry unchanged.
     ctx.save();
     ctx.translate(cx, cz);
     ctx.rotate(heading);
-    ctx.fillStyle = ACCENT;
-    ctx.shadowColor = ACCENT;
+    ctx.fillStyle = "#ffffff";
+    ctx.shadowColor = "rgba(226,29,43,0.9)";
     ctx.shadowBlur = 8;
     ctx.beginPath();
     ctx.moveTo(0, -7); // tip
@@ -577,8 +579,8 @@ function Minimap({
     ctx.fill();
     ctx.restore();
 
-    // Phase-tinted inner border so the frame feels alive with the day cycle
-    ctx.strokeStyle = phaseColor + "55";
+    // Subtle red inner frame to match the NEMOVERSE chassis.
+    ctx.strokeStyle = "rgba(226,29,43,0.33)";
     ctx.lineWidth = 1;
     ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
   }, [px, pz, heading, phaseColor, zoomed]);
@@ -597,12 +599,13 @@ function HealthBar({ health }: { health: number }) {
   const SEGMENTS = 10;
   const healthPct = Math.max(0, Math.min(100, health));
   const filledSegments = Math.round((healthPct / 100) * SEGMENTS);
+  // NEMOVERSE: healthy = white, warning = amber, critical = brand red.
   const color =
-    healthPct > 50 ? "#2ee07a" : healthPct > 25 ? "#ffb547" : "#ff5560";
+    healthPct > 50 ? "#f2f4f8" : healthPct > 25 ? "#ffb547" : "#ff3b46";
   const glow =
-    healthPct > 50 ? "rgba(46,224,122,0.5)"
+    healthPct > 50 ? "rgba(255,255,255,0.45)"
     : healthPct > 25 ? "rgba(255,181,71,0.55)"
-    : "rgba(255,85,96,0.65)";
+    : "rgba(255,59,70,0.65)";
 
   return (
     <div
@@ -625,7 +628,7 @@ function HealthBar({ health }: { health: number }) {
           justifyContent: "space-between",
           fontSize: 10,
           letterSpacing: 2,
-          color: "#9bb",
+          color: LABEL,
           marginBottom: 6,
         }}
       >
@@ -683,7 +686,7 @@ function Speedometer({ speed, vehicleLabel }: { speed: number; vehicleLabel: str
   const fgPath = describeArc(c, c, r, 135, 135 + 270 * pct);
 
   const tickColor =
-    kph < 60 ? "#2ee07a" : kph < 140 ? "#00e5ff" : kph < 200 ? "#ffb547" : "#ff5560";
+    kph < 60 ? "#e6e9ef" : kph < 140 ? "#ffffff" : kph < 200 ? "#ffb547" : "#ff3b46";
 
   // Suppress unused warning while keeping the math available for future tuning
   void sweepRad;
@@ -921,9 +924,9 @@ export default function HUD({
             style={{
               fontSize: 16,
               fontWeight: "bold",
-              color: ACCENT,
+              color: "#fff",
               letterSpacing: 1.5,
-              textShadow: "0 0 12px rgba(0,229,255,0.45)",
+              textShadow: "0 0 14px rgba(226,29,43,0.45), 0 2px 8px rgba(0,0,0,0.7)",
               lineHeight: 1.1,
               marginBottom: 6,
             }}
@@ -936,7 +939,7 @@ export default function HUD({
               alignItems: "center",
               gap: 12,
               fontSize: 11,
-              color: "#9bb",
+              color: LABEL,
             }}
           >
             <span
@@ -960,16 +963,16 @@ export default function HUD({
               data-testid="hud-player-count"
             >
               <Users size={12} color={ACCENT} />
-              <span style={{ color: "#cde" }}>{playerCount}</span>
+              <span style={{ color: "#fff" }}>{playerCount}</span>
             </span>
           </div>
         </div>
 
-        {/* Clock — same chassis, accented by phase color */}
+        {/* Clock — NEMOVERSE chassis; a small phase dot keeps the day/night cue */}
         <div
           style={{
             background: PANEL_BG,
-            border: `1px solid ${phaseColor}55`,
+            border: `1px solid ${PANEL_BORDER}`,
             borderRadius: PANEL_RADIUS,
             padding: "8px 12px",
             boxShadow: PANEL_SHADOW,
@@ -1006,7 +1009,7 @@ export default function HUD({
             style={{
               marginLeft: "auto",
               fontSize: 10,
-              color: phaseColor,
+              color: "#b8bcc4",
               letterSpacing: 2,
               fontWeight: "bold",
             }}
@@ -1028,7 +1031,7 @@ export default function HUD({
           border: `1px solid ${PANEL_BORDER}`,
           borderRadius: PANEL_RADIUS,
           padding: 8,
-          boxShadow: `${PANEL_SHADOW}, 0 0 24px ${phaseColor}22`,
+          boxShadow: `${PANEL_SHADOW}, 0 0 24px rgba(226,29,43,0.14)`,
           backdropFilter: "blur(6px)",
           WebkitBackdropFilter: "blur(6px)",
         }}
@@ -1040,12 +1043,12 @@ export default function HUD({
             alignItems: "center",
             justifyContent: "space-between",
             fontSize: 10,
-            color: "#9bb",
+            color: LABEL,
             letterSpacing: 2,
             padding: "0 4px 6px",
           }}
         >
-          <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+          <span style={{ display: "inline-flex", alignItems: "center", gap: 5, color: "#fff", fontWeight: 700 }}>
             <Compass size={12} color={ACCENT} />
             {mapZoomed ? "ZOOM" : "MAP"}
             {/* Non-interactive key hint; brightens when zoom is active. */}
@@ -1054,8 +1057,8 @@ export default function HUD({
                 marginLeft: 2,
                 padding: "0 4px",
                 borderRadius: 3,
-                border: `1px solid ${mapZoomed ? ACCENT : "rgba(0,229,255,0.3)"}`,
-                color: mapZoomed ? ACCENT : "#9bb",
+                border: `1px solid ${mapZoomed ? ACCENT : "rgba(255,255,255,0.22)"}`,
+                color: mapZoomed ? ACCENT : LABEL,
                 fontSize: 8,
                 lineHeight: "12px",
               }}
@@ -1063,7 +1066,7 @@ export default function HUD({
               M
             </span>
           </span>
-          <span style={{ color: "#556", fontVariantNumeric: "tabular-nums" }}>
+          <span style={{ color: "#7a7d85", fontVariantNumeric: "tabular-nums" }}>
             {Math.round(playerPositionX)}, {Math.round(playerPositionZ)}
           </span>
         </div>
@@ -1074,7 +1077,7 @@ export default function HUD({
             height: MINIMAP_PX,
             borderRadius: 6,
             overflow: "hidden",
-            border: `1px solid ${phaseColor}44`,
+            border: "1px solid rgba(226,29,43,0.30)",
           }}
         >
           <Minimap
