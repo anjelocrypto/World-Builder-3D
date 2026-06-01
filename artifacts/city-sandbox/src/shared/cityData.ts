@@ -1380,11 +1380,13 @@ export const ROAD_ELEVATION_PROFILES: Record<string, number[]> = {
   "ridge-east-high":      [6, 14, 22, 12, 0],
   "ridge-west":           [8, 6, 4, 2, 0],
   "summit-pass":          [16, 14, 6, 0],
-  // East/west foothill ridges (smaller climbs — visual ramparts on the
-  // sides of the world). Endpoints stay at Y=0 so they join flat-land
-  // outer-loop / east-service / west-utility cleanly.
-  "ridge-east-far":       [0, 4, 6, 0],
-  "ridge-west-far":       [0, 4, 6, 0],
+  // East/west foothill ridges — now climb a low PASS through the perimeter
+  // hill wall (the surrounding chain peaks ~40-47m; these 5-dome gaps drop to
+  // 6m so the road rides over at ~8-10m). Endpoints stay at Y=0 so they join
+  // the flat outer-loop / east-service / west-utility nodes cleanly. Grades
+  // ≈11-13% on the approach ramps.
+  "ridge-east-far":       [0, 8, 10, 0],
+  "ridge-west-far":       [0, 8, 10, 0],
   // East Ridge Heights — climbs the NE shelf from the shared ridge-east-high
   // node (Y=14) to the crest overlook (Y=21). Each vertex Y >= the existing
   // terrain there so the carriageway sits on the hillside, not buried.
@@ -1452,27 +1454,79 @@ export const MOUNTAIN_MASSIFS: ReadonlyArray<{
   { x:  150, z: -502, r: 106, h: 66 }, // central-east crest — broad overlook
   { x:  230, z: -500, r: 104, h: 64 },
   { x:  300, z: -498, r: 100, h: 54 },
-  // ---- East rampart (foothills wrapping the eastern outer loop) ----
-  // Skip the z=-200..30 band where ridge-east-far lives so the dome
-  // footprints don't intrude on the carriageway.
-  { x:  498, z: -400, r: 20, h: 25 },
-  { x:  498, z: -300, r: 20, h: 25 },
-  { x:  498, z:   80, r: 20, h: 24 },
-  { x:  498, z:  200, r: 22, h: 26 },
-  { x:  498, z:  320, r: 20, h: 24 },
-  { x:  498, z:  440, r: 18, h: 22 },
-  // ---- West rampart (mirror) ----
-  { x: -498, z: -400, r: 20, h: 25 },
-  { x: -498, z: -300, r: 20, h: 25 },
-  { x: -498, z:   80, r: 20, h: 24 },
-  { x: -498, z:  200, r: 22, h: 26 },
-  { x: -498, z:  320, r: 20, h: 24 },
-  { x: -498, z:  440, r: 18, h: 22 },
-  // ---- South wall (kept clear of village/cabins/trailhead) ----
-  { x: -380, z:  495, r: 30, h: 35 },
-  { x: -200, z:  498, r: 22, h: 28 },
-  { x:  200, z:  498, r: 22, h: 28 },
-  { x:  380, z:  495, r: 30, h: 35 },
+  // =====================================================================
+  // PERIMETER HILL RING — frames the whole map so the city sits in a bowl of
+  // hills (north = the dramatic Nemo range above; this rings E / W / S).
+  // All domes pre-checked to float NO flat structure or flat road (each centre
+  // clears every flat footprint by its radius). South flanks are broad hills
+  // wrapping the forested valley; the central south clearing (x≈-70..140) is
+  // intentionally left open for the forest village + cabins. E/W are tight
+  // foothill chains in the ~40m strip between the outer-loop (x=±460) and the
+  // map edge (±500) — narrow by necessity, so a rolling chain rather than a
+  // single smooth wall. ridge-east-far / ridge-west-far roads are elevated to
+  // ride these (see ROAD_ELEVATION_PROFILES).
+  // ---- South-west flank (broad, wraps the forest valley) ----
+  { x: -400, z: 496, r: 86, h: 46 },
+  { x: -330, z: 496, r: 86, h: 52 },
+  { x: -250, z: 496, r: 86, h: 55 },
+  { x: -175, z: 496, r: 86, h: 50 },
+  // ---- South-east flank ----
+  { x:  175, z: 496, r: 86, h: 48 },
+  { x:  255, z: 496, r: 86, h: 55 },
+  { x:  335, z: 496, r: 86, h: 53 },
+  { x:  405, z: 496, r: 86, h: 46 },
+  // ---- East edge foothill chain (x=499, clears outer-loop) ----
+  { x:  499, z: -360, r: 31, h: 40 },
+  { x:  499, z: -324, r: 31, h: 46 },
+  { x:  499, z: -288, r: 31, h: 42 },
+  { x:  499, z: -252, r: 31, h: 47 },
+  { x:  499, z: -216, r: 31, h: 41 },
+  { x:  499, z: -180, r: 31, h: 45 },
+  // PASS: these 5 domes are lowered to 6m so the ridge-east-far scenic road
+  // (x=495, z≈-30..-120) threads a low gap in the hill wall instead of being
+  // buried. The road is elevated (profile below) to ride this pass.
+  { x:  499, z: -144, r: 26, h: 6 },
+  { x:  499, z: -108, r: 26, h: 6 },
+  { x:  499, z: -72, r: 26, h: 6 },
+  { x:  499, z: -36, r: 26, h: 6 },
+  { x:  499, z: 0, r: 26, h: 6 },
+  { x:  499, z: 36, r: 31, h: 45 },
+  { x:  499, z: 72, r: 31, h: 41 },
+  { x:  499, z: 108, r: 31, h: 46 },
+  { x:  499, z: 144, r: 31, h: 43 },
+  { x:  499, z: 180, r: 31, h: 47 },
+  { x:  499, z: 216, r: 31, h: 40 },
+  { x:  499, z: 252, r: 31, h: 45 },
+  { x:  499, z: 288, r: 31, h: 42 },
+  { x:  499, z: 324, r: 31, h: 46 },
+  { x:  499, z: 360, r: 31, h: 41 },
+  { x:  499, z: 396, r: 31, h: 45 },
+  { x:  499, z: 432, r: 31, h: 43 },
+  // ---- West edge foothill chain (mirror) ----
+  { x: -499, z: -360, r: 31, h: 40 },
+  { x: -499, z: -324, r: 31, h: 46 },
+  { x: -499, z: -288, r: 31, h: 42 },
+  { x: -499, z: -252, r: 31, h: 47 },
+  { x: -499, z: -216, r: 31, h: 41 },
+  { x: -499, z: -180, r: 31, h: 45 },
+  // PASS for ridge-west-far (x=-495, z≈-50..-120): mirror of the east pass.
+  { x: -499, z: -144, r: 26, h: 6 },
+  { x: -499, z: -108, r: 26, h: 6 },
+  { x: -499, z: -72, r: 26, h: 6 },
+  { x: -499, z: -36, r: 26, h: 6 },
+  { x: -499, z: 0, r: 26, h: 6 },
+  { x: -499, z: 36, r: 31, h: 45 },
+  { x: -499, z: 72, r: 31, h: 41 },
+  { x: -499, z: 108, r: 31, h: 46 },
+  { x: -499, z: 144, r: 31, h: 43 },
+  { x: -499, z: 180, r: 31, h: 47 },
+  { x: -499, z: 216, r: 31, h: 40 },
+  { x: -499, z: 252, r: 31, h: 45 },
+  { x: -499, z: 288, r: 31, h: 42 },
+  { x: -499, z: 324, r: 31, h: 46 },
+  { x: -499, z: 360, r: 31, h: 41 },
+  { x: -499, z: 396, r: 31, h: 45 },
+  { x: -499, z: 432, r: 31, h: 43 },
 ];
 
 // =============================================================
