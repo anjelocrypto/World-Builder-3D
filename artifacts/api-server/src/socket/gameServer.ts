@@ -42,6 +42,11 @@ import {
   isWalletVerified,
   clearWalletAuth,
 } from "../rp/rpWalletAuth";
+import {
+  handleAdminVerify,
+  isAdminVerified,
+  clearAdminAuth,
+} from "../rp/rpAdminAuth";
 import { clearIdShareForPlayer } from "../rp/rpIdentityService";
 import { clearInventoryFetchForPlayer, ensureStarterInventoryForPlayer } from "../rp/rpInventoryService";
 import { ensureHousesSeeded, handleGetHouses } from "../rp/rpHouseService";
@@ -113,9 +118,11 @@ interface PlayerState {
   /** Selectable character model id; set once at join, never via playerUpdate. */
   character: "classic" | "simple" | "nemo";
   /** Batch A: account entry mode (server-owned). */
-  authMode: "guest" | "wallet" | "email";
+  authMode: "guest" | "wallet" | "email" | "admin";
   /** Batch A: true for guest sessions (no token / no DB / no RP handlers). */
   isGuest: boolean;
+  /** Admin: true only after the server-verified, env-gated admin handshake. */
+  isAdmin: boolean;
   /** Phase 15A-2: true while riding the loop train (remote renderers hide them). */
   isInTrain: boolean;
 }
@@ -233,6 +240,12 @@ export function setupGameServer(httpServer: HttpServer) {
     socket.on("auth:walletNonce", () => handleWalletNonce(socket));
     socket.on("auth:walletVerify", (data) => handleWalletVerify(socket, data));
 
+    // Admin LOGIN handshake (env-gated, dev/testing). Proves a dev passcode
+    // BEFORE join; the join handler then accepts an "admin:<username>" token
+    // only for a socket that passed this. Server-authoritative — a client can
+    // never grant itself admin. See rpAdminAuth.ts.
+    socket.on("auth:adminVerify", (data) => handleAdminVerify(socket, data));
+
     socket.on("join", async (data: { username: string; token?: string; character?: unknown; authMode?: unknown }) => {
       const username = (data?.username ?? "Player").slice(0, 20);
       // Batch A/B: the SERVER owns the final auth mode. Validate the token FIRST,
@@ -241,7 +254,8 @@ export function setupGameServer(httpServer: HttpServer) {
       // before validation (that broke wallet login). RP is active iff token!=="".
       const requestedMode =
         data?.authMode === "wallet" ? "wallet" :
-        data?.authMode === "email"  ? "email"  : "guest";
+        data?.authMode === "email"  ? "email"  :
+        data?.authMode === "admin"  ? "admin"  : "guest";
       const submittedToken = typeof data?.token === "string" ? data.token.trim() : "";
       let token = "";
       if (requestedMode !== "guest" && submittedToken) {
@@ -254,14 +268,25 @@ export function setupGameServer(httpServer: HttpServer) {
           } else {
             socket.emit("rp:toast", { msg: "Wallet not verified — reconnect.", color: "red", duration: 4000 });
           }
+        } else if (submittedToken.startsWith("admin:")) {
+          // Accepted ONLY if THIS socket passed the env-gated admin passcode
+          // handshake for exactly this username this session. A client claiming
+          // "admin:..." without that proof is dropped → guest (no privilege).
+          const adminUser = submittedToken.slice("admin:".length);
+          if (adminUser && isAdminVerified(socket.id, adminUser)) {
+            token = `admin:${adminUser}`;
+          } else {
+            socket.emit("rp:toast", { msg: "Admin not verified.", color: "red", duration: 4000 });
+          }
         } else {
           token = submittedToken.slice(0, 36); // legacy UUID only
         }
       }
+      const isAdmin = token.startsWith("admin:");
       // Final state derives from the validated token: an unverified wallet (or
       // any tokenless session) is guest-equivalent — no RP, no Nemo eligibility.
       const isGuest = token === "";
-      const authMode: "guest" | "wallet" | "email" = isGuest ? "guest" : requestedMode;
+      const authMode: "guest" | "wallet" | "email" | "admin" = isGuest ? "guest" : requestedMode;
       setGuestSocket(socket.id, isGuest);
       // Validate the selected character against the allowlist (mirror of the
       // client characterCatalog CHARACTER_IDS). Anything else → "classic".
@@ -300,6 +325,7 @@ export function setupGameServer(httpServer: HttpServer) {
         isInTrain: false,
         authMode,
         isGuest,
+        isAdmin,
       };
       players.set(socket.id, player);
 
@@ -684,6 +710,7 @@ export function setupGameServer(httpServer: HttpServer) {
       clearGuestSocket(socket.id);
       // Batch B: drop proven-wallet session state.
       clearWalletAuth(socket.id);
+      clearAdminAuth(socket.id);
       // Phase 11B/11C: clear ID-share + inventory-fetch cooldowns (keyed by
       // playerId; read before delete).
       {

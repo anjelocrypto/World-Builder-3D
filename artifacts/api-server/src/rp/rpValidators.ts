@@ -10,6 +10,7 @@
  *  - rotY = 0 → vehicle front faces −Z (matches collision.ts + LocalPlayer).
  */
 
+import { isAdminSocket } from "./rpAdminAuth";
 import {
   STATION_SPAWN,
   STATION_SPAWN_JITTER_X,
@@ -794,6 +795,7 @@ export function canDriveVehicle(
   rpCacheMap:     Map<string, RpCacheEntry>,
   rpTestStateMap: Map<string, TestState>,
 ): boolean {
+  if (isAdminSocket(socketId))                    return true; // admin bypass (env-gated, server-verified)
   const rp   = rpCacheMap.get(socketId);
   const test = rpTestStateMap.get(socketId);
   if (rp?.driverLicense)                          return true;

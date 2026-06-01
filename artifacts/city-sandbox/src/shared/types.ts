@@ -72,6 +72,8 @@ export interface PlayerState {
   authMode?: AuthMode;
   /** Convenience flag mirroring authMode === "guest" (server-set). */
   isGuest?: boolean;
+  /** Admin: true only after the server-verified, env-gated admin handshake. */
+  isAdmin?: boolean;
 }
 
 /**
@@ -79,9 +81,11 @@ export interface PlayerState {
  *   guest  — explore only; no account, no DB, no RP systems.
  *   wallet — Solana wallet account (Batch B adds real signature login).
  *   email  — email account (Batch C; provider TBD).
+ *   admin  — dev/testing full-access account; server-verified via an env-gated
+ *            passcode handshake (never client-granted), disabled by default.
  * In Batch A, wallet/email both use the existing username+token prototype flow.
  */
-export type AuthMode = "guest" | "wallet" | "email";
+export type AuthMode = "guest" | "wallet" | "email" | "admin";
 
 export type VehicleVariant = "sedan" | "van" | "taxi" | "compact";
 

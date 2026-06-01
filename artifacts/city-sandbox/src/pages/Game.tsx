@@ -12,9 +12,11 @@ interface GameProps {
   authMode?: import("../shared/types").AuthMode;
   /** Verified-at-AuthGate Solana address (wallet mode only). */
   walletAddress?: string | null;
+  /** Admin passcode (admin mode only) — sent once to the server handshake. */
+  adminPasscode?: string | null;
 }
 
-export default function Game({ username, character = "classic", authMode = "wallet", walletAddress = null }: GameProps) {
+export default function Game({ username, character = "classic", authMode = "wallet", walletAddress = null, adminPasscode = null }: GameProps) {
   const isGuest = authMode === "guest";
   // Batch B: Phantom signer for the pre-join wallet-ownership handshake.
   const { signMessage } = useNemoWallet();
@@ -27,7 +29,7 @@ export default function Game({ username, character = "classic", authMode = "wall
     setGameState,
     emitPlayerUpdate,
     emitVehicleUpdate,
-  } = useSocket(username, character, authMode, walletAddress, signMessage);
+  } = useSocket(username, character, authMode, walletAddress, signMessage, adminPasscode);
 
   // Attach rp:profile / rp:profileUpdate / rp:toast listeners as soon as
   // the socket instance exists — BEFORE the myId/ready guard below. This

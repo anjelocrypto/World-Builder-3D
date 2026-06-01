@@ -40,6 +40,9 @@ export function useSocket(
   // AuthGate + a Phantom signer). Null for guest/legacy.
   walletAddress: string | null = null,
   signMessage: ((message: string) => Promise<string | null>) | null = null,
+  // Admin-mode dev passcode — sent once to the server's env-gated handshake.
+  // Held only for the lifetime of this hook; never persisted.
+  adminPasscode: string | null = null,
 ) {
   const socketRef = useRef<Socket | null>(null);
   // Reactive copy of the socket instance so hooks that need to attach their
@@ -74,6 +77,21 @@ export function useSocket(
 
     sock.on("connect", () => {
       setConnected(true);
+      if (authMode === "admin" && adminPasscode) {
+        // Admin: prove the dev passcode to the SERVER before joining. The server
+        // (env-gated) decides; the client never grants itself admin. On success
+        // we join with an "admin:<username>" token (full RP). On denial we join
+        // as a plain GUEST — no token, no privilege.
+        sock.once("auth:adminResult", (res: { ok?: boolean }) => {
+          if (res?.ok) {
+            sock.emit("join", { username, token: `admin:${username}`, character, authMode: "admin" });
+          } else {
+            sock.emit("join", { username, character, authMode: "guest" });
+          }
+        });
+        sock.emit("auth:adminVerify", { username, passcode: adminPasscode });
+        return;
+      }
       if (authMode === "wallet" && walletAddress && signMessage) {
         // Batch B: prove wallet ownership BEFORE join. The server reconstructs
         // the message from its own nonce; we just sign what it sends. On success
@@ -187,7 +205,7 @@ export function useSocket(
       sock.disconnect();
       setSocket(null);
     };
-  }, [username, character, authMode, walletAddress, signMessage]);
+  }, [username, character, authMode, walletAddress, signMessage, adminPasscode]);
 
   const emitPlayerUpdate = useCallback((data: Partial<PlayerState>) => {
     socketRef.current?.emit("playerUpdate", data);

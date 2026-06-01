@@ -76,11 +76,25 @@ export default function AuthGate({ onChoose }: AuthGateProps) {
   const { available, connect, busy, error } = useNemoWallet();
   const [connecting, setConnecting] = useState(false);
 
+  // Admin entry is a DEV/TESTING affordance only — the button is shown ONLY when
+  // the client build enables it. It grants NOTHING by itself: the passcode is
+  // verified server-side (env ADMIN_LOGIN_ENABLED + ADMIN_ACCESS_CODE) before
+  // any privilege. Production builds leave VITE_ENABLE_ADMIN_LOGIN unset → no
+  // button at all.
+  const adminLoginEnabled = import.meta.env.VITE_ENABLE_ADMIN_LOGIN === "true";
+
   const onWallet = async () => {
     setConnecting(true);
     const pk = await connect();
     setConnecting(false);
     if (pk) onChoose("wallet", pk); // signature handshake happens at join (Game).
+  };
+
+  const onAdmin = () => {
+    // The passcode is collected here and verified by the server handshake at
+    // join (Game → useSocket). It is never stored or trusted on the client.
+    const passcode = window.prompt("Admin passcode (dev/testing):") ?? "";
+    if (passcode.trim()) onChoose("admin", passcode);
   };
 
   const walletBusy = connecting || busy;
@@ -189,6 +203,17 @@ export default function AuthGate({ onChoose }: AuthGateProps) {
             subtitle="Explore only. No progress saved."
             onClick={() => onChoose("guest")}
           />
+
+          {adminLoginEnabled && (
+            <EntryButton
+              testid="auth-admin"
+              variant="primary"
+              arrow
+              title="Admin Access"
+              subtitle="Dev/testing — passcode verified by the server."
+              onClick={onAdmin}
+            />
+          )}
         </div>
 
         <div style={{

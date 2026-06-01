@@ -17,14 +17,25 @@ export default function App() {
   // authMode (guests get no token / no RP).
   const [authMode, setAuthMode] = useState<AuthMode | null>(null);
   const [walletAddress, setWalletAddress] = useState<string | null>(null);
+  // Admin passcode (dev/testing) — held in memory only, sent once to the server
+  // handshake at join (useSocket) and never persisted.
+  const [adminPasscode, setAdminPasscode] = useState<string | null>(null);
   const [username, setUsername] = useState<string | null>(null);
   const [character, setCharacter] = useState<CharacterId>("classic");
 
   if (!authMode) {
     return (
       <AuthGate
-        onChoose={(mode, addr) => {
-          setWalletAddress(addr ?? null);
+        onChoose={(mode, extra) => {
+          // `extra` carries the wallet address for "wallet", or the admin
+          // passcode for "admin". Route it to the right slot.
+          if (mode === "admin") {
+            setAdminPasscode(extra ?? null);
+            setWalletAddress(null);
+          } else {
+            setWalletAddress(extra ?? null);
+            setAdminPasscode(null);
+          }
           setAuthMode(mode);
         }}
       />
@@ -44,7 +55,7 @@ export default function App() {
 
   return (
     <Suspense fallback={<div style={{ width: "100vw", height: "100vh", background: "#0a0a1a" }} />}>
-      <Game username={username} character={character} authMode={authMode} walletAddress={walletAddress} />
+      <Game username={username} character={character} authMode={authMode} walletAddress={walletAddress} adminPasscode={adminPasscode} />
     </Suspense>
   );
 }

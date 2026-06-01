@@ -1684,6 +1684,22 @@ export default function GameScene({
         </div>
       )}
 
+      {/* Admin badge — driven by SERVER truth (player.isAdmin), so a denied
+          passcode (joined as guest) never shows it. */}
+      {gameState.players[myId]?.isAdmin && (
+        <div
+          style={{
+            position: "fixed", top: 64, left: 18, zIndex: 1400, pointerEvents: "none",
+            background: "rgba(40, 12, 14, 0.82)", border: "1px solid rgba(255,59,70,0.6)",
+            borderRadius: 8, padding: "5px 10px", fontFamily: "'Courier New', monospace",
+            fontSize: 12, letterSpacing: 1, color: "#ffd7da", boxShadow: "0 4px 14px rgba(0,0,0,0.45)",
+          }}
+          data-testid="hud-admin-badge"
+        >
+          ⚡ ADMIN · full access
+        </div>
+      )}
+
       {/* Batch C: Nemo Gang wallet-verify panel (N). */}
       {showWallet && (
         <WalletConnectHUD
