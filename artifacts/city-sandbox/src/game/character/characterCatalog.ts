@@ -172,7 +172,7 @@ const SIMPLE: CharacterDef = {
   scale: 1,
 };
 
-// ── Nemo (7 GLBs, one shared 24-joint rig — same rig family as Simple) ───
+// ── Nemo (8 GLBs, one shared 24-joint rig — same rig family as Simple) ───
 // Measured clip durations (max sampler input time): idle 1.93s, walk 1.07s,
 // run 0.67s, talk 5.20s, punch 4.00s, die 3.00s, gethit 1.27s. Nemo binds
 // FIVE locomotion/action states the same way Simple does (idle/walk/run +
@@ -192,9 +192,14 @@ const NEMO: CharacterDef = {
     { url: `${BASE}models/nemo-punch.glb`, clipKey: "punch" },
     { url: `${BASE}models/nemo-die.glb`, clipKey: "die" },
     { url: `${BASE}models/nemo-gethit.glb`, clipKey: "gethit" },
+    // Sitting: same rig as nemo-idle (26 nodes, identical bone names), one clip
+    // "Chair_Sit_Idle_M". Bound to animState "sit" like Simple — enables the
+    // "E — Sit" prompt + the seated pose on chairs for Nemo.
+    { url: `${BASE}models/nemo-sitting.glb`, clipKey: "sit" },
   ],
   locomotion: { idle: "idle", walk: "walk", run: "run" },
   talkKey: "talk",
+  sitKey: "sit",
   gethitKey: "gethit",
   gethitMs: 1267, // nemo-gethit.glb = 1.267s
   dieKey: "die",
