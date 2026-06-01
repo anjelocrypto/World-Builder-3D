@@ -16,6 +16,18 @@
 
 export const DAY_LENGTH_MS = 2 * 60 * 60 * 1000; // 2h real = 24h game
 
+// =============================================================
+// TEMPORARY: force full daytime.
+// -------------------------------------------------------------
+// Single switch for the whole day/night system. While true, computeTimeOfDay()
+// returns a fixed bright-noon snapshot, so EVERYTHING that reads it follows:
+// the sky stays clean daylight, the sun stays high, the moon/stars/night-fog
+// are hidden, the dynamic lamps + lamp pools collapse to off (nightFactor=0),
+// and the HUD shows "DAY". The night code is NOT removed — set this back to
+// false to restore the live cycle. Nothing else needs touching.
+// =============================================================
+export const FORCE_DAYTIME = true;
+
 export type DayPhase = "DAWN" | "DAY" | "SUNSET" | "NIGHT";
 
 let serverOffsetMs = 0;
@@ -77,6 +89,29 @@ function clamp01(x: number): number {
  */
 export function computeTimeOfDay(nowMs: number): TimeOfDay {
   const worldNow = nowMs + serverOffsetMs;
+
+  // TEMP override: lock the world to a fixed bright noon. sunY=1 (sun overhead),
+  // moonY=-1 (moon below horizon → hidden), dayFactor=1 / nightFactor=0 /
+  // dawnDuskFactor=0 (so sky=clean day, fog=light day, exposure=day, lamps=off,
+  // stars hidden), phase=DAY, clock pinned to 12:00. See FORCE_DAYTIME above.
+  if (FORCE_DAYTIME) {
+    const sunAngle = Math.PI / 2; // noon
+    return {
+      worldNow,
+      dayProgress: 0.5,
+      sunAngle,
+      sunY: 1,
+      moonAngle: sunAngle + Math.PI,
+      moonY: -1,
+      gameHour: 12,
+      gameMinute: 0,
+      label: "12:00",
+      phase: "DAY",
+      dayFactor: 1,
+      nightFactor: 0,
+      dawnDuskFactor: 0,
+    };
+  }
   // Positive modulo so negative offsets (clock skew) still give 0..1.
   const dayProgress =
     (((worldNow % DAY_LENGTH_MS) + DAY_LENGTH_MS) % DAY_LENGTH_MS) /
