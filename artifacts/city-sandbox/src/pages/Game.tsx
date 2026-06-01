@@ -115,7 +115,10 @@ export default function Game({ username, character = "classic", authMode = "wall
     emitExitHouse,
     globalMessages,
     emitGlobalChat,
-  } = useRpSocket(socket);
+    // SERVER TRUTH only: player.isAdmin is set by the server after the verified
+    // admin handshake. A denied passcode joins as guest (isAdmin false), so the
+    // optimistic drive gate is bypassed only for real admins.
+  } = useRpSocket(socket, !!gameState.players[myId]?.isAdmin);
 
   // Phase comms: proximity voice. getSelfPos / getPeerPos read live positions
   // from the authoritative gameState so the volume-falloff loop tracks movement.

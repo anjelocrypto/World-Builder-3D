@@ -759,7 +759,12 @@ export function canDriveVehicleClient(
   vehicleOwned?: boolean,
   vehicleLocked?: boolean,
   vehicleOwnerId?: string,
+  isAdmin?: boolean,
 ): boolean {
+  // Admin (server-verified via player.isAdmin) has full rights — mirror the
+  // server-side canDriveVehicle() bypass, including locked owned vehicles, so
+  // the optimistic gate doesn't block an admin the server would approve.
+  if (isAdmin) return true;
   if (!rp) return false;
   // Phase 3: locked owned vehicle — only owner can enter
   if (vehicleOwned && vehicleLocked) {

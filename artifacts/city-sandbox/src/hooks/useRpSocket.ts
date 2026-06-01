@@ -19,7 +19,7 @@ import type { RpProfile, RpToast, RpPendingFine, RpFactionMessage, RpGlobalMessa
 import { canDriveVehicleClient, GROVE_TAG_COOLDOWN_MS, CITY_TAX_DEFAULT } from "../shared/rpTypes";
 import type { VehicleState } from "../shared/types";
 
-export function useRpSocket(socket: Socket | null) {
+export function useRpSocket(socket: Socket | null, isAdmin = false) {
   const [rpProfile, setRpProfile] = useState<RpProfile | null>(null);
   const [rpToasts, setRpToasts] = useState<RpToast[]>([]);
   /** Map of socketId → wantedStars for all players on the server. */
@@ -551,8 +551,9 @@ export function useRpSocket(socket: Socket | null) {
         vehicle?.owned,
         vehicle?.locked,
         vehicle?.ownerId,
+        isAdmin, // server truth (player.isAdmin) — bypasses the optimistic license gate
       ),
-    [rpProfile],
+    [rpProfile, isAdmin],
   );
 
   /** Emit rp:interact to the server (e.g. start_driver_test at licensing_office). */
