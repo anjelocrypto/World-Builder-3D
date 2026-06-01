@@ -1278,8 +1278,8 @@ export const REGIONAL_ROADS: RoadPath[] = [
   // the mountain. Proven before edit: max grade 13.6%, no flat thing raised,
   // observatory clear. Phase 3 reshapes the north massifs to bulk it out.
   { id: "nemo-peak-road",
-    points: [[80, -430], [240, -428], [246, -456], [50, -450], [50, -472], [244, -470], [246, -486], [95, -486]],
-    width: 11, type: "mountain" },
+    points: [[80, -430], [250, -434], [262, -460], [110, -450], [60, -466], [150, -480], [238, -484], [262, -466], [205, -456], [150, -468], [105, -478]],
+    width: 16, type: "mountain" },
   // ridge-west-far: mirror on the west side. Endpoints (-460,0) and
   // (-460,-200) share with west-utility / ridge-west / outer-loop NW.
   { id: "ridge-west-far",
@@ -1392,7 +1392,7 @@ export const ROAD_ELEVATION_PROFILES: Record<string, number[]> = {
   // Nemo Peak — branches mountain-switchbacks (80,-430) at Y=20 and climbs the
   // north back-strip via wide switchbacks to the summit overlook at Y=111
   // (the highest drivable point). Each vertex Y >= existing terrain (no burial).
-  "nemo-peak-road":       [20, 39, 42, 65, 68, 91, 93, 111],
+  "nemo-peak-road":       [20, 40, 43, 61, 67, 78, 89, 93, 100, 107, 113],
 };
 
 // Mountain road IDs — single source of truth used by the renderer
@@ -1431,15 +1431,20 @@ export const MOUNTAIN_MASSIFS: ReadonlyArray<{
   // Heights chosen so neighbouring massifs blend into a continuous
   // arc. The central dome behind the observatory stays low (h=18) so
   // the summit road profile (Y=22 at (0,-465)) keeps winning the max.
-  { x: -470, z: -470, r: 55, h: 50 },
-  { x: -380, z: -485, r: 70, h: 60 },
-  { x: -260, z: -490, r: 65, h: 50 },
-  { x: -150, z: -495, r: 50, h: 45 },
-  { x:    0, z: -498, r: 22, h: 18 }, // low dome — summit road wins
-  { x:  150, z: -495, r: 50, h: 45 },
-  { x:  260, z: -490, r: 65, h: 50 },
-  { x:  380, z: -485, r: 70, h: 60 },
-  { x:  470, z: -470, r: 55, h: 50 },
+  // Phase 2B (Nemo Peak): a BROAD, tall north-spanning ridge so the whole north
+  // reads as a real mountain range, not a thin road ribbon. Domes are deep
+  // (z≈-490..-498) so their skirts stay far from the flat outer-loop chamfer
+  // (z=-380); peaks ~90-118m blend (max()) into one continuous wall behind the
+  // drivable Nemo Peak road. The CENTRAL dome stays low (h25) so the existing
+  // mountain-switchbacks summit road at (0,-465) Y=22 still wins (not buried),
+  // and the (0,-485) observatory (now terrain-aware) rides it as the saddle.
+  { x: -290, z: -490, r: 60, h: 90 },
+  { x: -200, z: -494, r: 70, h: 114 },
+  { x: -110, z: -496, r: 68, h: 108 },
+  { x:    0, z: -498, r: 40, h: 25 }, // low saddle — summit road + observatory win
+  { x:  110, z: -496, r: 68, h: 114 },
+  { x:  200, z: -494, r: 70, h: 118 }, // east summit — Nemo Peak road plateau
+  { x:  290, z: -490, r: 60, h: 92 },
   // ---- East rampart (foothills wrapping the eastern outer loop) ----
   // Skip the z=-200..30 band where ridge-east-far lives so the dome
   // footprints don't intrude on the carriageway.
@@ -1619,7 +1624,7 @@ export const STATIC_OBSTACLES: StaticObstacle[] = [
   { x:  -50, z: -180, w: 6,  d: 6,  kind: "large_rock" },
   { x:  140, z: -260, w: 8,  d: 6,  kind: "large_rock" },
   { x: -140, z: -340, w: 7,  d: 7,  kind: "large_rock" },
-  { x:  130, z: -440, w: 6,  d: 6,  kind: "large_rock" },
+  { x:  130, z: -410, w: 6,  d: 6,  kind: "large_rock" }, // Phase 2B: moved -440->-410, south of the widened Nemo Peak road corridor
   // Mountain — guardrails on the outside of switchback corners (kind
   // "guardrail" is excluded from the obstacle/road clearance check
   // because they are explicitly placed at the edge of the carriageway).

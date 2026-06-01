@@ -278,7 +278,11 @@ function ObstacleMesh({ o }: { o: StaticObstacle }) {
   // mountain country, so the cost is the same as the previous gated
   // call but it now correctly handles the east/west foothill ridges
   // (which sit south of z=-150).
-  const slopeY = (o.kind === "cliff_wall" || o.kind === "guardrail")
+  // Phase 2B: the observatory now sits on the Nemo Peak summit ridge, so it must
+  // ride the terrain like cliff_wall/guardrail (otherwise the raised summit
+  // floats it). Flat-area obstacles return 0 here (terrainHeightAt is 0), so
+  // adding "observatory" is safe for any future flat-placed one too.
+  const slopeY = (o.kind === "cliff_wall" || o.kind === "guardrail" || o.kind === "observatory")
     ? getRoadElevationAt(o.x, o.z) : 0;
   switch (o.kind) {
     case "bridge_rail":

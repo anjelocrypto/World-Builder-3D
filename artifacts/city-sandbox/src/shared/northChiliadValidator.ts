@@ -76,11 +76,12 @@ function existingTerr(x: number, z: number): number {
 
 export interface NorthChiliadReport {
   vertices: number;
+  width: number;
   summitY: number;
   maxGradePct: number;
   minStructClearance: number;
   maxFloatIncrease: number;
-  massifsToReshape: number;
+  plateauSamples: number;
 }
 
 export function validateNorthChiliad(): NorthChiliadReport {
@@ -140,7 +141,9 @@ export function validateNorthChiliad(): NorthChiliadReport {
       .filter((o) => o.kind !== "guardrail")
       .map((o) => ({
         id: o.kind, x: o.x, z: o.z, w: o.w, d: o.d,
-        flat: !(o.kind === "cliff_wall" || o.kind === "large_rock"),
+        // observatory is now terrain-aware (rides the summit ridge), so it is
+        // NOT a flat-float target.
+        flat: !(o.kind === "cliff_wall" || o.kind === "large_rock" || o.kind === "observatory"),
       })),
     { id: "event-hall", x: EVENT_HALL.x, z: EVENT_HALL.z, w: EVENT_HALL.w, d: EVENT_HALL.d, flat: true },
   ];
@@ -196,21 +199,42 @@ export function validateNorthChiliad(): NorthChiliadReport {
   if (minStruct < STRUCT_MIN) fail(`carriageway within ${minStruct.toFixed(1)}m of ${structId}`);
   if (maxAbsX > WORLD_HALF - 2 || maxAbsZ > WORLD_HALF - 2) fail(`leaves world (maxX=${maxAbsX}, maxZ=${maxAbsZ})`);
 
-  // Informational: existing massifs the road passes (Phase-3 reshape target).
-  let massifsToReshape = 0;
+  // (8b) SUMMIT PLATEAU — the top must be a broad shelf, not a point. Count the
+  // terrain samples >= 90 m in the east-summit region; require a real area.
+  const terrainAt = (x: number, z: number) => Math.max(existingTerr(x, z), mySupport(x, z));
+  let plateau = 0;
+  for (let x = 110; x <= 262; x += 8) {
+    for (let z = -490; z <= -450; z += 8) {
+      if (terrainAt(x, z) >= 90) plateau++;
+    }
+  }
+  if (plateau < 18) fail(`summit plateau too small: only ${plateau} samples >= 90 m`);
+
+  // (9) MASSIFS must not float any FLAT structure or flat road (the dome raises
+  // terrain within its radius). Every massif center must clear flat footprints
+  // by its radius (+ road half-width), so flats stay at ground level.
   for (const m of MOUNTAIN_MASSIFS) {
-    let md = Infinity;
-    for (let i = 0; i < pts.length - 1; i++) md = Math.min(md, distSegT(m.x, m.z, pts[i][0], pts[i][1], pts[i + 1][0], pts[i + 1][1]).d);
-    if (md < HW + m.r) massifsToReshape++;
+    for (const b of boxes) {
+      if (!b.flat) continue;
+      if (boxD(m.x, m.z, b) < m.r) fail(`massif (${m.x},${m.z}) r=${m.r} floats flat ${b.id}`);
+    }
+    for (const [rid, rp, rhw] of flatRoads) {
+      for (let i = 0; i < rp.length - 1; i++) {
+        if (distSegT(m.x, m.z, rp[i][0], rp[i][1], rp[i + 1][0], rp[i + 1][1]).d < m.r + rhw) {
+          fail(`massif (${m.x},${m.z}) r=${m.r} floats flat road ${rid}`);
+        }
+      }
+    }
   }
 
   return {
     vertices: pts.length,
+    width: road!.width,
     summitY,
     maxGradePct: +(maxGrade * 100).toFixed(1),
     minStructClearance: +minStruct.toFixed(1),
     maxFloatIncrease: +maxFloat.toFixed(2),
-    massifsToReshape,
+    plateauSamples: plateau,
   };
 }
 
@@ -220,9 +244,9 @@ if (isMain) {
   const r = validateNorthChiliad();
   // eslint-disable-next-line no-console
   console.info(
-    `[northChiliad] PASS — ${r.vertices} vertices, summit ${r.summitY}m (highest drivable), ` +
-      `maxGrade ${r.maxGradePct}% (limit 18%), minStructClearance ${r.minStructClearance}m, ` +
-      `floatsNothing(maxIncrease ${r.maxFloatIncrease}m), junction matches mountain-switchbacks; ` +
-      `${r.massifsToReshape} existing massifs to reshape in Phase 3`,
+    `[northChiliad] PASS — ${r.vertices} vertices, width ${r.width}m, summit ${r.summitY}m ` +
+      `(highest drivable), maxGrade ${r.maxGradePct}% (limit 18%), minStructClearance ${r.minStructClearance}m, ` +
+      `floatsNothing(maxIncrease ${r.maxFloatIncrease}m), plateau ${r.plateauSamples} samples >=90m, ` +
+      `massifs clear all flat roads/structures, junction matches mountain-switchbacks`,
   );
 }
