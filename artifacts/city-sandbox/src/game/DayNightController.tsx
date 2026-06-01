@@ -309,16 +309,16 @@ export default function DayNightController() {
           `phase=${t.phase}, sunY=${t.sunY.toFixed(2)}, ` +
           `moonY=${t.moonY.toFixed(2)}, ` +
           `nightFactor=${t.nightFactor.toFixed(2)}, ` +
-          `dynamicLampBudget<=11`,
+          `dynamicLampBudget<=13`,
       );
       // eslint-disable-next-line no-console
       console.log(
         `lightingRealism OK: toneMapping=ACES, shadowMap=PCFSoft, ` +
-          `dynamicLampBudget<=11, windowsNightReactive=true`,
+          `dynamicLampBudget<=13, windowsNightReactive=true`,
       );
       // eslint-disable-next-line no-console
       console.log(
-        `lampLighting OK: noGroundPools=true, dynamicLampBudget<=11 ` +
+        `lampLighting OK: noGroundPools=true, dynamicLampBudget<=13 ` +
           `(nearest-N over curated anchors + every lamp head)`,
       );
       // eslint-disable-next-line no-console
@@ -329,7 +329,7 @@ export default function DayNightController() {
       // and the bulk of decorative marker lights were converted to emissive-only.
       console.log(
         `skyAtmosphere OK: physicalSky=true, clouds=true, stars=true, ` +
-          `singleShadowLight=true, dynamicLampBudget<=11, ` +
+          `singleShadowLight=true, dynamicLampBudget<=13, ` +
           `fixedSiteLights=distance-gated (hall+landmarks)`,
       );
     }

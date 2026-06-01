@@ -24,6 +24,7 @@ import { terrainHeightAt } from "../shared/terrain";
 import { dayNightRuntime } from "../shared/timeOfDay";
 import {
   MOUNTAIN_TERRAIN_Y, BIOME_TINT_Y, BIOME_SEAM_Y, ROAD_SURFACE_Y, ROAD_MARKING_Y,
+  DECAL_Y,
 } from "../shared/visualLayers";
 import type {
   RoadPath, StaticObstacle, RegionalLampData, TreeInstance,
@@ -1069,7 +1070,36 @@ const ALL_REAL_LIGHTS: RealLightSource[] = [
 // player standing in a cluster of lamps (e.g. a forest stretch lit on both
 // sides plus a nearby curated anchor) doesn't lose the closest lamp to the
 // budget. Still a hard, bounded cap — NOT hundreds of uncontrolled lights.
-const MAX_ACTIVE_LIGHTS = 10;
+const MAX_ACTIVE_LIGHTS = 12;
+
+// ── Soft additive lamp "light pool" decals ──────────────────────────────────
+// The road/biome ground materials are intentionally very dark (asphalt #1d1d22
+// ≈ 0.012 linear albedo), so a real point light reflecting off them is almost
+// black at night no matter how bright the bulb. These pools fix that the way
+// GTA-style games do: a soft warm radial gradient drawn with ADDITIVE blending
+// just above the ground, which ADDS light to the framebuffer regardless of the
+// surface albedo. They are NOT lit surfaces and NOT hard discs — soft-edged,
+// transparent, depthWrite:false, at DECAL_Y (no z-fighting). Bounded: only the
+// nearest-N selected lamps get one, so far-away ground stays dark.
+const POOL_GEO = new THREE.PlaneGeometry(1, 1);
+function makeLampPoolTexture(): THREE.Texture {
+  const SZ = 128;
+  const c = document.createElement("canvas");
+  c.width = SZ;
+  c.height = SZ;
+  const ctx = c.getContext("2d");
+  if (ctx) {
+    const g = ctx.createRadialGradient(SZ / 2, SZ / 2, 2, SZ / 2, SZ / 2, SZ / 2);
+    g.addColorStop(0, "rgba(255,236,196,0.95)");
+    g.addColorStop(0.45, "rgba(255,224,170,0.42)");
+    g.addColorStop(1, "rgba(255,210,150,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, SZ, SZ);
+  }
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  return t;
+}
 // Candidates farther than this (squared, metres²) from the camera are skipped
 // before the nearest-K test — no lamp reaches the eye from beyond ~60 m anyway.
 const CANDIDATE_MAX_DIST2 = 60 * 60;
@@ -1077,12 +1107,34 @@ const CANDIDATE_MAX_DIST2 = 60 * 60;
 function DynamicPointLights() {
   const { camera } = useThree();
   const refs = useRef<Array<THREE.PointLight | null>>([]);
-  // Pre-parse every source's color into a THREE.Color so the per-frame
-  // loop only does cheap copy() calls.
+  const poolRefs = useRef<Array<THREE.Mesh | null>>([]);
+  // Pre-parse every source's color, and resolve the GROUND height under each
+  // lamp (0 off-mountain) so the additive pool sits on the road, not at the
+  // bulb. Done once at mount; no per-frame allocation.
   const sources = useMemo(
-    () => ALL_REAL_LIGHTS.map((s) => ({ ...s, _color: new THREE.Color(s.color) })),
+    () =>
+      ALL_REAL_LIGHTS.map((s) => ({
+        ...s,
+        _color: new THREE.Color(s.color),
+        gy: getRoadElevationAt(s.x, s.z),
+      })),
     [],
   );
+  // One shared additive material for every pool — opacity is driven once per
+  // frame by lampGain (all pools fade together with night).
+  const poolMat = useMemo(
+    () =>
+      new THREE.MeshBasicMaterial({
+        map: makeLampPoolTexture(),
+        transparent: true,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        toneMapped: false,
+        opacity: 0,
+      }),
+    [],
+  );
+  const loggedRef = useRef(false);
   // Reused nearest-K result buffers (index + squared distance), no per-frame
   // allocation. selN tracks how many slots are currently filled.
   const selIdx = useRef<number[]>(new Array(MAX_ACTIVE_LIGHTS).fill(-1));
@@ -1126,17 +1178,69 @@ function DynamicPointLights() {
       1,
       dayNightRuntime.nightFactor * 1.8 + dayNightRuntime.dawnDuskFactor * 0.5,
     );
+    // Pool opacity follows lampGain (off in day). Shared across all pools.
+    poolMat.opacity = 0.7 * lampGain;
+    const poolsOn = lampGain > 0.02;
+
     for (let k = 0; k < MAX_ACTIVE_LIGHTS; k++) {
       const ref = refs.current[k];
-      if (!ref) continue;
+      const pool = poolRefs.current[k];
       const si = idx[k];
-      if (si < 0) { ref.intensity = 0; continue; }
+      if (si < 0) {
+        if (ref) ref.intensity = 0;
+        if (pool) pool.visible = false;
+        continue;
+      }
       const s = sources[si];
-      ref.position.set(s.x, s.y, s.z);
-      ref.color.copy(s._color);
-      ref.intensity = s.intensity * lampGain;
-      ref.distance = s.distance;
-      ref.decay = 2; // tight realistic pool under the fixture (no flat disc)
+      if (ref) {
+        ref.position.set(s.x, s.y, s.z);
+        ref.color.copy(s._color);
+        ref.intensity = s.intensity * lampGain;
+        ref.distance = s.distance;
+        // decay 1.8 (was 2): a touch more reach so the real light still shapes
+        // the player/cars near a lamp; the additive pool carries the dark ground.
+        ref.decay = 1.8;
+      }
+      if (pool) {
+        pool.visible = poolsOn;
+        if (poolsOn) {
+          // Pool sits ON the ground (DECAL_Y above the road) and spans ~ the
+          // lamp's reach so the 8-15m around the fixture reads.
+          pool.position.set(s.x, s.gy + DECAL_Y, s.z);
+          const diam = s.distance * 0.95;
+          pool.scale.set(diam, diam, 1);
+        }
+      }
+    }
+
+    // Debug-safe proof (one shot, once it's actually night) that lamps near the
+    // camera are mounted with real intensity — not just emissive heads.
+    if (!loggedRef.current && lampGain > 0.5) {
+      loggedRef.current = true;
+      let active = 0;
+      let nearest2 = Infinity;
+      let nearIntensity = 0;
+      let nearHeadY = 0;
+      let nearDistance = 0;
+      for (let k = 0; k < MAX_ACTIVE_LIGHTS; k++) {
+        const si = idx[k];
+        if (si < 0) continue;
+        active++;
+        if (dist[k] < nearest2) {
+          nearest2 = dist[k];
+          const s = sources[si];
+          nearIntensity = s.intensity * lampGain;
+          nearHeadY = s.y;
+          nearDistance = s.distance;
+        }
+      }
+      // eslint-disable-next-line no-console
+      console.log(
+        `lampDebug OK: dynamicLampBudget=${MAX_ACTIVE_LIGHTS} (+1 headlight), ` +
+          `activeNearCamera=${active}, nearestLamp=${Math.sqrt(nearest2).toFixed(1)}m, ` +
+          `nearestIntensity=${nearIntensity.toFixed(1)} (range=${nearDistance}, decay=1.8, headY=${nearHeadY.toFixed(1)}), ` +
+          `lampGain=${lampGain.toFixed(2)}, additiveGroundPools=true, singleShadowLight=true`,
+      );
     }
   });
 
@@ -1144,13 +1248,28 @@ function DynamicPointLights() {
     <group>
       {Array.from({ length: MAX_ACTIVE_LIGHTS }, (_, i) => (
         <pointLight
-          key={i}
+          key={`pl-${i}`}
           ref={(r) => {
             refs.current[i] = r;
           }}
           intensity={0}
           distance={1}
-          decay={2}
+          decay={1.8}
+        />
+      ))}
+      {/* Soft additive ground pools — one per active lamp slot, repositioned to
+          the selected nearest lamps each frame (bounded; far ground stays dark). */}
+      {Array.from({ length: MAX_ACTIVE_LIGHTS }, (_, i) => (
+        <mesh
+          key={`pool-${i}`}
+          ref={(r) => {
+            poolRefs.current[i] = r;
+          }}
+          geometry={POOL_GEO}
+          material={poolMat}
+          rotation={[-Math.PI / 2, 0, 0]}
+          visible={false}
+          frustumCulled={false}
         />
       ))}
     </group>
