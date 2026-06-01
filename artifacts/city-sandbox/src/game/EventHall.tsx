@@ -37,7 +37,24 @@ const WARM_BULB = "#ffe6b8";    // marquee / bollard bulb glow
 const GLASS_BLUE = "#1c4f96";   // translucent facade glass panels
 const GRAPHITE = "#262a36";     // premium dark structural members
 
-/** Build a canvas-texture with centered text (no font asset dependency). */
+/** Per-line target font height as a fraction of canvas height, BEFORE the
+ *  fit-to-width clamp. Line 0 is the title (largest); the rest are subtitles. */
+function lineHeightFrac(index: number, count: number): number {
+  if (count <= 1) return 0.46;       // single big centred line
+  if (index === 0) return 0.40;      // title
+  return 0.22;                       // subtitle(s)
+}
+
+/**
+ * Build a canvas-texture with centred text (no font asset dependency).
+ *
+ * FIT-TO-WIDTH: each line starts from a height-allocated font size, then is
+ * shrunk with ctx.measureText() until it fits within ~88% of the canvas width,
+ * so long lines ("GRAND PLAZA HALL", "LIVE EVENTS · CONFERENCE · STREAM") are
+ * NEVER cropped inside the texture (the old code sized only by height and
+ * overflowed the canvas). Line 0 renders larger (title), the rest smaller
+ * (subtitle); lines are stacked vertically centred.
+ */
 function useTextTexture(
   lines: string[],
   opts: { w?: number; h?: number; bg?: string; fg?: string; accent?: string } = {},
@@ -57,22 +74,44 @@ function useTextTexture(
     g.addColorStop(1, "#05070e");
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, w, h);
-    // Accent border
+    // Accent border — scaled to the (now higher-res) canvas.
     ctx.strokeStyle = opts.accent ?? TRIM_COLOR;
-    ctx.lineWidth = 10;
-    ctx.strokeRect(14, 14, w - 28, h - 28);
+    const lw = Math.max(6, Math.round(Math.min(w, h) * 0.02));
+    const inset = Math.round(Math.min(w, h) * 0.045);
+    ctx.lineWidth = lw;
+    ctx.strokeRect(inset, inset, w - inset * 2, h - inset * 2);
     // Text
     ctx.fillStyle = opts.fg ?? "#f4ecd2";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
-    const fontSize = Math.floor(h / (lines.length + 1.5));
-    ctx.font = `bold ${fontSize}px 'Arial Black', Arial, sans-serif`;
-    const step = h / (lines.length + 1);
-    lines.forEach((ln, i) => {
-      ctx.fillText(ln, w / 2, step * (i + 1));
+    const maxW = w * 0.88; // safe inner width (clear of the accent border)
+    const font = (px: number) => `bold ${px}px 'Arial Black', Arial, sans-serif`;
+
+    // Measure + shrink each line until it fits the safe width.
+    const fitted = lines.map((text, i) => {
+      let size = Math.max(10, Math.floor(h * lineHeightFrac(i, lines.length)));
+      ctx.font = font(size);
+      while (size > 10 && ctx.measureText(text).width > maxW) {
+        size -= 2;
+        ctx.font = font(size);
+      }
+      return { text, size };
     });
+
+    // Stack the fitted lines vertically centred.
+    const gap = Math.round(h * 0.08);
+    const totalH =
+      fitted.reduce((s, f) => s + f.size, 0) + gap * Math.max(0, fitted.length - 1);
+    let y = (h - totalH) / 2;
+    for (const f of fitted) {
+      y += f.size / 2;
+      ctx.font = font(f.size);
+      ctx.fillText(f.text, w / 2, y);
+      y += f.size / 2 + gap;
+    }
+
     const tex = new THREE.CanvasTexture(canvas);
-    tex.anisotropy = 4;
+    tex.anisotropy = 8;
     tex.needsUpdate = true;
     return tex;
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -94,11 +133,11 @@ export default function EventHall({ screenVideoTexture = null, screenVideoAspect
   const zBack = zMax; // south / stage wall
   const zFront = zMin; // north / entrance wall
 
-  const screenTex = useTextTexture(["GRAND PLAZA HALL", "· EVENT SCREEN ·"], {
-    w: 1024, h: 576, bg: "#0a1830", fg: "#e9f6ff", accent: CLEAR_BLUE,
+  const screenTex = useTextTexture(["GRAND PLAZA HALL", "EVENT SCREEN"], {
+    w: 2048, h: 768, bg: "#0a1830", fg: "#e9f6ff", accent: CLEAR_BLUE,
   });
   const signTex = useTextTexture(["GRAND PLAZA HALL"], {
-    w: 1024, h: 256, bg: "#101522", fg: "#f4ecd2", accent: TRIM_COLOR,
+    w: 2048, h: 512, bg: "#101522", fg: "#f4ecd2", accent: TRIM_COLOR,
   });
 
   // ── Chair instancing ──
@@ -133,7 +172,7 @@ export default function EventHall({ screenVideoTexture = null, screenVideoAspect
 
   // ── Phase 14E: grand marquee canopy + facade detail (visual only) ──
   const marqueeTex = useTextTexture(["GRAND PLAZA HALL", "LIVE EVENTS · CONFERENCE · STREAM"], {
-    w: 1024, h: 320, bg: "#0c1326", fg: "#ffe9c0", accent: CLEAR_BLUE,
+    w: 2048, h: 512, bg: "#0c1326", fg: "#ffe9c0", accent: CLEAR_BLUE,
   });
   const MARQUEE = useMemo(() => ({
     y: 6.7,                 // canopy slab height
