@@ -93,7 +93,13 @@ function buildStructures(): Box[] {
   return s;
 }
 function buildObstacles(): Box[] {
-  return STATIC_OBSTACLES.map((o) => ({ id: o.kind, x: o.x, z: o.z, w: o.w, d: o.d, kind: "obstacle" }));
+  // Guardrails are road-EDGE furniture (generated alongside mountain roads), so
+  // a road centerline near one is normal — exclude them from the "centerline
+  // through a structure" hard-fail. Solid obstacles (rocks, cliff walls,
+  // warehouses, towers, etc.) stay.
+  return STATIC_OBSTACLES
+    .filter((o) => o.kind !== "guardrail")
+    .map((o) => ({ id: o.kind, x: o.x, z: o.z, w: o.w, d: o.d, kind: "obstacle" }));
 }
 
 function pointInBox(px: number, pz: number, b: Box, margin = 0): boolean {
@@ -127,7 +133,7 @@ function classifyDeadEnd(ids: string[]): DeadKind {
   if (has((s) => s.startsWith("drv-") || s === "forest-spur" || s === "gateway-spur" || s === "trailhead-spur"))
     return "driveway/spur";
   if (has((s) => s === "path-grand-plaza-hall")) return "pedestrian";
-  if (has((s) => s === "mountain-switchbacks" || s === "mountain-lookout" || s === "ridge-east-heights")) return "scenic/summit";
+  if (has((s) => s === "mountain-switchbacks" || s === "mountain-lookout" || s === "ridge-east-heights" || s === "nemo-peak-road")) return "scenic/summit";
   return "suspicious";
 }
 
@@ -179,7 +185,9 @@ export function validateRoadNetwork(): RoadReport {
   for (const t of TRAIN_STATIONS) {
     if (roadIds.has(t.id)) fail(`train station "${t.id}" is also a car road — should be rail-only`);
   }
-  if ([...roadIds].some((id) => /nemo|hood/i.test(id))) fail("a car road references Nemo Hood (its loop must stay cosmetic)");
+  // Match the HOOD specifically (not e.g. the legit "nemo-peak-road" mountain
+  // road) — the Nemo Hood cosmetic loop must never become a real car road.
+  if ([...roadIds].some((id) => /hood/i.test(id))) fail("a car road references Nemo Hood (its loop must stay cosmetic)");
 
   // ---------- 2. Connectivity graph (with mid-segment T-junctions) ----------
   interface Node { x: number; z: number; ids: Set<string>; adj: Set<number> }

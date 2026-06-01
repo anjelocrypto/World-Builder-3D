@@ -1267,6 +1267,19 @@ export const REGIONAL_ROADS: RoadPath[] = [
   { id: "ridge-east-heights",
     points: [[340, -360], [362, -372], [386, -381], [406, -379]],
     width: 11, type: "mountain" },
+  // ── Nemo Peak / North Chiliad ──────────────────────────────────────────────
+  // The big drivable summit (GTA Mt-Chiliad style). Wide-switchback road that
+  // branches off the mountain-switchbacks node (80,-430) [Y=20 in both
+  // profiles] and climbs the north back-strip (kept north of z=-416 so its
+  // skirt never floats the flat outer-loop) to a SUMMIT OVERLOOK at (95,-486)
+  // ~111m — well above the 85m highrises, the highest drivable point in the
+  // world. Routed EAST of the (0,-485) observatory so it floats nothing.
+  // Profile (below) tracks/over-rides the existing terrain so the road sits on
+  // the mountain. Proven before edit: max grade 13.6%, no flat thing raised,
+  // observatory clear. Phase 3 reshapes the north massifs to bulk it out.
+  { id: "nemo-peak-road",
+    points: [[80, -430], [240, -428], [246, -456], [50, -450], [50, -472], [244, -470], [246, -486], [95, -486]],
+    width: 11, type: "mountain" },
   // ridge-west-far: mirror on the west side. Endpoints (-460,0) and
   // (-460,-200) share with west-utility / ridge-west / outer-loop NW.
   { id: "ridge-west-far",
@@ -1376,6 +1389,10 @@ export const ROAD_ELEVATION_PROFILES: Record<string, number[]> = {
   // node (Y=14) to the crest overlook (Y=21). Each vertex Y >= the existing
   // terrain there so the carriageway sits on the hillside, not buried.
   "ridge-east-heights":   [14, 17, 19, 21],
+  // Nemo Peak — branches mountain-switchbacks (80,-430) at Y=20 and climbs the
+  // north back-strip via wide switchbacks to the summit overlook at Y=111
+  // (the highest drivable point). Each vertex Y >= existing terrain (no burial).
+  "nemo-peak-road":       [20, 39, 42, 65, 68, 91, 93, 111],
 };
 
 // Mountain road IDs — single source of truth used by the renderer
