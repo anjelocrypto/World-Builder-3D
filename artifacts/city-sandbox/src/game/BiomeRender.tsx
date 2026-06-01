@@ -5,6 +5,7 @@ import {
   REGIONAL_ROADS,
   STATIC_OBSTACLES,
   FOREST_TREES,
+  EXPANSION_TREES,
   FOREST_ROCKS,
   MOUNTAIN_ROCKS,
   VILLAGE_LAMPS,
@@ -723,6 +724,7 @@ function ForestTrees() {
     <group>
       <TreeInstances data={FOREST_TREES} />
       <TreeInstances data={CITY_EDGE_TREES} />
+      <TreeInstances data={EXPANSION_TREES} />
     </group>
   );
 }
