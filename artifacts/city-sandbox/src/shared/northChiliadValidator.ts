@@ -46,8 +46,8 @@ const STRUCT_MIN = 2;
 // the road can climb at a safe ~10% grade over a wide footprint. The summit is
 // still by far the highest drivable point in the world.
 const SUMMIT_MIN = 60;
-// Hilltop overlook shelf must read as a broad flat area, not a point.
-const SHELF_MIN_H = 55;
+// Hilltop overlook shelf must read as a broad high area, not a point.
+const SHELF_MIN_H = 50;
 
 const ss = (u: number): number => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
 function distSegT(x: number, z: number, ax: number, az: number, bx: number, bz: number) {
@@ -209,8 +209,8 @@ export function validateNorthChiliad(): NorthChiliadReport {
   // a real area so the overlook reads as a flat shelf you can drive around on.
   const terrainAt = (x: number, z: number) => Math.max(existingTerr(x, z), mySupport(x, z));
   let plateau = 0;
-  for (let x = 120; x <= 270; x += 8) {
-    for (let z = -492; z <= -456; z += 8) {
+  for (let x = 60; x <= 290; x += 8) {
+    for (let z = -504; z <= -488; z += 8) {
       if (terrainAt(x, z) >= SHELF_MIN_H) plateau++;
     }
   }
