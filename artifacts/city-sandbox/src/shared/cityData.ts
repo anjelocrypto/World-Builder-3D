@@ -1278,8 +1278,8 @@ export const REGIONAL_ROADS: RoadPath[] = [
   // the mountain. Proven before edit: max grade 13.6%, no flat thing raised,
   // observatory clear. Phase 3 reshapes the north massifs to bulk it out.
   { id: "nemo-peak-road",
-    points: [[80, -430], [250, -434], [262, -460], [110, -450], [60, -466], [150, -480], [238, -484], [262, -466], [205, -456], [150, -468], [105, -478]],
-    width: 16, type: "mountain" },
+    points: [[80, -430], [260, -436], [270, -468], [80, -456], [55, -474], [150, -486], [245, -486], [270, -470], [180, -466]],
+    width: 18, type: "mountain" },
   // ridge-west-far: mirror on the west side. Endpoints (-460,0) and
   // (-460,-200) share with west-utility / ridge-west / outer-loop NW.
   { id: "ridge-west-far",
@@ -1390,9 +1390,12 @@ export const ROAD_ELEVATION_PROFILES: Record<string, number[]> = {
   // terrain there so the carriageway sits on the hillside, not buried.
   "ridge-east-heights":   [14, 17, 19, 21],
   // Nemo Peak — branches mountain-switchbacks (80,-430) at Y=20 and climbs the
-  // north back-strip via wide switchbacks to the summit overlook at Y=111
-  // (the highest drivable point). Each vertex Y >= existing terrain (no burial).
-  "nemo-peak-road":       [20, 40, 43, 61, 67, 78, 89, 93, 100, 107, 113],
+  // broad north hill range via a few wide, gentle switchbacks to a large
+  // hilltop overlook shelf at Y=88. Redesigned as a GTA-style hill road (not a
+  // spike): max grade ~10% (well under the 14% target), each vertex sits on or
+  // above the underlying hill (no burial), and the crest is a broad shelf the
+  // surrounding massifs share so the top reads as a flat overlook, not a point.
+  "nemo-peak-road":       [20, 36, 39, 56, 59, 68, 77, 80, 88],
 };
 
 // Mountain road IDs — single source of truth used by the renderer
@@ -1431,20 +1434,22 @@ export const MOUNTAIN_MASSIFS: ReadonlyArray<{
   // Heights chosen so neighbouring massifs blend into a continuous
   // arc. The central dome behind the observatory stays low (h=18) so
   // the summit road profile (Y=22 at (0,-465)) keeps winning the max.
-  // Phase 2B (Nemo Peak): a BROAD, tall north-spanning ridge so the whole north
-  // reads as a real mountain range, not a thin road ribbon. Domes are deep
-  // (z≈-490..-498) so their skirts stay far from the flat outer-loop chamfer
-  // (z=-380); peaks ~90-118m blend (max()) into one continuous wall behind the
-  // drivable Nemo Peak road. The CENTRAL dome stays low (h25) so the existing
-  // mountain-switchbacks summit road at (0,-465) Y=22 still wins (not buried),
-  // and the (0,-485) observatory (now terrain-aware) rides it as the saddle.
-  { x: -290, z: -490, r: 60, h: 90 },
-  { x: -200, z: -494, r: 70, h: 114 },
-  { x: -110, z: -496, r: 68, h: 108 },
-  { x:    0, z: -498, r: 40, h: 25 }, // low saddle — summit road + observatory win
-  { x:  110, z: -496, r: 68, h: 114 },
-  { x:  200, z: -494, r: 70, h: 118 }, // east summit — Nemo Peak road plateau
-  { x:  290, z: -490, r: 60, h: 92 },
+  // Nemo Peak (redesigned): a BROAD, GENTLE north hill range — not a sharp
+  // fantasy spike. The earlier 90-118m domes made wall-like faces that buried
+  // the road; these are lowered/widened to 46-60m crests so neighbouring domes
+  // blend (max()) into one smooth, rolling hill that the drivable road climbs
+  // OVER (road crest Y=88 stays above the 60m hill, so it reads on top, never
+  // swallowed). Domes are deep (z≈-492..-500) so skirts stay clear of the flat
+  // outer-loop chamfer (z=-380). The CENTRAL dome stays low (h16) so the
+  // existing mountain-switchbacks summit road at (0,-465) Y=22 still wins (not
+  // buried) and the (0,-485) observatory (terrain-aware) rides it as the saddle.
+  { x: -290, z: -492, r: 64, h: 46 },
+  { x: -200, z: -496, r: 76, h: 58 },
+  { x: -110, z: -498, r: 74, h: 55 },
+  { x:    0, z: -500, r: 42, h: 16 }, // low saddle — summit road + observatory win
+  { x:  110, z: -498, r: 74, h: 58 },
+  { x:  200, z: -496, r: 76, h: 60 }, // east crest — broad hilltop overlook shelf
+  { x:  290, z: -492, r: 64, h: 48 },
   // ---- East rampart (foothills wrapping the eastern outer loop) ----
   // Skip the z=-200..30 band where ridge-east-far lives so the dome
   // footprints don't intrude on the carriageway.

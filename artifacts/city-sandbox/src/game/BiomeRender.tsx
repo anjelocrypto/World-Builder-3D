@@ -44,9 +44,16 @@ const ROAD_COLOR_BY_TYPE: Record<RoadPath["type"], string> = {
   asphalt:  "#1d1d22",
   bridge:   "#3a2e22",
   forest:   "#2a2218",
-  mountain: "#3a342c",
+  // Mountain roads were #3a342c — nearly identical to the mountain terrain
+  // (#3a3630), so the road vanished into the hillside. Dark asphalt now, with a
+  // light gravel SHOULDER (below) so the road clearly reads against the slope.
+  mountain: "#14141a",
   dirt:     "#52442e",
 };
+// Light gravel shoulder drawn slightly wider + below the carriageway so the
+// road edge reads on the hillside (mountain roads only).
+const SHOULDER_COLOR = "#7a786c";
+const SHOULDER_EXTRA = 5; // total extra width (2.5 m each side)
 
 interface SegmentSpec {
   key: string;
@@ -54,6 +61,8 @@ interface SegmentSpec {
   bx: number; by: number; bz: number;
   width: number;
   color: string;
+  /** When set, draw a light gravel shoulder under the carriageway. */
+  shoulder?: boolean;
 }
 
 // Elevation-aware road segment quad. Builds an explicit Matrix4 with a
@@ -63,9 +72,9 @@ interface SegmentSpec {
 // previous behaviour: the basis becomes (right, fwdHorizontal, +Y) and
 // the quad sits at y=0.02 rotated around +Y by the heading.
 function RegionalRoadSegment({
-  ax, ay, az, bx, by, bz, width, color,
+  ax, ay, az, bx, by, bz, width, color, shoulder,
 }: Omit<SegmentSpec, "key">) {
-  const meshRef = useRef<THREE.Mesh>(null);
+  const groupRef = useRef<THREE.Group>(null);
   const { matrix, lenS } = useMemo(() => {
     const dx = bx - ax;
     const dy = by - ay;
@@ -84,17 +93,28 @@ function RegionalRoadSegment({
     return { matrix: m, lenS: lenSv };
   }, [ax, ay, az, bx, by, bz]);
   useEffect(() => {
-    const mesh = meshRef.current;
-    if (!mesh) return;
-    mesh.matrixAutoUpdate = false;
-    mesh.matrix.copy(matrix);
-    mesh.matrixWorldNeedsUpdate = true;
+    const g = groupRef.current;
+    if (!g) return;
+    g.matrixAutoUpdate = false;
+    g.matrix.copy(matrix);
+    g.matrixWorldNeedsUpdate = true;
   }, [matrix]);
+  // The carriageway sits a hair above the shoulder along the local +Z (surface
+  // normal) so the two coplanar quads never z-fight. The shoulder is a wider
+  // light gravel band that frames the dark road against the hillside.
   return (
-    <mesh ref={meshRef} receiveShadow>
-      <planeGeometry args={[width, lenS]} />
-      <meshStandardMaterial color={color} roughness={0.90} metalness={0.02} />
-    </mesh>
+    <group ref={groupRef}>
+      {shoulder && (
+        <mesh receiveShadow>
+          <planeGeometry args={[width + SHOULDER_EXTRA, lenS]} />
+          <meshStandardMaterial color={SHOULDER_COLOR} roughness={0.97} metalness={0.0} />
+        </mesh>
+      )}
+      <mesh position={[0, 0, shoulder ? 0.04 : 0]} receiveShadow>
+        <planeGeometry args={[width, lenS]} />
+        <meshStandardMaterial color={color} roughness={0.90} metalness={0.02} />
+      </mesh>
+    </group>
   );
 }
 
@@ -104,6 +124,9 @@ function RegionalRoads() {
     for (const r of REGIONAL_ROADS) {
       const color = ROAD_COLOR_BY_TYPE[r.type];
       const profile = ROAD_ELEVATION_PROFILES[r.id]; // may be undefined
+      // Mountain (hill) roads get a light gravel shoulder so they read clearly
+      // against the dark terrain — the central-city grid keeps its clean look.
+      const shoulder = r.type === "mountain";
       for (let i = 0; i < r.points.length - 1; i++) {
         const a = r.points[i];
         const b = r.points[i + 1];
@@ -115,6 +138,7 @@ function RegionalRoads() {
           bx: b[0], by, bz: b[1],
           width: r.width,
           color,
+          shoulder,
         });
       }
     }
@@ -127,7 +151,7 @@ function RegionalRoads() {
           key={s.key}
           ax={s.ax} ay={s.ay} az={s.az}
           bx={s.bx} by={s.by} bz={s.bz}
-          width={s.width} color={s.color}
+          width={s.width} color={s.color} shoulder={s.shoulder}
         />
       ))}
     </group>

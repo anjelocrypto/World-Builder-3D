@@ -15,8 +15,8 @@
  *   6. Clearance — carriageway > 2 m clear of every SOLID structure (guardrails
  *      are road-edge furniture and excluded).
  *   7. Inside the world (|x|,|z| ≤ WORLD_HALF − 2).
- *   8. Summit target — highest profile point ≥ 100 m (dramatically above the
- *      city; the highest drivable point in the world).
+ *   8. Summit target — highest profile point ≥ 60 m (the highest drivable point
+ *      in the world) AND a broad hilltop shelf, not a point.
  *
  * Run standalone:  pnpm exec tsx src/shared/northChiliadValidator.ts
  *           (or)  node <jiti> src/shared/northChiliadValidator.ts
@@ -42,7 +42,12 @@ const SKIRT = 30;
 const GRADE_LIMIT = 0.18;
 const FLOAT_TOL = 0.3;
 const STRUCT_MIN = 2;
-const SUMMIT_MIN = 100;
+// Redesigned as a broad GENTLE hill (not a spike): the crest target is lower so
+// the road can climb at a safe ~10% grade over a wide footprint. The summit is
+// still by far the highest drivable point in the world.
+const SUMMIT_MIN = 60;
+// Hilltop overlook shelf must read as a broad flat area, not a point.
+const SHELF_MIN_H = 55;
 
 const ss = (u: number): number => (u <= 0 ? 0 : u >= 1 ? 1 : u * u * (3 - 2 * u));
 function distSegT(x: number, z: number, ax: number, az: number, bx: number, bz: number) {
@@ -200,15 +205,16 @@ export function validateNorthChiliad(): NorthChiliadReport {
   if (maxAbsX > WORLD_HALF - 2 || maxAbsZ > WORLD_HALF - 2) fail(`leaves world (maxX=${maxAbsX}, maxZ=${maxAbsZ})`);
 
   // (8b) SUMMIT PLATEAU — the top must be a broad shelf, not a point. Count the
-  // terrain samples >= 90 m in the east-summit region; require a real area.
+  // terrain samples >= SHELF_MIN_H across the broad east-hilltop region; require
+  // a real area so the overlook reads as a flat shelf you can drive around on.
   const terrainAt = (x: number, z: number) => Math.max(existingTerr(x, z), mySupport(x, z));
   let plateau = 0;
-  for (let x = 110; x <= 262; x += 8) {
-    for (let z = -490; z <= -450; z += 8) {
-      if (terrainAt(x, z) >= 90) plateau++;
+  for (let x = 120; x <= 270; x += 8) {
+    for (let z = -492; z <= -456; z += 8) {
+      if (terrainAt(x, z) >= SHELF_MIN_H) plateau++;
     }
   }
-  if (plateau < 18) fail(`summit plateau too small: only ${plateau} samples >= 90 m`);
+  if (plateau < 18) fail(`summit plateau too small: only ${plateau} samples >= ${SHELF_MIN_H} m`);
 
   // (9) MASSIFS must not float any FLAT structure or flat road (the dome raises
   // terrain within its radius). Every massif center must clear flat footprints
@@ -246,7 +252,7 @@ if (isMain) {
   console.info(
     `[northChiliad] PASS — ${r.vertices} vertices, width ${r.width}m, summit ${r.summitY}m ` +
       `(highest drivable), maxGrade ${r.maxGradePct}% (limit 18%), minStructClearance ${r.minStructClearance}m, ` +
-      `floatsNothing(maxIncrease ${r.maxFloatIncrease}m), plateau ${r.plateauSamples} samples >=90m, ` +
+      `floatsNothing(maxIncrease ${r.maxFloatIncrease}m), plateau ${r.plateauSamples} samples >=${SHELF_MIN_H}m, ` +
       `massifs clear all flat roads/structures, junction matches mountain-switchbacks`,
   );
 }
