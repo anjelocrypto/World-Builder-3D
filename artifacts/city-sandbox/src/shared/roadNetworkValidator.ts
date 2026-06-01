@@ -133,7 +133,7 @@ function classifyDeadEnd(ids: string[]): DeadKind {
   if (has((s) => s.startsWith("drv-") || s === "forest-spur" || s === "gateway-spur" || s === "trailhead-spur"))
     return "driveway/spur";
   if (has((s) => s === "path-grand-plaza-hall")) return "pedestrian";
-  if (has((s) => s === "mountain-switchbacks" || s === "mountain-lookout" || s === "ridge-east-heights" || s === "nemo-peak-road")) return "scenic/summit";
+  if (has((s) => s === "mountain-switchbacks" || s === "mountain-lookout" || s === "ridge-east-heights" || s === "nemo-peak-road" || s === "south-overlook-east" || s === "south-overlook-west")) return "scenic/summit";
   return "suspicious";
 }
 

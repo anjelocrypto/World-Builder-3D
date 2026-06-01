@@ -1285,6 +1285,20 @@ export const REGIONAL_ROADS: RoadPath[] = [
   { id: "ridge-west-far",
     points: [[-460, 0], [-495, -50], [-495, -120], [-460, -200]],
     width: 8, type: "mountain" },
+  // ── South overlook drives (GTA-style scenic switchbacks up the new south
+  // hills) ───────────────────────────────────────────────────────────────────
+  // Branch off the outer-loop south leg at (±220,200) [Y=0, shared node],
+  // cross the open south ground to the hill foot, then climb the SE / SW flank
+  // via LONG x-traverses to a clifftop belvedere (~50m) facing N over the city.
+  // Intentional scenic dead-ends (like mountain-lookout / nemo-peak-road).
+  // Profiles ride the hill (each vertex on terrain, verified no burial; grade
+  // ≤16%). They give the previously road-less south hills a drivable route.
+  { id: "south-overlook-east",
+    points: [[220, 200], [345, 250], [400, 360], [205, 425], [395, 452], [225, 473], [340, 485]],
+    width: 12, type: "mountain" },
+  { id: "south-overlook-west",
+    points: [[-220, 200], [-345, 250], [-400, 360], [-205, 425], [-395, 452], [-225, 473], [-340, 485]],
+    width: 12, type: "mountain" },
   // forest-{east,west}-connector: dirt collectors that drop south from
   // the village-loop frontage into the outer-loop south leg, giving the
   // forest village two extra exits (east via (220,200) and west via
@@ -1399,6 +1413,10 @@ export const ROAD_ELEVATION_PROFILES: Record<string, number[]> = {
   // gentle (~10%) on the otherwise-steep south face. Stays on the east half to
   // clear the central observatory (0,-485) and existing summit road (0,-465).
   "nemo-peak-road":       [20, 28, 43, 51, 62, 61, 53],
+  // South overlook drives — flat across the open approach (Y≈0-2), then climb
+  // the south flank to a ~50m belvedere. Start pinned to Y=0 (outer-loop join).
+  "south-overlook-east":  [0, 2, 2, 4, 23, 34, 52],
+  "south-overlook-west":  [0, 2, 2, 4, 24, 38, 50],
 };
 
 // Mountain road IDs — single source of truth used by the renderer
