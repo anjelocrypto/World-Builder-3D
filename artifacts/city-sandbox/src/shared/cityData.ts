@@ -1254,6 +1254,19 @@ export const REGIONAL_ROADS: RoadPath[] = [
   { id: "ridge-east-far",
     points: [[460, 30], [495, -30], [495, -120], [460, -200]],
     width: 8, type: "mountain" },
+  // ── East Ridge Heights ──────────────────────────────────────────────────
+  // GTA Vinewood-Hills-style hillside district access spur. Branches off the
+  // existing ridge-east-high climb at its shared graph node (340,-360) [Y=14 in
+  // both profiles] and winds up the already-elevated NE shelf to a crest
+  // overlook at (406,-379) ~21m, facing SW over the city core (intentional
+  // scenic dead-end, like mountain-lookout). Profile tracks the existing
+  // terrain so the road sits on the hillside (proven: max grade ~12%, no flat
+  // structure/road raised, ≥29m clear of every structure, in-world). Elevation
+  // lives in ROAD_ELEVATION_PROFILES below; rendered + minimapped automatically
+  // because it is a normal REGIONAL_ROADS entry.
+  { id: "ridge-east-heights",
+    points: [[340, -360], [362, -372], [386, -381], [406, -379]],
+    width: 11, type: "mountain" },
   // ridge-west-far: mirror on the west side. Endpoints (-460,0) and
   // (-460,-200) share with west-utility / ridge-west / outer-loop NW.
   { id: "ridge-west-far",
@@ -1359,6 +1372,10 @@ export const ROAD_ELEVATION_PROFILES: Record<string, number[]> = {
   // outer-loop / east-service / west-utility cleanly.
   "ridge-east-far":       [0, 4, 6, 0],
   "ridge-west-far":       [0, 4, 6, 0],
+  // East Ridge Heights — climbs the NE shelf from the shared ridge-east-high
+  // node (Y=14) to the crest overlook (Y=21). Each vertex Y >= the existing
+  // terrain there so the carriageway sits on the hillside, not buried.
+  "ridge-east-heights":   [14, 17, 19, 21],
 };
 
 // Mountain road IDs — single source of truth used by the renderer
