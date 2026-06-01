@@ -512,8 +512,28 @@ const EXPANSION_BUILDINGS: Building[] = [
   { x: 79.0, z: -183.0, w: 10, d: 12, h: 43, color: "#52606e", district: "commercial", hasAntenna: false, hasRooftopBox: true, windowSeed: 19, tier: "mid" },
 ];
 
+// De-overlap pass (paranoid clean-up): the seeded downtown generator packs
+// mid-rises whose footprints sometimes intersect, which can z-fight ("flashing")
+// on the shared tower walls. We KEEP every hand-placed tower (highrise, landmark)
+// and the district EXPANSION, and drop only GENERATED towers that overlap an
+// already-accepted building. Deterministic (generator order preserved); removes
+// just the colliding duplicates so no two building footprints intersect.
+function _bOverlap(a: Building, b: Building, m = 0.4): boolean {
+  return Math.abs(a.x - b.x) < (a.w + b.w) / 2 + m && Math.abs(a.z - b.z) < (a.d + b.d) / 2 + m;
+}
+const _priorityBuildings: Building[] = [
+  ...HIGHRISE_BUILDINGS,
+  ...LANDMARK_BUILDINGS,
+  ...EXPANSION_BUILDINGS,
+];
+const _keptGenerated: Building[] = [];
+for (const b of GENERATED_BUILDINGS) {
+  if (_priorityBuildings.some((o) => _bOverlap(b, o))) continue;
+  if (_keptGenerated.some((o) => _bOverlap(b, o))) continue;
+  _keptGenerated.push(b);
+}
 export const BUILDINGS: Building[] = [
-  ...GENERATED_BUILDINGS,
+  ..._keptGenerated,
   ...HIGHRISE_BUILDINGS,
   ...LANDMARK_BUILDINGS,
   ...EXPANSION_BUILDINGS,
