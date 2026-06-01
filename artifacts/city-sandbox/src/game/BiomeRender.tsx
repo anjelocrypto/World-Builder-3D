@@ -1022,31 +1022,36 @@ const PLAZA_LIGHT_COORDS: ReadonlyArray<readonly [number, number, number]> = [
   [-15, 6, -15],
 ];
 
-// Per-regional-style lamp-head Y + intensity/reach (modest + localized).
+// Per-regional-style lamp-head Y + intensity/reach. decay stays at 2 (below)
+// so each lamp is a TIGHT realistic pool under the fixture, not a wide flat
+// disc — but the intensity/reach are bumped well up so the immediate ground is
+// readable at night (the heads sit ~3-6m above the ground, so 1/d^2 falloff
+// eats most of a low intensity before it reaches the road).
 const REGIONAL_LAMP_LIGHT: Record<LampStyle, { y: number; intensity: number; distance: number; color: string }> = {
-  urban:    { y: 5.95, intensity: 2.4, distance: 18, color: "#ffe6b0" },
-  bridge:   { y: 6.35, intensity: 2.6, distance: 20, color: "#ffe2b0" },
-  rural:    { y: 4.7,  intensity: 2.0, distance: 16, color: "#ffcf90" },
-  mountain: { y: 3.05, intensity: 1.8, distance: 14, color: "#ffc488" },
+  urban:    { y: 5.95, intensity: 6.0, distance: 24, color: "#ffe6b0" },
+  bridge:   { y: 6.35, intensity: 6.5, distance: 26, color: "#ffe2b0" },
+  rural:    { y: 4.7,  intensity: 5.0, distance: 22, color: "#ffcf90" },
+  mountain: { y: 3.05, intensity: 4.5, distance: 20, color: "#ffc488" },
 };
 
 const ALL_REAL_LIGHTS: RealLightSource[] = [
-  // Tier 1 — curated scene anchors.
+  // Tier 1 — curated scene anchors (light wider areas; small bumps).
   ...PLAZA_LIGHT_COORDS.map(([x, y, z]) => ({
-    x, y, z, color: "#ffd9a0", intensity: 6, distance: 28,
+    x, y, z, color: "#ffd9a0", intensity: 7, distance: 30,
   })),
   ...JUNCTION_REAL_LIGHTS.map(([x, y, z]) => ({
-    x, y, z, color: "#ffd0a0", intensity: 3.5, distance: 38,
+    x, y, z, color: "#ffd0a0", intensity: 4.5, distance: 40,
   })),
   ...VILLAGE_REAL_LIGHTS.map(([x, y, z]) => ({
-    x, y, z, color: "#ffcb88", intensity: 4.0, distance: 32,
+    x, y, z, color: "#ffcb88", intensity: 5.5, distance: 34,
   })),
   ...MOUNTAIN_REAL_LIGHTS.map(([x, y, z]) => ({
-    x, y, z, color: "#ffd0a0", intensity: 3.5, distance: 40,
+    x, y, z, color: "#ffd0a0", intensity: 4.5, distance: 42,
   })),
-  // Tier 2 — every lamp head (city + regional + village).
+  // Tier 2 — every lamp head (city + regional + village). Brighter + wider so
+  // the ground a player stands next to actually reads at night.
   ...STREET_LIGHTS.map((l) => ({
-    x: l.x, y: 5.95, z: l.z, color: "#ffe6b0", intensity: 2.4, distance: 18,
+    x: l.x, y: 5.95, z: l.z, color: "#ffe6b0", intensity: 6.0, distance: 24,
   })),
   ...REGIONAL_ROAD_LAMPS.map((l) => {
     const d = REGIONAL_LAMP_LIGHT[l.style];
@@ -1056,11 +1061,15 @@ const ALL_REAL_LIGHTS: RealLightSource[] = [
     };
   }),
   ...VILLAGE_LAMPS.map((l) => ({
-    x: l.x, y: 5.0, z: l.z, color: "#ffd58a", intensity: 2.2, distance: 16,
+    x: l.x, y: 5.0, z: l.z, color: "#ffd58a", intensity: 5.0, distance: 22,
   })),
 ];
 
-const MAX_ACTIVE_LIGHTS = 7; // + 1 driver headlight = 8 total budget.
+// Nearest-N real lights kept live at once. 10 (+ 1 driver headlight = 11) so a
+// player standing in a cluster of lamps (e.g. a forest stretch lit on both
+// sides plus a nearby curated anchor) doesn't lose the closest lamp to the
+// budget. Still a hard, bounded cap — NOT hundreds of uncontrolled lights.
+const MAX_ACTIVE_LIGHTS = 10;
 // Candidates farther than this (squared, metres²) from the camera are skipped
 // before the nearest-K test — no lamp reaches the eye from beyond ~60 m anyway.
 const CANDIDATE_MAX_DIST2 = 60 * 60;
@@ -1109,9 +1118,14 @@ function DynamicPointLights() {
       if (selN < MAX_ACTIVE_LIGHTS) selN++;
     }
 
-    // Daylight kills lamp realism: gate every real point light by nightFactor
-    // so the budget collapses to zero during midday and lights come back at dusk.
-    const n = dayNightRuntime.nightFactor;
+    // Lamp fade: ramp lamps in EARLIER than full night so the dark-looking
+    // sunset/dusk window isn't lit by dead lamps. nightFactor alone is only
+    // ~0.05 at sunset (sun on the horizon); this reaches ~0.6 at sunset, 1.0 at
+    // night, and still collapses to 0 in full day (both terms are ~0 at midday).
+    const lampGain = Math.min(
+      1,
+      dayNightRuntime.nightFactor * 1.8 + dayNightRuntime.dawnDuskFactor * 0.5,
+    );
     for (let k = 0; k < MAX_ACTIVE_LIGHTS; k++) {
       const ref = refs.current[k];
       if (!ref) continue;
@@ -1120,9 +1134,9 @@ function DynamicPointLights() {
       const s = sources[si];
       ref.position.set(s.x, s.y, s.z);
       ref.color.copy(s._color);
-      ref.intensity = s.intensity * n;
+      ref.intensity = s.intensity * lampGain;
       ref.distance = s.distance;
-      ref.decay = 2;
+      ref.decay = 2; // tight realistic pool under the fixture (no flat disc)
     }
   });
 

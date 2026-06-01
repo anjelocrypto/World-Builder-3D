@@ -168,8 +168,11 @@ export default function DayNightController() {
     const dirIntensity  = sunUp
       ? lerp(0.25, 1.55, clamp01(t.sunY * 1.5))
       : lerp(0.05, 0.22, clamp01(-t.sunY));
-    const ambIntensity  = lerp(0.10, 0.26, t.dayFactor);
-    const hemiIntensity = lerp(0.20, 0.70, t.dayFactor);
+    // Night floor raised slightly (amb 0.10->0.14, hemi 0.20->0.30) so ground
+    // away from direct lamp light is dim-but-readable instead of pure black —
+    // keeps the dark mood without washing the night out.
+    const ambIntensity  = lerp(0.14, 0.26, t.dayFactor);
+    const hemiIntensity = lerp(0.30, 0.70, t.dayFactor);
 
     // Fog: exponential density by phase — clearer by day, cool depth at night,
     // warm haze at sunset. Lightened ~30% (Phase-1 polish) so the physical sky
@@ -306,16 +309,16 @@ export default function DayNightController() {
           `phase=${t.phase}, sunY=${t.sunY.toFixed(2)}, ` +
           `moonY=${t.moonY.toFixed(2)}, ` +
           `nightFactor=${t.nightFactor.toFixed(2)}, ` +
-          `dynamicLampBudget<=8`,
+          `dynamicLampBudget<=11`,
       );
       // eslint-disable-next-line no-console
       console.log(
         `lightingRealism OK: toneMapping=ACES, shadowMap=PCFSoft, ` +
-          `dynamicLampBudget<=8, windowsNightReactive=true`,
+          `dynamicLampBudget<=11, windowsNightReactive=true`,
       );
       // eslint-disable-next-line no-console
       console.log(
-        `lampLighting OK: noGroundPools=true, dynamicLampBudget<=8 ` +
+        `lampLighting OK: noGroundPools=true, dynamicLampBudget<=11 ` +
           `(nearest-N over curated anchors + every lamp head)`,
       );
       // eslint-disable-next-line no-console
@@ -326,7 +329,7 @@ export default function DayNightController() {
       // and the bulk of decorative marker lights were converted to emissive-only.
       console.log(
         `skyAtmosphere OK: physicalSky=true, clouds=true, stars=true, ` +
-          `singleShadowLight=true, dynamicLampBudget<=8, ` +
+          `singleShadowLight=true, dynamicLampBudget<=11, ` +
           `fixedSiteLights=distance-gated (hall+landmarks)`,
       );
     }
