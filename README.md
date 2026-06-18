@@ -1,6 +1,6 @@
-# City Sandbox
+# Trench Theft Auto
 
-A browser-based 3D multiplayer open-world city sandbox prototype. Walk around a procedurally generated city, drive vehicles, run a checkpoint race, and play with friends in real time.
+Trench Theft Auto — a browser-based 3D multiplayer open-world city game. Walk around a procedurally generated city, drive vehicles, run a checkpoint race, and play with friends in real time.
 
 Built with **React + Vite + TypeScript**, **Three.js / @react-three/fiber / @react-three/drei**, **Socket.io**, and **Express 5**.
 

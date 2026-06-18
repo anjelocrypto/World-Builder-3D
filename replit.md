@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project is a pnpm workspace monorepo using TypeScript, designed for a browser-based 3D multiplayer open-world sandbox game called "City Sandbox". The game features a large, detailed 3D world with a central city, various biomes (mountain, forest, suburban/industrial, fields), and a complex road network. Players can explore the world, drive cars, and interact with a multiplayer environment. The project aims to deliver a rich, immersive, and performant multiplayer experience.
+This project is a pnpm workspace monorepo using TypeScript, designed for a browser-based 3D multiplayer open-world sandbox game called "Trench Theft Auto". The game features a large, detailed 3D world with a central city, various biomes (mountain, forest, suburban/industrial, fields), and a complex road network. Players can explore the world, drive cars, and interact with a multiplayer environment. The project aims to deliver a rich, immersive, and performant multiplayer experience.
 
 The system includes a robust API server with real-time capabilities via Socket.io, a PostgreSQL database with Drizzle ORM, and a client-side built with React, Three.js, and React Three Fiber. The core vision is to create a dynamic and expansive virtual world where players can engage in various activities within a meticulously crafted environment.
 

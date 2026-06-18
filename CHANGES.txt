@@ -1,0 +1,24 @@
+TRENCH THEFT AUTO — rebrand changes
+===================================
+This bundle matches the version currently live on trenchtheftauto.com
+(the "Hanta City" build). Only the game NAME was changed. No "Nemoverse"
+text or extra characters exist in this version — it already has a single
+character, so nothing was removed there.
+
+Files changed (upload these to GitHub, keeping the folder paths):
+  artifacts/city-sandbox/index.html .............. browser tab title -> Trench Theft Auto
+  artifacts/city-sandbox/src/pages/Lobby.tsx ..... lobby title + tagline -> TRENCH THEFT AUTO / MULTIPLAYER OPEN-WORLD GAMEPLAY
+  artifacts/city-sandbox/.replit-artifact/artifact.toml  Replit display name
+  README.md ...................................... project title + intro
+  replit.md ...................................... project description
+  LICENSE ........................................ copyright holder name
+
+NOT changed on purpose: the folder name "city-sandbox" and the package
+name "@workspace/city-sandbox". The build and Render's start command
+depend on those, so renaming them would break the deploy.
+
+How to publish:
+  1) Unzip this file.
+  2) github.com/anjelocrypto/World-Builder-3D -> Add file -> Upload files
+  3) Drag the "artifacts" folder + README.md, replit.md, LICENSE into the drop area.
+  4) Commit directly to main. Render auto-redeploys; hard-refresh the site.
