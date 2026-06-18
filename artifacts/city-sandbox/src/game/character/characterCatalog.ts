@@ -15,7 +15,7 @@ import type { PlayerAnimState } from "../../shared/types";
 const BASE = import.meta.env.BASE_URL;
 
 /** Stable id sent over the wire + persisted in the lobby choice. */
-export type CharacterId = "classic" | "simple" | "nemo";
+export type CharacterId = "classic";
 
 /** Default character when none is chosen / an unknown id arrives. */
 export const DEFAULT_CHARACTER: CharacterId = "classic";
@@ -134,100 +134,19 @@ const CLASSIC: CharacterDef = {
   scale: 1,
 };
 
-// ── Simple (10 GLBs, one shared 24-joint rig) ────────────────────────────
-// Clip durations (measured): idle 10.0s, walk 1.07s, run 0.5s, jump 1.93s,
-// punch-combo 5.70s, leg-kick 2.73s, block 2.57s, die 2.27s,
-// gethit 1.27s, talk 4.0s. talk is now BOUND to animState "talk" (played
-// while the player speaks into the proximity-voice mic via talkKey below).
-// block/die/gethit remain LOADED + ready but unbound — no block / death /
-// hit-reaction game mechanic yet, so nothing triggers them.
-const SIMPLE: CharacterDef = {
-  id: "simple",
-  label: "Simple",
-  baseUrl: `${BASE}models/simple-idle.glb`,
-  baseClipKey: "idle",
-  extraClips: [
-    { url: `${BASE}models/simple-walk.glb`, clipKey: "walk" },
-    { url: `${BASE}models/simple-run.glb`, clipKey: "run" },
-    { url: `${BASE}models/simple-jump.glb`, clipKey: "jump" },
-    { url: `${BASE}models/simple-punch-combo-1.glb`, clipKey: "punch" },
-    { url: `${BASE}models/simple-leg-kick.glb`, clipKey: "kick" },
-    // Loaded + ready, but unbound (no matching game mechanic yet):
-    { url: `${BASE}models/simple-block.glb`, clipKey: "block" },
-    { url: `${BASE}models/simple-die.glb`, clipKey: "die" },
-    { url: `${BASE}models/simple-gethit.glb`, clipKey: "gethit" },
-    { url: `${BASE}models/simple-talk.glb`, clipKey: "talk" },
-    { url: `${BASE}models/simple-sitting.glb`, clipKey: "sit" },
-  ],
-  locomotion: { idle: "idle", walk: "walk", run: "run" },
-  airborneKey: "jump",
-  talkKey: "talk",
-  sitKey: "sit",
-  attackLightKey: "punch",
-  attackHeavyKey: "kick",
-  attackLightMs: 5700, // simple-punch-combo-1.glb = 5.70s
-  attackHeavyMs: 2730, // simple-leg-kick.glb = 2.73s
-  // Simple now has a dedicated 1.07s walk clip (simple-walk.glb), so walk
-  // plays at native rate — no time-scaling needed.
-  scale: 1,
-};
-
-// ── Nemo (8 GLBs, one shared 24-joint rig — same rig family as Simple) ───
-// Measured clip durations (max sampler input time): idle 1.93s, walk 1.07s,
-// run 0.67s, talk 5.20s, punch 4.00s, die 3.00s, gethit 1.27s. Nemo binds
-// FIVE locomotion/action states the same way Simple does (idle/walk/run +
-// talk + a punch attack), and ADDITIONALLY binds die + gethit to the local
-// car-collision damage system (Phase 16): gethit plays on a survived hit,
-// die plays when health reaches 0 (then respawn). Nemo has a single attack
-// clip (punch), so both the light and heavy combo slots map to it.
-const NEMO: CharacterDef = {
-  id: "nemo",
-  label: "Nemo",
-  baseUrl: `${BASE}models/nemo-idle.glb`,
-  baseClipKey: "idle",
-  extraClips: [
-    { url: `${BASE}models/nemo-walk.glb`, clipKey: "walk" },
-    { url: `${BASE}models/nemo-run.glb`, clipKey: "run" },
-    { url: `${BASE}models/nemo-talk.glb`, clipKey: "talk" },
-    { url: `${BASE}models/nemo-punch.glb`, clipKey: "punch" },
-    { url: `${BASE}models/nemo-die.glb`, clipKey: "die" },
-    { url: `${BASE}models/nemo-gethit.glb`, clipKey: "gethit" },
-    // Sitting: same rig as nemo-idle (26 nodes, identical bone names), one clip
-    // "Chair_Sit_Idle_M". Bound to animState "sit" like Simple — enables the
-    // "E — Sit" prompt + the seated pose on chairs for Nemo.
-    { url: `${BASE}models/nemo-sitting.glb`, clipKey: "sit" },
-  ],
-  locomotion: { idle: "idle", walk: "walk", run: "run" },
-  talkKey: "talk",
-  sitKey: "sit",
-  gethitKey: "gethit",
-  gethitMs: 1267, // nemo-gethit.glb = 1.267s
-  dieKey: "die",
-  dieMs: 3000, // nemo-die.glb = 3.00s
-  // Single attack clip (punch) reused for both combo slots.
-  attackLightKey: "punch",
-  attackHeavyKey: "punch",
-  attackLightMs: 4000, // nemo-punch.glb = 4.00s
-  attackHeavyMs: 4000,
-  // Dedicated 1.07s walk clip → native rate, no time-scaling.
-  scale: 1,
-};
-
 export const CHARACTERS: Record<CharacterId, CharacterDef> = {
   classic: CLASSIC,
-  simple: SIMPLE,
-  nemo: NEMO,
 };
 
 /** Ordered list for the lobby picker. */
-export const CHARACTER_LIST: ReadonlyArray<CharacterDef> = [CLASSIC, SIMPLE, NEMO];
+export const CHARACTER_LIST: ReadonlyArray<CharacterDef> = [CLASSIC];
 
 /** Server/client allowlist of valid ids (mirror the server guard). */
-export const CHARACTER_IDS: ReadonlyArray<CharacterId> = ["classic", "simple", "nemo"];
+export const CHARACTER_IDS: ReadonlyArray<CharacterId> = ["classic"];
 
 /** Coerce any incoming value to a valid CharacterId (defaults to classic). */
 export function normalizeCharacterId(v: unknown): CharacterId {
-  return v === "simple" || v === "classic" || v === "nemo" ? v : DEFAULT_CHARACTER;
+  return v === "classic" ? v : DEFAULT_CHARACTER;
 }
 
 /** Per-character attack clip duration (ms) for a given kind. */

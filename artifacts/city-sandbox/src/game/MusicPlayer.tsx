@@ -3,14 +3,14 @@ import { Music, Play, Pause, SkipForward, Volume2, VolumeX } from "lucide-react"
 import { useGameMusic } from "../hooks/useGameMusic";
 
 // =============================================================
-// MusicPlayer — compact in-game soundtrack control (bottom-left, NEMOVERSE).
+// MusicPlayer — compact in-game soundtrack control (bottom-left, Trench Theft Auto).
 // Play/pause, next track, mute, and a red volume slider (lower ↔ max). Loops
 // the MUSIC_TRACKS playlist forever. Mount once in GameScene. Behaviour (hook,
 // localStorage, loop, next/mute/slider) is unchanged — this is the brand skin.
 // =============================================================
 
 const RED = "#ff3b46";
-// Shared NEMOVERSE HUD chassis (mirrors HUD.tsx PANEL_* so panels match).
+// Shared Trench Theft Auto HUD chassis (mirrors HUD.tsx PANEL_* so panels match).
 const PANEL_BG = "rgba(10, 10, 12, 0.74)";
 const PANEL_BORDER = "rgba(226, 29, 43, 0.30)";
 const PANEL_SHADOW = "0 8px 24px rgba(0,0,0,0.5), 0 0 1px rgba(226,29,43,0.30), inset 0 1px 0 rgba(255,255,255,0.05)";

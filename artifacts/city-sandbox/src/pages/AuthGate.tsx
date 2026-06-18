@@ -4,7 +4,7 @@ import { useNemoWallet } from "@/hooks/useNemoWallet";
 import type { AuthMode } from "@/shared/types";
 
 // =============================================================
-// AuthGate — NEMOVERSE landing / entry screen.
+// AuthGate — Trench Theft Auto landing / entry screen.
 // -------------------------------------------------------------
 // VISUAL/branding layer only. Red + white over near-black, cinematic over the
 // live 3D city preview. Auth logic is unchanged: Connect Wallet → onWallet,
@@ -147,7 +147,7 @@ export default function AuthGate({ onChoose }: AuthGateProps) {
               textShadow: "0 0 44px rgba(226,29,43,0.45), 0 8px 34px rgba(0,0,0,0.85)",
             }}
           >
-            NEMOVERSE
+            TRENCH THEFT AUTO
           </div>
           <div style={{
             margin: "16px auto 0", width: 64, height: 3, borderRadius: 2,

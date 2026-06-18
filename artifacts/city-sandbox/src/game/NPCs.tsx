@@ -20,7 +20,7 @@ interface NPCsProps {
 // idle/walk/run locomotion clips, so they animate correctly as walkers. GLBs
 // are shared via the Drei useGLTF URL cache (AnimatedCharacter preloads every
 // character once), so adding NPC instances clones meshes but never re-fetches.
-const NPC_CHARACTER_POOL: CharacterId[] = ["simple", "nemo", "classic"];
+const NPC_CHARACTER_POOL: CharacterId[] = ["classic"];
 
 /**
  * Deterministic character for an NPC, chosen by its stable route id (NOT random

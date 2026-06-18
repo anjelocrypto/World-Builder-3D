@@ -215,7 +215,7 @@ const PHASE_COLOR: Record<string, string> = {
   NIGHT: "#7d9cff",
 };
 
-// Single source of truth for the NEMOVERSE HUD chassis — near-black glass with
+// Single source of truth for the Trench Theft Auto HUD chassis — near-black glass with
 // a restrained red accent, so every panel reads as one premium interface.
 const RED = "#ff3b46";
 const ACCENT = RED;
@@ -563,7 +563,7 @@ function Minimap({
     ctx.arc(cx, cz, 9, 0, Math.PI * 2);
     ctx.stroke();
 
-    // Arrow body — white fill with a red glow (NEMOVERSE). Geometry unchanged.
+    // Arrow body — white fill with a red glow (Trench Theft Auto). Geometry unchanged.
     ctx.save();
     ctx.translate(cx, cz);
     ctx.rotate(heading);
@@ -579,7 +579,7 @@ function Minimap({
     ctx.fill();
     ctx.restore();
 
-    // Subtle red inner frame to match the NEMOVERSE chassis.
+    // Subtle red inner frame to match the Trench Theft Auto chassis.
     ctx.strokeStyle = "rgba(226,29,43,0.33)";
     ctx.lineWidth = 1;
     ctx.strokeRect(0.5, 0.5, W - 1, H - 1);
@@ -599,7 +599,7 @@ function HealthBar({ health }: { health: number }) {
   const SEGMENTS = 10;
   const healthPct = Math.max(0, Math.min(100, health));
   const filledSegments = Math.round((healthPct / 100) * SEGMENTS);
-  // NEMOVERSE: healthy = white, warning = amber, critical = brand red.
+  // Trench Theft Auto: healthy = white, warning = amber, critical = brand red.
   const color =
     healthPct > 50 ? "#f2f4f8" : healthPct > 25 ? "#ffb547" : "#ff3b46";
   const glow =
@@ -968,7 +968,7 @@ export default function HUD({
           </div>
         </div>
 
-        {/* Clock — NEMOVERSE chassis; a small phase dot keeps the day/night cue */}
+        {/* Clock — Trench Theft Auto chassis; a small phase dot keeps the day/night cue */}
         <div
           style={{
             background: PANEL_BG,

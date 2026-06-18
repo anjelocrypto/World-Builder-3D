@@ -52,11 +52,11 @@ export interface PlayerState {
   /** Horizontal speed in m/s, used by remote renderers for blends. */
   moveSpeed?: number;
   /**
-   * Selectable character model id ("classic" | "simple" | "nemo"). Optional for
+   * Selectable character model id ("classic"). Optional for
    * back-compat; renderers default to "classic" when missing. Set once at
    * join and never changed by playerUpdate.
    */
-  character?: "classic" | "simple" | "nemo";
+  character?: "classic";
   /**
    * Phase 15A-2: true while the player is riding the loop train. Remote
    * renderers HIDE such players (their position is attached to the moving car,

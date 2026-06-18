@@ -116,7 +116,7 @@ interface PlayerState {
   isGrounded: boolean;
   moveSpeed: number;
   /** Selectable character model id; set once at join, never via playerUpdate. */
-  character: "classic" | "simple" | "nemo";
+  character: "classic";
   /** Batch A: account entry mode (server-owned). */
   authMode: "guest" | "wallet" | "email" | "admin";
   /** Batch A: true for guest sessions (no token / no DB / no RP handlers). */
@@ -290,12 +290,7 @@ export function setupGameServer(httpServer: HttpServer) {
       setGuestSocket(socket.id, isGuest);
       // Validate the selected character against the allowlist (mirror of the
       // client characterCatalog CHARACTER_IDS). Anything else → "classic".
-      const character: "classic" | "simple" | "nemo" =
-        data?.character === "simple"
-          ? "simple"
-          : data?.character === "nemo"
-            ? "nemo"
-            : "classic";
+      const character: "classic" = "classic";
       // Batch B: server-authoritative Nemo Gang eligibility (session cache,
       // no DB). Eligible members spawn at the hood; everyone else at the
       // station. Currently gated by a dev allowlist — Batch C replaces that
